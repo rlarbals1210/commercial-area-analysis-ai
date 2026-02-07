@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Django
+db.sqlite3
+
+# Raw data (원본 데이터는 GitHub에 올리지 않음)
+data/raw_data/
+*.csv
+
+# Env
+.env
