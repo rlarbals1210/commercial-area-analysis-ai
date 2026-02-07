@@ -1,4 +1,4 @@
-# macOS
+# OS
 .DS_Store
 
 # Python
@@ -11,9 +11,8 @@ __pycache__/
 # Django
 db.sqlite3
 
-# Raw data (원본 데이터는 GitHub에 올리지 않음)
-data/raw_data/
-*.csv
+# 원본 데이터 파일만 제외
+data/raw_data/**/*.csv
 
 # Env
 .env
