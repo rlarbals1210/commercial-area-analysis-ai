@@ -6,3 +6,4 @@ from django.shortcuts import render
 def ping(request):
     # return JsonResponse({"ok": True, "app": "accounts"})
     return JsonResponse({"message": "hello world! "})
+
