@@ -7,3 +7,5 @@ def ping(request):
     # return JsonResponse({"ok": True, "app": "accounts"})
     return JsonResponse({"message": "hello world! "})
 
+# def login(request):
+#     return JsonResponse()
