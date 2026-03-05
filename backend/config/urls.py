@@ -16,15 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from accounts import views
-from analysis import views
-from recommendation import views
-
-from django.http import JsonResponse
-
+from analysis.views import analysis
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('',include("accounts.urls")),
-
+    path('', include("accounts.urls")),
+    path('api/analysis/', analysis),
 ]
