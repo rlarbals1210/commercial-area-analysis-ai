@@ -54,3 +54,26 @@ button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
+
+/* ── 지도 라벨 ── */
+.map-label {
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: 'Pretendard', system-ui, sans-serif;
+  font-weight: 700;
+  -webkit-font-smoothing: antialiased;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 2.5px white;
+}
+
+.map-label--gu {
+  font-size: 14px;
+  color: #111111;
+  letter-spacing: -0.01em;
+}
+
+.map-label--dong {
+  font-size: 11px;
+  color: #111111;
+  letter-spacing: -0.01em;
+}
