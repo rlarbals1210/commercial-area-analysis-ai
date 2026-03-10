@@ -12,8 +12,11 @@ __pycache__/
 # Django
 db.sqlite3
 
-# 원본 데이터 파일만 제외
-data/raw_data/**/*.csv
+# 원본 데이터 전체 제외
+data/raw_data/
+
+# 전처리 결과 데이터 (대용량)
+ai/outputs/*.csv
 
 # Env
 .env
