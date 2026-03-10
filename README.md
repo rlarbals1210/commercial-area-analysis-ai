@@ -21,11 +21,11 @@
 commercial-area-analysis-ai/
 ├── ai/
 │   ├── scripts/
-│   │   ├── build_merged_dataset.ipynb   # 데이터 전처리 및 병합
-│   │   └── SungKwang2Gg.ipynb           # 모델 학습 및 추천 함수
-│   └── outputs/
-│       ├── final_dataset.csv            # 전처리 완료 데이터셋
-│       └── README_DATASET.md            # 데이터셋 상세 설명
+│   │   ├── build_merged_dataset.ipynb   # 데이터 전처리 및 병합 → final_dataset.csv 생성
+│   │   └── ver1.ipynb                   # 모델 학습 및 추천 함수
+│   ├── outputs/
+│   │   └── README_DATASET.md            # 데이터셋 상세 설명 (CSV는 .gitignore 제외)
+│   └── train.ipynb                      # 모델 학습 실험 노트북
 ├── backend/                             # Django REST API
 │   ├── accounts/                        # 회원 관리
 │   ├── analysis/                        # 상권 분석 API
@@ -37,13 +37,18 @@ commercial-area-analysis-ai/
 │           ├── MapPage.jsx              # 지도 기반 상권 조회
 │           ├── LoginPage.jsx
 │           └── SignupPage.jsx
-├── data/
+├── data/                                # 로컬 전용 (GitHub 미포함)
+│   ├── category_maps/                   # 업종 카테고리 매핑 테이블
+│   ├── processed_data/                  # 전처리 완료 데이터
 │   └── raw_data/
 │       ├── sales_info/                  # 서울시 추정 매출 (매출_YYYY.csv)
 │       ├── population_info/             # 서울시 유동인구 (유동인구.csv)
 │       └── store_info/                  # 서울 상가 정보 (YYYY-Q 폴더)
 └── requirements.txt
 ```
+
+> `data/` 및 `ai/outputs/*.csv` 는 용량 문제로 GitHub에 포함되지 않습니다.
+> 아래 데이터 출처에서 직접 다운로드 후 동일한 경로에 위치시켜 주세요.
 
 ---
 
@@ -76,7 +81,7 @@ commercial-area-analysis-ai/
 ```bash
 # Jupyter에서 순서대로 실행
 ai/scripts/build_merged_dataset.ipynb   # → final_dataset.csv 생성
-ai/scripts/SungKwang2Gg.ipynb           # → 모델 학습 및 추천
+ai/scripts/ver1.ipynb                   # → 모델 학습 및 추천
 ```
 
 ### 백엔드
