@@ -20,6 +20,8 @@ export default function MapPage() {
   const mapInstanceRef = useRef(null);
   const polygonGroupsRef = useRef([]);    // 행정동 폴리곤
   const guPolygonGroupsRef = useRef([]);  // 구 폴리곤
+  const dongLabelsRef = useRef([]);       // 행정동 라벨
+  const guLabelsRef = useRef([]);         // 구 라벨
   const selectedGroupRef = useRef(null);
   const GU_MODE_LEVEL = 7; // 이 레벨 이상이면 구 단위 표시
 
@@ -92,6 +94,8 @@ export default function MapPage() {
     guPolygonGroupsRef.current.forEach(({ polygons }) =>
       polygons.forEach((p) => p.setMap(guMode ? map : null))
     );
+    dongLabelsRef.current.forEach((label) => label.setMap(guMode ? null : map));
+    guLabelsRef.current.forEach((label) => label.setMap(guMode ? map : null));
     setIsGuMode(guMode);
     setHoveredDong(null);
   }
@@ -99,6 +103,7 @@ export default function MapPage() {
   // ── 행정동 폴리곤 ──
   function drawDongPolygons(map, geojson, kakao) {
     polygonGroupsRef.current = [];
+    dongLabelsRef.current = [];
 
     geojson.features.forEach((feature) => {
       const { geometry, properties } = feature;
@@ -137,20 +142,23 @@ export default function MapPage() {
             (ne.getLat() + sw.getLat()) / 2,
             (ne.getLng() + sw.getLng()) / 2
           );
-          const targetLevel = 3;
-          const currentLevel = map.getLevel();
-
-          if (currentLevel >= 3) {
-            map.panTo(center);
-            const steps = currentLevel - targetLevel;
-            for (let i = 1; i <= steps; i++)
-              setTimeout(() => map.setLevel(currentLevel - i, { animate: true }), 700 + i * 220);
-          } else {
-            map.panTo(center);
-          }
+          map.panTo(center);
           setSelectedDong({ dongName, guName });
         });
       });
+
+      // 행정동 이름 라벨
+      const [cLng, cLat] = getLargestRingCentroid(geometry.coordinates);
+      const center = new kakao.maps.LatLng(cLat, cLng);
+      const dongLabel = new kakao.maps.CustomOverlay({
+        position: center,
+        content: `<div class="map-label map-label--dong">${dongName}</div>`,
+        map: null,
+        zIndex: 1,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+      });
+      dongLabelsRef.current.push(dongLabel);
 
       polygonGroupsRef.current.push({ dongName, guName, polygons });
     });
@@ -159,6 +167,7 @@ export default function MapPage() {
   // ── 구 폴리곤 ──
   function drawGuPolygons(map, geojson, kakao) {
     guPolygonGroupsRef.current = [];
+    guLabelsRef.current = [];
 
     geojson.features.forEach((feature) => {
       const { geometry, properties } = feature;
@@ -195,14 +204,25 @@ export default function MapPage() {
             (ne.getLat() + sw.getLat()) / 2,
             (ne.getLng() + sw.getLng()) / 2
           );
-          const currentLevel = map.getLevel();
-          const targetLevel = GU_MODE_LEVEL - 1; // 구→행정동 전환 레벨
           map.panTo(center);
-          const steps = currentLevel - targetLevel;
-          for (let i = 1; i <= steps; i++)
-            setTimeout(() => map.setLevel(currentLevel - i, { animate: true }), 600 + i * 220);
         });
       });
+
+      // 구 이름 라벨
+      const guCoords = geometry.type === "MultiPolygon"
+        ? geometry.coordinates
+        : [geometry.coordinates];
+      const [guCLng, guCLat] = getLargestRingCentroid(guCoords);
+      const guCenter = new kakao.maps.LatLng(guCLat, guCLng);
+      const guLabel = new kakao.maps.CustomOverlay({
+        position: guCenter,
+        content: `<div class="map-label map-label--gu">${guName}</div>`,
+        map,
+        zIndex: 1,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+      });
+      guLabelsRef.current.push(guLabel);
 
       guPolygonGroupsRef.current.push({ guName, polygons });
     });
@@ -790,6 +810,41 @@ const statCardStyle = {
   padding: "10px 12px",
   border: "1px solid rgba(255,255,255,0.07)",
 };
+
+// 폴리곤 무게중심(centroid) 계산 — [[lng, lat], ...] 형식
+function calcCentroid(ring) {
+  let area = 0, cx = 0, cy = 0;
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = ring[i];
+    const [x1, y1] = ring[(i + 1) % n];
+    const cross = x0 * y1 - x1 * y0;
+    area += cross;
+    cx += (x0 + x1) * cross;
+    cy += (y0 + y1) * cross;
+  }
+  area /= 2;
+  cx /= 6 * area;
+  cy /= 6 * area;
+  return [cx, cy]; // [lng, lat]
+}
+
+// MultiPolygon 중 가장 넓은 링의 centroid 반환
+function getLargestRingCentroid(coordinates) {
+  let best = null, bestArea = -Infinity;
+  coordinates.forEach((rings) => {
+    const ring = rings[0];
+    let area = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const [x0, y0] = ring[i];
+      const [x1, y1] = ring[(i + 1) % ring.length];
+      area += x0 * y1 - x1 * y0;
+    }
+    const abs = Math.abs(area);
+    if (abs > bestArea) { bestArea = abs; best = ring; }
+  });
+  return calcCentroid(best);
+}
 
 function fmtRevenue(won) {
   if (!won) return "0원";
