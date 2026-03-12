@@ -27,6 +27,7 @@ export default function MapPage() {
   const guToDongsRef = useRef({});         // { 구이름: [행정동이름, ...] }
   const storeMarkersRef = useRef([]);      // 개별 상가 마커 (CustomOverlay)
   const storeInfoWindowRef = useRef(null); // 현재 열린 상가 팝업
+  const guBadgeOverlayRef = useRef(null);  // 구 선택 시 지도 위 매출 뱃지
   const GU_MODE_LEVEL = 7; // 이 레벨 이상이면 구 단위 표시
 
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -477,6 +478,57 @@ export default function MapPage() {
       .finally(() => setGuLoading(false));
   }, [selectedGu, guSelectedQuarter]);
 
+  // ── 구 선택 시 지도 위 매출 뱃지 오버레이 ──
+  useEffect(() => {
+    const { kakao } = window;
+    if (!kakao || !mapInstanceRef.current) return;
+
+    // 이전 오버레이 제거
+    if (guBadgeOverlayRef.current) {
+      guBadgeOverlayRef.current.setMap(null);
+      guBadgeOverlayRef.current = null;
+    }
+    if (!selectedGu || !guData) return;
+
+    const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
+    if (!group?.centroid) return;
+
+    const { lat, lng } = group.centroid;
+    const 변동률 = guData.매출변동률;
+    const 변동색 = 변동률 == null ? "#9E9E9E" : 변동률 >= 0 ? "#34D399" : "#F87171";
+    const 변동텍스트 = 변동률 == null ? "" : `${변동률 >= 0 ? "+" : ""}${변동률}%`;
+
+    const eok = guData.총매출 / 100_000_000;
+    const 매출텍스트 = eok >= 1 ? `${eok.toFixed(0)}억` : `${Math.round(guData.총매출 / 10_000).toLocaleString()}만`;
+
+    const content = `
+      <div style="
+        background: rgba(18,18,18,0.62);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px;
+        padding: 10px 14px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        text-align: center;
+        pointer-events: none;
+        font-family: 'Pretendard', sans-serif;
+        min-width: 90px;
+        transform: translateX(-50%);
+      ">
+        <div style="font-size: 13px; font-weight: 700; color: #E8E8E8; margin-bottom: 3px;">${selectedGu}</div>
+        <div style="font-size: 17px; font-weight: 800; color: #fff; line-height: 1.2;">${매출텍스트}</div>
+        ${변동텍스트 ? `<div style="font-size: 14px; font-weight: 700; color: ${변동색}; margin-top: 3px;">${변동텍스트}</div>` : ""}
+      </div>`;
+
+    const overlay = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(lat, lng),
+      content,
+      zIndex: 5,
+    });
+    overlay.setMap(mapInstanceRef.current);
+    guBadgeOverlayRef.current = overlay;
+  }, [selectedGu, guData]);
+
   // ── AI 추천 요청 ──
   function handleAiRecommend() {
     if (aiMode === "dong" && !aiIndustry) return;
@@ -615,37 +667,407 @@ export default function MapPage() {
       {/* 지도 영역 */}
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* ── 구 보기 버튼 ── */}
-      <button
-        style={{
-          position: "absolute",
-          bottom: 136,
-          right: 20,
-          height: 40,
-          padding: "0 16px",
-          background: isGuMode ? "#3B82F6" : "rgba(45,45,45,0.97)",
-          color: isGuMode ? "#fff" : "#E8E8E8",
-          border: isGuMode ? "none" : "1.5px solid #4A4A4A",
-          borderRadius: 10,
-          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: "pointer",
-          backdropFilter: "blur(6px)",
-          zIndex: 10,
-          transition: "all 0.15s",
-          whiteSpace: "nowrap",
-        }}
-        onClick={() => {
-          const map = mapInstanceRef.current;
-          if (!map) return;
-          map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
-          if (map.getLevel() < GU_MODE_LEVEL)
-            map.setLevel(8, { animate: true });
-        }}
-      >
-        구 보기
-      </button>
+      {/* ── 왼쪽 사이드바 ── */}
+      <div style={leftSidebarStyle}>
+
+        {/* 검색창 */}
+        <div data-popup style={{ position: "relative", padding: "16px 16px 10px", flexShrink: 0 }}>
+          <div
+            style={{ ...searchBoxStyle, width: "100%", boxSizing: "border-box", borderRadius: searchExpanded ? "12px 12px 0 0" : 12, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
+            onClick={() => setSearchExpanded(true)}
+          >
+            <span style={{ fontSize: 19, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchExpanded(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && searchResults.length > 0) { handleSelectResult(searchResults[0]); setSearchExpanded(false); }
+                if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }
+              }}
+              placeholder="지역명 · 업종 검색"
+              style={{ border: "none", outline: "none", fontSize: 17, width: "100%", background: "transparent", color: "#E8E8E8" }}
+            />
+            {searchQuery && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setSearchQuery(""); setSearchResults([]); }}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "#777", fontSize: 18, padding: 0, flexShrink: 0 }}
+              >✕</button>
+            )}
+          </div>
+
+          {/* 확장 드롭다운 */}
+          {searchExpanded && (
+            <div data-popup style={{
+              background: "#2A2A2A", borderRadius: "0 0 14px 14px",
+              boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
+              border: "1px solid rgba(255,255,255,0.08)", borderTop: "none",
+              maxHeight: 420, overflowY: "auto",
+            }}>
+              {searchResults.length > 0 && (
+                <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ padding: "8px 14px 4px", fontSize: 13, fontWeight: 700, color: "#6B7280", letterSpacing: "0.06em" }}>지역 검색 결과</div>
+                  {searchResults.map((r, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { handleSelectResult(r); setSearchExpanded(false); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        width: "100%", padding: "9px 14px", border: "none",
+                        background: "none", cursor: "pointer", textAlign: "left",
+                        borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                    >
+                      <span style={{
+                        fontSize: 12, fontWeight: 700, color: r.type === "gu" ? "#FBBF24" : "#93B8EE",
+                        background: r.type === "gu" ? "rgba(251,191,36,0.12)" : "rgba(59,130,246,0.12)",
+                        borderRadius: 4, padding: "2px 6px", flexShrink: 0,
+                      }}>
+                        {r.type === "gu" ? "구" : "행정동"}
+                      </span>
+                      <div>
+                        <div style={{ fontSize: 16, fontWeight: 600, color: "#E8E8E8" }}>{r.type === "gu" ? r.guName : r.dongName}</div>
+                        {r.type === "dong" && <div style={{ fontSize: 14, color: "#9E9E9E" }}>{r.guName}</div>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ padding: "12px 14px" }}>
+                <p style={{ ...popupSectionLabel, marginBottom: 8, fontSize: 14 }}>업종 필터</p>
+                <div style={chipGrid}>
+                  {INDUSTRIES.map((item) => (
+                    <button key={item} onClick={() => setSelectedIndustry(selectedIndustry === item ? null : item)} style={chipStyle(selectedIndustry === item)}>{item}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <p style={{ ...popupSectionLabel, margin: "12px 0 8px", fontSize: 14 }}>지역 필터</p>
+                <div style={chipGrid}>
+                  {REGIONS.map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => {
+                        const group = guPolygonGroupsRef.current.find((g) => g.guName === item);
+                        if (group) handleSelectResult({ type: "gu", guName: item, dongName: null, centroid: group.centroid });
+                        setSelectedRegion(selectedRegion === item ? null : item);
+                      }}
+                      style={chipStyle(selectedRegion === item)}
+                    >{item}</button>
+                  ))}
+                </div>
+              </div>
+              {selectedRegion && (
+                <div data-popup style={{ background: "rgba(24,24,34,0.97)", borderTop: "1px solid rgba(59,130,246,0.25)", padding: "12px 14px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#FBBF24", background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 6px" }}>구</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8" }}>{selectedRegion}</span>
+                    <span style={{ fontSize: 14, color: "#555" }}>({(guToDongsRef.current[selectedRegion] || []).length}개 행정동)</span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {(guToDongsRef.current[selectedRegion] || []).map((dong) => (
+                      <button
+                        key={dong}
+                        onClick={() => {
+                          const group = polygonGroupsRef.current.find((g) => g.dongName === dong && g.guName === selectedRegion);
+                          if (group) handleSelectResult({ type: "dong", guName: selectedRegion, dongName: dong, centroid: group.centroid });
+                          setSearchExpanded(false);
+                          setSelectedRegion(null);
+                        }}
+                        style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#C8C8C8", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "all 0.1s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.2)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)"; e.currentTarget.style.color = "#93B8EE"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                      >{dong}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 선택된 업종 뱃지 */}
+        {selectedIndustry && (
+          <div style={{ padding: "0 16px 8px", flexShrink: 0 }}>
+            <span style={badgeStyle}>
+              {selectedIndustry}
+              <button onClick={() => setSelectedIndustry(null)} style={badgeClose}>✕</button>
+            </span>
+          </div>
+        )}
+
+        {/* ── 스크롤 콘텐츠 영역 (선택된 항목 있을 때만 표시) ── */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", display: (selectedDong || selectedGu) ? "block" : "none" }}>
+
+          {/* 행정동 상세 */}
+          {selectedDong && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedDong(null);
+                    setRankModalOpen(false);
+                    if (selectedGroupRef.current) {
+                      selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+                      selectedGroupRef.current = null;
+                    }
+                  }}
+                  style={closeBtnStyle}
+                >✕</button>
+              </div>
+
+              {availableQuarters.length > 0 && (() => {
+                const years = [...new Set(availableQuarters.map((q) => Math.floor(q / 10)))];
+                const activeYear = selectedQuarter ? Math.floor(selectedQuarter / 10) : Math.floor(availableQuarters[0] / 10);
+                const quartersOfYear = availableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6, overflowX: "auto", paddingBottom: 2 }}>
+                      {years.map((y) => (
+                        <button key={y} onClick={() => { const first = availableQuarters.find((q) => Math.floor(q / 10) === y); setSelectedQuarter(first === availableQuarters[0] ? null : first); }} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", transition: "all 0.12s" }}>{y}</button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {quartersOfYear.map((q) => {
+                        const isLatest = q === availableQuarters[0];
+                        const isActive = selectedQuarter === q || (!selectedQuarter && isLatest);
+                        return (<button key={q} onClick={() => setSelectedQuarter(isLatest ? null : q)} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.18)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E", transition: "all 0.12s" }}>{q % 10}분기</button>);
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div style={{ borderTop: "1px solid #4A4A4A", paddingTop: 14 }}>
+                {dongLoading && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>}
+                {!dongLoading && !dongData && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>}
+                {!dongLoading && dongData && (() => {
+                  const industries = dongData.industries || [];
+                  const top6Rev   = industries.slice(0, 6);
+                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 6);
+                  const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
+                  const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
+                  return (
+                    <>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                        <div style={statCardStyle}>
+                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>총 매출</div>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>{fmtRevenue(dongData.총매출)}</div>
+                        </div>
+                        <div style={statCardStyle}>
+                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>전체 순위</div>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: "#93B8EE" }}>
+                            {dongData.순위}위<span style={{ fontSize: 13, color: "#9E9E9E", fontWeight: 400, marginLeft: 4 }}>/ {dongData.전체동수}동</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 14, color: "#9E9E9E", marginBottom: 7 }}>업종별 매출 TOP 6</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+                        {top6Rev.map((item) => (
+                          <div key={item["통합카테고리"]}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                            </div>
+                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
+                              <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 14, color: "#9E9E9E", marginBottom: 7 }}>업종별 상가 수 TOP 6</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+                        {top6Store.map((item) => (
+                          <div key={item["통합카테고리"]}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                            </div>
+                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
+                              <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setRankModalOpen(true)} style={viewAllBtnStyle}>전체 보기 ({industries.length}개 업종) →</button>
+                      <div style={{ marginTop: 8 }}>
+                        <button
+                          onClick={() => setShowStoreMarkers((v) => !v)}
+                          style={{ width: "100%", padding: "9px 0", background: showStoreMarkers ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.05)", color: showStoreMarkers ? "#34D399" : "#9E9E9E", border: `1px solid ${showStoreMarkers ? "rgba(16,185,129,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" }}
+                        >
+                          {storeLoading ? "불러오는 중..." : showStoreMarkers ? "📍 상가 마커 표시 중 (클릭으로 숨기기)" : "📍 상가 마커 보기"}
+                        </button>
+                        {showStoreMarkers && (
+                          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            <button onClick={() => setStoreCategoryFilter(null)} style={storeFilterChipStyle(!storeCategoryFilter)}>전체</button>
+                            {Object.keys(STORE_CATEGORY_COLORS).map((cat) => (
+                              <button key={cat} onClick={() => setStoreCategoryFilter(storeCategoryFilter === cat ? null : cat)} style={{ ...storeFilterChipStyle(storeCategoryFilter === cat), borderColor: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined, color: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined }}>
+                                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat], marginRight: 4, verticalAlign: "middle" }} />{cat}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => openAiModal({ region: selectedDong.guName, dong: selectedDong.dongName })}
+                        style={{ width: "100%", marginTop: 8, padding: "9px 0", background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", color: "#93B8EE", border: "1px solid rgba(139,92,246,0.4)", borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", letterSpacing: "0.02em" }}
+                      >✨ 이 지역에서 AI 추천 받기</button>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* 구 상세 */}
+          {selectedGu && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedGu(null);
+                    setGuRankModalOpen(false);
+                    if (selectedGuGroupRef.current) {
+                      selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+                      selectedGuGroupRef.current = null;
+                    }
+                  }}
+                  style={closeBtnStyle}
+                >✕</button>
+              </div>
+
+              {guAvailableQuarters.length > 0 && (() => {
+                const years = [...new Set(guAvailableQuarters.map((q) => Math.floor(q / 10)))];
+                const activeYear = guSelectedQuarter ? Math.floor(guSelectedQuarter / 10) : Math.floor(guAvailableQuarters[0] / 10);
+                const quartersOfYear = guAvailableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6, overflowX: "auto", paddingBottom: 2 }}>
+                      {years.map((y) => (
+                        <button key={y} onClick={() => { const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y); setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first); }} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", transition: "all 0.12s" }}>{y}</button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {quartersOfYear.map((q) => {
+                        const isLatest = q === guAvailableQuarters[0];
+                        const isActive = guSelectedQuarter === q || (!guSelectedQuarter && isLatest);
+                        return (<button key={q} onClick={() => setGuSelectedQuarter(isLatest ? null : q)} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.18)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E", transition: "all 0.12s" }}>{q % 10}분기</button>);
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div style={{ borderTop: "1px solid #4A4A4A", paddingTop: 14 }}>
+                {guLoading && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>}
+                {!guLoading && !guData && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>}
+                {!guLoading && guData && (() => {
+                  const industries = guData.industries || [];
+                  const top6Rev   = industries.slice(0, 6);
+                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 6);
+                  const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
+                  const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
+                  return (
+                    <>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                        <div style={statCardStyle}>
+                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>총 매출</div>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>{fmtRevenue(guData.총매출)}</div>
+                        </div>
+                        <div style={statCardStyle}>
+                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>전체 순위</div>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: "#93B8EE" }}>
+                            {guData.순위}위<span style={{ fontSize: 13, color: "#9E9E9E", fontWeight: 400, marginLeft: 4 }}>/ {guData.전체구수}구</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 14, color: "#9E9E9E", marginBottom: 7 }}>업종별 매출 TOP 6</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+                        {top6Rev.map((item) => (
+                          <div key={item["통합카테고리"]}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                            </div>
+                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
+                              <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 14, color: "#9E9E9E", marginBottom: 7 }}>업종별 상가 수 TOP 6</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+                        {top6Store.map((item) => (
+                          <div key={item["통합카테고리"]}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                            </div>
+                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
+                              <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setGuRankModalOpen(true)} style={viewAllBtnStyle}>전체 보기 ({industries.length}개 업종) →</button>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* 행정동 목록 */}
+              {(() => {
+                const dongs = guToDongsRef.current[selectedGu] || [];
+                return dongs.length > 0 ? (
+                  <div style={{ marginTop: 14, padding: "14px", background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, color: "#FBBF24", fontWeight: 700, background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 7px" }}>구</span>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} 행정동</span>
+                      <span style={{ fontSize: 14, color: "#9E9E9E" }}>({dongs.length}개)</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {dongs.map((dong) => (
+                        <button
+                          key={dong}
+                          onClick={() => handleSelectDongFromGu(dong)}
+                          style={dongChipStyle}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.25)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.7)"; e.currentTarget.style.color = "#93B8EE"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                        >{dong}</button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          )}
+
+        </div>
+
+        {/* 하단 고정: 구 보기 버튼 (선택된 항목 있을 때만 표시) */}
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, display: (selectedDong || selectedGu) ? "block" : "none" }}>
+          <button
+            style={{ width: "100%", height: 42, background: isGuMode ? "#3B82F6" : "rgba(255,255,255,0.07)", color: isGuMode ? "#fff" : "#E8E8E8", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" }}
+            onClick={() => {
+              const map = mapInstanceRef.current;
+              if (!map) return;
+              map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
+              if (map.getLevel() < GU_MODE_LEVEL) map.setLevel(8, { animate: true });
+            }}
+          >구 보기</button>
+        </div>
+      </div>
 
       {/* ── 줌 버튼 (우하단) ── */}
       <div style={zoomBtnGroupStyle}>
@@ -670,505 +1092,25 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* ── 호버 툴팁 (지도 좌하단) ── */}
+      {/* ── 호버 툴팁 (사이드바 오른쪽 하단) ── */}
       {hoveredDong && (
-        <div style={tooltipStyle}>
+        <div style={{ ...tooltipStyle, left: 340 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hoveredDong.dongName ? 6 : 0 }}>
             <span style={tooltipLabel}>구</span>
-            <span style={{ fontWeight: 700, color: "#E8E8E8", fontSize: 15 }}>{hoveredDong.guName}</span>
+            <span style={{ fontWeight: 700, color: "#E8E8E8", fontSize: 17 }}>{hoveredDong.guName}</span>
           </div>
           {hoveredDong.dongName && (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={tooltipLabel}>행정동</span>
-              <span style={{ fontWeight: 700, color: "#93B8EE", fontSize: 15 }}>{hoveredDong.dongName}</span>
+              <span style={{ fontWeight: 700, color: "#93B8EE", fontSize: 17 }}>{hoveredDong.dongName}</span>
             </div>
           )}
-          <div style={{ color: "#9E9E9E", fontSize: 11, marginTop: 8, borderTop: "1px solid #3A3A3A", paddingTop: 6 }}>
+          <div style={{ color: "#9E9E9E", fontSize: 14, marginTop: 8, borderTop: "1px solid #3A3A3A", paddingTop: 6 }}>
             클릭하면 상세 정보
           </div>
         </div>
       )}
 
-      {/* ── 행정동 클릭 상세 팝업 (우측 사이드패널) ── */}
-      {selectedDong && (
-        <div style={sidePanelStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
-            </div>
-            <button
-              onClick={() => {
-                setSelectedDong(null);
-                setRankModalOpen(false);
-                if (selectedGroupRef.current) {
-                  selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
-                  selectedGroupRef.current = null;
-                }
-              }}
-              style={closeBtnStyle}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* ── 연도/분기 선택 ── */}
-          {availableQuarters.length > 0 && (() => {
-            const years = [...new Set(availableQuarters.map((q) => Math.floor(q / 10)))];
-            const activeYear = selectedQuarter ? Math.floor(selectedQuarter / 10) : Math.floor(availableQuarters[0] / 10);
-            const quartersOfYear = availableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
-            return (
-              <div style={{ marginBottom: 12 }}>
-                {/* 연도 탭 */}
-                <div style={{ display: "flex", gap: 4, marginBottom: 6, overflowX: "auto", paddingBottom: 2 }}>
-                  {years.map((y) => (
-                    <button
-                      key={y}
-                      onClick={() => {
-                        const first = availableQuarters.find((q) => Math.floor(q / 10) === y);
-                        setSelectedQuarter(first === availableQuarters[0] ? null : first);
-                      }}
-                      style={{
-                        flexShrink: 0,
-                        padding: "3px 10px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        border: "none",
-                        background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)",
-                        color: activeYear === y ? "#fff" : "#9E9E9E",
-                        transition: "all 0.12s",
-                      }}
-                    >
-                      {y}
-                    </button>
-                  ))}
-                </div>
-                {/* 분기 칩 */}
-                <div style={{ display: "flex", gap: 4 }}>
-                  {quartersOfYear.map((q) => {
-                    const isLatest = q === availableQuarters[0];
-                    const isActive = selectedQuarter === q || (!selectedQuarter && isLatest);
-                    return (
-                      <button
-                        key={q}
-                        onClick={() => setSelectedQuarter(isLatest ? null : q)}
-                        style={{
-                          flexShrink: 0,
-                          padding: "3px 10px",
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          cursor: "pointer",
-                          border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)",
-                          background: isActive ? "rgba(59,130,246,0.18)" : "transparent",
-                          color: isActive ? "#93B8EE" : "#9E9E9E",
-                          transition: "all 0.12s",
-                        }}
-                      >
-                        {q % 10}분기
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
-
-          <div style={{ borderTop: "1px solid #4A4A4A", paddingTop: 14 }}>
-
-            {dongLoading && (
-              <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>
-                불러오는 중...
-              </p>
-            )}
-
-            {!dongLoading && !dongData && (
-              <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>
-                데이터가 없습니다
-              </p>
-            )}
-
-            {!dongLoading && dongData && (() => {
-              const industries = dongData.industries || [];
-              const top6Rev   = industries.slice(0, 6);
-              const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 6);
-              const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
-              const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
-
-              return (
-                <>
-                  {/* 총 매출 + 순위 */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                    <div style={statCardStyle}>
-                      <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 4 }}>총 매출</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>
-                        {fmtRevenue(dongData.총매출)}
-                      </div>
-                    </div>
-                    <div style={statCardStyle}>
-                      <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 4 }}>전체 순위</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#93B8EE" }}>
-                        {dongData.순위}위
-                        <span style={{ fontSize: 10, color: "#9E9E9E", fontWeight: 400, marginLeft: 4 }}>
-                          / {dongData.전체동수}동
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 업종별 매출 TOP 6 */}
-                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 7 }}>업종별 매출 TOP 6</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                    {top6Rev.map((item) => (
-                      <div key={item["통합카테고리"]}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                          <span style={{ fontSize: 11, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 11, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
-                        </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                          <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* 업종별 상가 수 TOP 6 */}
-                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 7 }}>업종별 상가 수 TOP 6</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                    {top6Store.map((item) => (
-                      <div key={item["통합카테고리"]}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                          <span style={{ fontSize: 11, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 11, color: "#9E9E9E" }}>{item["점포수"]}개</span>
-                        </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                          <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* 전체 보기 버튼 */}
-                  <button onClick={() => setRankModalOpen(true)} style={viewAllBtnStyle}>
-                    전체 보기 ({industries.length}개 업종) →
-                  </button>
-
-                  {/* 상가 마커 토글 */}
-                  <div style={{ marginTop: 8 }}>
-                    <button
-                      onClick={() => setShowStoreMarkers((v) => !v)}
-                      style={{
-                        width: "100%",
-                        padding: "9px 0",
-                        background: showStoreMarkers ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.05)",
-                        color: showStoreMarkers ? "#34D399" : "#9E9E9E",
-                        border: `1px solid ${showStoreMarkers ? "rgba(16,185,129,0.5)" : "rgba(255,255,255,0.1)"}`,
-                        borderRadius: 8,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      {storeLoading ? "불러오는 중..." : showStoreMarkers ? "📍 상가 마커 표시 중 (클릭으로 숨기기)" : "📍 상가 마커 보기"}
-                    </button>
-                    {showStoreMarkers && (
-                      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        <button
-                          onClick={() => setStoreCategoryFilter(null)}
-                          style={storeFilterChipStyle(!storeCategoryFilter)}
-                        >전체</button>
-                        {Object.keys(STORE_CATEGORY_COLORS).map((cat) => (
-                          <button
-                            key={cat}
-                            onClick={() => setStoreCategoryFilter(storeCategoryFilter === cat ? null : cat)}
-                            style={{
-                              ...storeFilterChipStyle(storeCategoryFilter === cat),
-                              borderColor: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined,
-                              color: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined,
-                            }}
-                          >
-                            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat], marginRight: 4, verticalAlign: "middle" }} />
-                            {cat}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 창업 적합도 섹션 — 주석 처리
-                  {scoreData && scoreData.length > 0 && (() => {
-                    const selected = scoreData.find((s) => s["통합카테고리"] === selectedScoreCat);
-                    const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
-                    return (
-                      <div style={{ marginTop: 8, padding: "12px", background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 8 }}>창업 적합도</div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: selected ? 10 : 0 }}>
-                          {scoreData.map((s) => {
-                            const isActive = selectedScoreCat === s["통합카테고리"];
-                            const gc = gradeColor[s["등급"]] || "#9E9E9E";
-                            return (
-                              <button
-                                key={s["통합카테고리"]}
-                                onClick={() => setSelectedScoreCat(isActive ? null : s["통합카테고리"])}
-                                style={{
-                                  padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer",
-                                  border: isActive ? `1px solid ${gc}` : "1px solid rgba(255,255,255,0.1)",
-                                  background: isActive ? `${gc}22` : "transparent",
-                                  color: isActive ? gc : "#9E9E9E", transition: "all 0.12s",
-                                }}
-                              >
-                                {s["통합카테고리"]}
-                                <span style={{ marginLeft: 4, fontWeight: 800, color: gc }}>{s["등급"]}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {selected && (() => {
-                          const gc = gradeColor[selected["등급"]] || "#9E9E9E";
-                          const barWidth = Math.round(selected["성장확률"]);
-                          return (
-                            <div style={{ padding: "10px 12px", background: "rgba(0,0,0,0.3)", borderRadius: 8, border: `1px solid ${gc}44` }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                                <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>{selected["통합카테고리"]}</span>
-                                <span style={{ fontSize: 22, fontWeight: 800, color: gc }}>{selected["등급"]}</span>
-                              </div>
-                              <div style={{ marginBottom: 8 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                  <span style={{ fontSize: 10, color: "#9E9E9E" }}>성장 가능성</span>
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: gc }}>{selected["성장확률"].toFixed(1)}점</span>
-                                </div>
-                                <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 4, height: 6, overflow: "hidden" }}>
-                                  <div style={{ width: `${barWidth}%`, height: "100%", background: `linear-gradient(90deg, ${gc}, ${gc}99)`, borderRadius: 4, transition: "width 0.4s" }} />
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <div style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.05)", borderRadius: 6, textAlign: "center" }}>
-                                  <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 2 }}>업종 내 순위</div>
-                                  <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>
-                                    {selected["업종내_순위"]}위
-                                    <span style={{ fontSize: 9, color: "#9E9E9E", fontWeight: 400, marginLeft: 2 }}>/ {selected["업종내_전체동수"]}</span>
-                                  </div>
-                                </div>
-                                <div style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.05)", borderRadius: 6, textAlign: "center" }}>
-                                  <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 2 }}>상위</div>
-                                  <div style={{ fontSize: 14, fontWeight: 700, color: gc }}>{selected["상위_퍼센트"].toFixed(1)}%</div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    );
-                  })()}
-                  */}
-
-                  {/* AI 추천 버튼 */}
-                  <button
-                    onClick={() => openAiModal({ region: selectedDong.guName, dong: selectedDong.dongName })}
-                    style={{
-                      width: "100%",
-                      marginTop: 8,
-                      padding: "9px 0",
-                      background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))",
-                      color: "#93B8EE",
-                      border: "1px solid rgba(139,92,246,0.4)",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      letterSpacing: "0.02em",
-                    }}
-                  >
-                    ✨ 이 지역에서 AI 추천 받기
-                  </button>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* ── 구 클릭 상세 팝업 ── */}
-      {selectedGu && (
-        <div style={sidePanelStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
-            </div>
-            <button
-              onClick={() => {
-                setSelectedGu(null);
-                setGuRankModalOpen(false);
-                if (selectedGuGroupRef.current) {
-                  selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
-                  selectedGuGroupRef.current = null;
-                }
-              }}
-              style={closeBtnStyle}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* ── 연도/분기 선택 ── */}
-          {guAvailableQuarters.length > 0 && (() => {
-            const years = [...new Set(guAvailableQuarters.map((q) => Math.floor(q / 10)))];
-            const activeYear = guSelectedQuarter ? Math.floor(guSelectedQuarter / 10) : Math.floor(guAvailableQuarters[0] / 10);
-            const quartersOfYear = guAvailableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
-            return (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", gap: 4, marginBottom: 6, overflowX: "auto", paddingBottom: 2 }}>
-                  {years.map((y) => (
-                    <button
-                      key={y}
-                      onClick={() => {
-                        const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y);
-                        setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first);
-                      }}
-                      style={{
-                        flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
-                        cursor: "pointer", border: "none",
-                        background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)",
-                        color: activeYear === y ? "#fff" : "#9E9E9E", transition: "all 0.12s",
-                      }}
-                    >{y}</button>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {quartersOfYear.map((q) => {
-                    const isLatest = q === guAvailableQuarters[0];
-                    const isActive = guSelectedQuarter === q || (!guSelectedQuarter && isLatest);
-                    return (
-                      <button
-                        key={q}
-                        onClick={() => setGuSelectedQuarter(isLatest ? null : q)}
-                        style={{
-                          flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 500,
-                          cursor: "pointer",
-                          border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)",
-                          background: isActive ? "rgba(59,130,246,0.18)" : "transparent",
-                          color: isActive ? "#93B8EE" : "#9E9E9E", transition: "all 0.12s",
-                        }}
-                      >{q % 10}분기</button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
-
-          <div style={{ borderTop: "1px solid #4A4A4A", paddingTop: 14 }}>
-            {guLoading && (
-              <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
-            )}
-            {!guLoading && !guData && (
-              <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>
-            )}
-            {!guLoading && guData && (() => {
-              const industries = guData.industries || [];
-              const top6Rev   = industries.slice(0, 6);
-              const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 6);
-              const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
-              const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
-              return (
-                <>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                    <div style={statCardStyle}>
-                      <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 4 }}>총 매출</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>{fmtRevenue(guData.총매출)}</div>
-                    </div>
-                    <div style={statCardStyle}>
-                      <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 4 }}>전체 순위</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#93B8EE" }}>
-                        {guData.순위}위
-                        <span style={{ fontSize: 10, color: "#9E9E9E", fontWeight: 400, marginLeft: 4 }}>
-                          / {guData.전체구수}구
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 7 }}>업종별 매출 TOP 6</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                    {top6Rev.map((item) => (
-                      <div key={item["통합카테고리"]}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                          <span style={{ fontSize: 11, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 11, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
-                        </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                          <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 7 }}>업종별 상가 수 TOP 6</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                    {top6Store.map((item) => (
-                      <div key={item["통합카테고리"]}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                          <span style={{ fontSize: 11, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 11, color: "#9E9E9E" }}>{item["점포수"]}개</span>
-                        </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                          <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button onClick={() => setGuRankModalOpen(true)} style={viewAllBtnStyle}>
-                    전체 보기 ({industries.length}개 업종) →
-                  </button>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* ── 구 선택 시 행정동 목록 플로팅 패널 (하단 중앙) ── */}
-      {selectedGu && (() => {
-        const dongs = guToDongsRef.current[selectedGu] || [];
-        return (
-          <div style={dongListPanelStyle}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: "#FBBF24", fontWeight: 700, background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 7px" }}>구</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} 행정동 목록</span>
-                <span style={{ fontSize: 11, color: "#9E9E9E" }}>({dongs.length}개)</span>
-              </div>
-              <div style={{ fontSize: 11, color: "#6B7280" }}>클릭하면 해당 동으로 이동</div>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 120, overflowY: "auto" }}>
-              {dongs.map((dong) => (
-                <button
-                  key={dong}
-                  onClick={() => handleSelectDongFromGu(dong)}
-                  style={dongChipStyle}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(59,130,246,0.25)";
-                    e.currentTarget.style.borderColor = "rgba(59,130,246,0.7)";
-                    e.currentTarget.style.color = "#93B8EE";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
-                    e.currentTarget.style.color = "#C8C8C8";
-                  }}
-                >
-                  {dong}
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ── 구 전체 보기 모달 ── */}
       {guRankModalOpen && guData && (() => {
@@ -1187,23 +1129,23 @@ export default function MapPage() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                 <div>
-                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} 전체 업종 현황</div>
+                  <div style={{ fontSize: 14, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} 전체 업종 현황</div>
                 </div>
                 <button onClick={() => setGuRankModalOpen(false)} style={closeBtnStyle}>✕</button>
               </div>
 
               {guLoading ? (
-                <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
+                <p style={{ color: "#9E9E9E", fontSize: 15, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
               ) : (
                 <>
-                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 10 }}>업종별 매출 (전체)</div>
+                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 매출 (전체)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
                     {industries.map((item) => (
                       <div key={item["통합카테고리"]}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 12, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 12, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                          <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
                         </div>
                         <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
                           <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
@@ -1211,13 +1153,13 @@ export default function MapPage() {
                       </div>
                     ))}
                   </div>
-                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 10 }}>업종별 상가 수 (전체)</div>
+                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 상가 수 (전체)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {storesSorted.map((item) => (
                       <div key={item["통합카테고리"]}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 12, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 12, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                          <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
                         </div>
                         <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
                           <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
@@ -1249,8 +1191,8 @@ export default function MapPage() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                 <div>
-                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong?.guName}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong?.dongName} 전체 업종 현황</div>
+                  <div style={{ fontSize: 14, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong?.guName}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong?.dongName} 전체 업종 현황</div>
                 </div>
                 <button onClick={() => setRankModalOpen(false)} style={closeBtnStyle}>✕</button>
               </div>
@@ -1275,7 +1217,7 @@ export default function MapPage() {
                             flexShrink: 0,
                             padding: "4px 12px",
                             borderRadius: 6,
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: 600,
                             cursor: "pointer",
                             border: "none",
@@ -1301,7 +1243,7 @@ export default function MapPage() {
                               flexShrink: 0,
                               padding: "4px 14px",
                               borderRadius: 6,
-                              fontSize: 12,
+                              fontSize: 14,
                               fontWeight: 500,
                               cursor: "pointer",
                               border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)",
@@ -1320,16 +1262,16 @@ export default function MapPage() {
               })()}
 
               {dongLoading ? (
-                <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
+                <p style={{ color: "#9E9E9E", fontSize: 15, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
               ) : (
               <>
-              <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 10 }}>업종별 매출 (전체)</div>
+              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 매출 (전체)</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
                 {industries.map((item) => (
                   <div key={item["통합카테고리"]}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                      <span style={{ fontSize: 12, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                      <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                      <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
                     </div>
                     <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
                       <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
@@ -1338,13 +1280,13 @@ export default function MapPage() {
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 10 }}>업종별 상가 수 (전체)</div>
+              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 상가 수 (전체)</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {storesSorted.map((item) => (
                   <div key={item["통합카테고리"]}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 12, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                      <span style={{ fontSize: 12, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                      <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                      <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
                     </div>
                     <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
                       <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
@@ -1373,10 +1315,10 @@ export default function MapPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 22 }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 20 }}>✨</span>
-                  <span style={{ fontSize: 19, fontWeight: 700, color: "#E8E8E8" }}>AI 상권 추천</span>
+                  <span style={{ fontSize: 22 }}>✨</span>
+                  <span style={{ fontSize: 21, fontWeight: 700, color: "#E8E8E8" }}>AI 상권 추천</span>
                 </div>
-                <div style={{ fontSize: 12, color: "#9E9E9E", paddingLeft: 28 }}>
+                <div style={{ fontSize: 14, color: "#9E9E9E", paddingLeft: 28 }}>
                   {aiStep === "mode" && "분석 방식을 선택하세요"}
                   {aiStep === "form" && AI_MODE_META[aiMode]?.desc}
                   {(aiStep === "loading" || aiStep === "result") && AI_MODE_META[aiMode]?.title}
@@ -1396,12 +1338,12 @@ export default function MapPage() {
                       onClick={() => { setAiMode(mode); setAiStep("form"); }}
                       style={aiModeCardStyle}
                     >
-                      <span style={{ fontSize: 26, flexShrink: 0 }}>{icon}</span>
+                      <span style={{ fontSize: 28, flexShrink: 0 }}>{icon}</span>
                       <div style={{ textAlign: "left", flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8", marginBottom: 3 }}>{title}</div>
-                        <div style={{ fontSize: 12, color: "#9E9E9E" }}>{desc}</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8", marginBottom: 3 }}>{title}</div>
+                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>{desc}</div>
                       </div>
-                      <span style={{ color: "#555", fontSize: 18, flexShrink: 0 }}>›</span>
+                      <span style={{ color: "#555", fontSize: 20, flexShrink: 0 }}>›</span>
                     </button>
                   ))}
                 </div>
@@ -1412,7 +1354,7 @@ export default function MapPage() {
                 <>
                   <button
                     onClick={() => { setAiStep("mode"); setAiMode(null); }}
-                    style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 16px 0" }}
+                    style={{ fontSize: 14, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 16px 0" }}
                   >
                     ← 방식 다시 선택
                   </button>
@@ -1445,7 +1387,7 @@ export default function MapPage() {
                         style={{
                           width: "100%", padding: "10px 14px", background: "#2E2E2E",
                           border: "1.5px solid #4A4A4A", borderRadius: 10, color: "#E8E8E8",
-                          fontSize: 14, outline: "none", boxSizing: "border-box",
+                          fontSize: 16, outline: "none", boxSizing: "border-box",
                         }}
                       />
                     </div>
@@ -1464,7 +1406,7 @@ export default function MapPage() {
                           width: "100%", padding: "13px 0",
                           background: disabled ? "#3A3A3A" : "linear-gradient(135deg, #3B82F6, #8B5CF6)",
                           color: disabled ? "#666" : "#fff", border: "none", borderRadius: 12,
-                          fontSize: 15, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
+                          fontSize: 17, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
                           transition: "all 0.2s", letterSpacing: "0.02em",
                         }}
                       >
@@ -1478,9 +1420,9 @@ export default function MapPage() {
               {/* ── 로딩 단계 ── */}
               {aiStep === "loading" && (
                 <div style={{ textAlign: "center", padding: "48px 0" }}>
-                  <div style={{ fontSize: 36, marginBottom: 16, display: "inline-block" }}>⚙️</div>
-                  <div style={{ fontSize: 15, color: "#E8E8E8", fontWeight: 600, marginBottom: 8 }}>AI가 분석하고 있습니다</div>
-                  <div style={{ fontSize: 12, color: "#9E9E9E" }}>매출·유동인구·경쟁 강도를 종합적으로 평가 중...</div>
+                  <div style={{ fontSize: 38, marginBottom: 16, display: "inline-block" }}>⚙️</div>
+                  <div style={{ fontSize: 17, color: "#E8E8E8", fontWeight: 600, marginBottom: 8 }}>AI가 분석하고 있습니다</div>
+                  <div style={{ fontSize: 14, color: "#9E9E9E" }}>매출·유동인구·경쟁 강도를 종합적으로 평가 중...</div>
                   <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 20 }}>
                     {[0, 1, 2].map((i) => (
                       <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#3B82F6", opacity: 0.3 + i * 0.35 }} />
@@ -1493,14 +1435,14 @@ export default function MapPage() {
               {aiStep === "result" && aiResults && (
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                    <span style={{ fontSize: 13, color: "#9E9E9E" }}>
+                    <span style={{ fontSize: 15, color: "#9E9E9E" }}>
                       {aiMode === "dong" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span>{aiRegion && <> · {aiRegion}</>} 추천 상권</>}
                       {aiMode === "industry" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> 추천 업종</>}
                       {aiMode === "score" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> · <span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span> 적합도</>}
                     </span>
                     <button
                       onClick={() => { setAiStep("form"); setAiResults(null); }}
-                      style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
+                      style={{ fontSize: 14, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
                     >
                       ← 다시 설정
                     </button>
@@ -1517,41 +1459,41 @@ export default function MapPage() {
                                 {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
                               </div>
                               <div>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8" }}>
+                                <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>
                                   {aiMode === "dong" ? item.dongName : item.industry}
                                 </div>
-                                <div style={{ fontSize: 11, color: "#9E9E9E" }}>
+                                <div style={{ fontSize: 13, color: "#9E9E9E" }}>
                                   {aiMode === "dong" ? item.guName : item.category}
                                 </div>
                               </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 22, fontWeight: 800, color: item.rank === 1 ? "#60A5FA" : "#E8E8E8" }}>{item.score}</div>
-                              <div style={{ fontSize: 10, color: "#9E9E9E" }}>AI 점수</div>
+                              <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#60A5FA" : "#E8E8E8" }}>{item.score}</div>
+                              <div style={{ fontSize: 12, color: "#9E9E9E" }}>AI 점수</div>
                             </div>
                           </div>
-                          <div style={{ fontSize: 12, color: "#C8C8C8", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
+                          <div style={{ fontSize: 14, color: "#C8C8C8", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
                             {item.reason}
                           </div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
                             {item.tags.map((tag) => (
-                              <span key={tag} style={{ fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.12)", borderRadius: 12, padding: "3px 9px", border: "1px solid rgba(59,130,246,0.25)" }}>
+                              <span key={tag} style={{ fontSize: 13, color: "#93B8EE", background: "rgba(59,130,246,0.12)", borderRadius: 12, padding: "3px 9px", border: "1px solid rgba(59,130,246,0.25)" }}>
                                 {tag}
                               </span>
                             ))}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 2 }}>월 매출</div>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: "#E8E8E8" }}>{fmtRevenue(item.revenue)}</div>
+                              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>월 매출</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{fmtRevenue(item.revenue)}</div>
                             </div>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 2 }}>경쟁 점포</div>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: "#E8E8E8" }}>{item.stores}개</div>
+                              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 점포</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{item.stores}개</div>
                             </div>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 2 }}>경쟁 강도</div>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: item.competition === "낮음" ? "#34D399" : item.competition === "중간" ? "#FBBF24" : "#F87171" }}>
+                              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 강도</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: item.competition === "낮음" ? "#34D399" : item.competition === "중간" ? "#FBBF24" : "#F87171" }}>
                                 {item.competition}
                               </div>
                             </div>
@@ -1569,24 +1511,24 @@ export default function MapPage() {
                         {/* 종합 점수 */}
                         <div style={{ display: "flex", alignItems: "center", gap: 16, background: "rgba(59,130,246,0.08)", borderRadius: 14, padding: "16px 20px", marginBottom: 16, border: "1.5px solid rgba(59,130,246,0.25)" }}>
                           <div style={{ textAlign: "center" }}>
-                            <div style={{ fontSize: 44, fontWeight: 800, color: "#60A5FA", lineHeight: 1 }}>{r.score}</div>
-                            <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 4 }}>종합 점수</div>
+                            <div style={{ fontSize: 46, fontWeight: 800, color: "#60A5FA", lineHeight: 1 }}>{r.score}</div>
+                            <div style={{ fontSize: 13, color: "#9E9E9E", marginTop: 4 }}>종합 점수</div>
                           </div>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8", marginBottom: 4 }}>등급 {r.grade}</div>
-                            <div style={{ fontSize: 12, color: "#C8C8C8", lineHeight: 1.6 }}>{r.summary}</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8", marginBottom: 4 }}>등급 {r.grade}</div>
+                            <div style={{ fontSize: 14, color: "#C8C8C8", lineHeight: 1.6 }}>{r.summary}</div>
                           </div>
                         </div>
 
                         {/* 항목별 점수 */}
                         <div style={{ marginBottom: 16 }}>
-                          <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 10 }}>항목별 평가</div>
+                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>항목별 평가</div>
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                             {r.breakdown.map((b) => (
                               <div key={b.label}>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                  <span style={{ fontSize: 12, color: "#C8C8C8" }}>{b.label}</span>
-                                  <span style={{ fontSize: 12, color: "#9E9E9E", fontWeight: 600 }}>{b.score} / {b.max}</span>
+                                  <span style={{ fontSize: 14, color: "#C8C8C8" }}>{b.label}</span>
+                                  <span style={{ fontSize: 14, color: "#9E9E9E", fontWeight: 600 }}>{b.score} / {b.max}</span>
                                 </div>
                                 <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 4, height: 6, overflow: "hidden" }}>
                                   <div style={{ width: `${(b.score / b.max) * 100}%`, height: "100%", background: b.score >= 80 ? "linear-gradient(90deg,#10B981,#34D399)" : b.score >= 60 ? "linear-gradient(90deg,#3B82F6,#60A5FA)" : "linear-gradient(90deg,#F59E0B,#FBBF24)", borderRadius: 4 }} />
@@ -1599,12 +1541,12 @@ export default function MapPage() {
                         {/* 장단점 */}
                         <div style={{ display: "flex", gap: 8 }}>
                           <div style={{ flex: 1, background: "rgba(16,185,129,0.07)", borderRadius: 10, padding: "12px", border: "1px solid rgba(16,185,129,0.2)" }}>
-                            <div style={{ fontSize: 11, color: "#34D399", fontWeight: 700, marginBottom: 8 }}>강점</div>
-                            {r.pros.map((p) => <div key={p} style={{ fontSize: 12, color: "#C8C8C8", marginBottom: 4 }}>✓ {p}</div>)}
+                            <div style={{ fontSize: 13, color: "#34D399", fontWeight: 700, marginBottom: 8 }}>강점</div>
+                            {r.pros.map((p) => <div key={p} style={{ fontSize: 14, color: "#C8C8C8", marginBottom: 4 }}>✓ {p}</div>)}
                           </div>
                           <div style={{ flex: 1, background: "rgba(239,68,68,0.07)", borderRadius: 10, padding: "12px", border: "1px solid rgba(239,68,68,0.2)" }}>
-                            <div style={{ fontSize: 11, color: "#F87171", fontWeight: 700, marginBottom: 8 }}>유의점</div>
-                            {r.cons.map((c) => <div key={c} style={{ fontSize: 12, color: "#C8C8C8", marginBottom: 4 }}>! {c}</div>)}
+                            <div style={{ fontSize: 13, color: "#F87171", fontWeight: 700, marginBottom: 8 }}>유의점</div>
+                            {r.cons.map((c) => <div key={c} style={{ fontSize: 14, color: "#C8C8C8", marginBottom: 4 }}>! {c}</div>)}
                           </div>
                         </div>
                       </div>
@@ -1612,7 +1554,7 @@ export default function MapPage() {
                   })()}
 
                   <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid #3A3A3A" }}>
-                    <div style={{ fontSize: 11, color: "#777" }}>
+                    <div style={{ fontSize: 13, color: "#777" }}>
                       ⚠️ 본 추천 결과는 AI 분석 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
                     </div>
                   </div>
@@ -1623,177 +1565,6 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── 상단 왼쪽: 통합 검색창 ── */}
-      <div data-popup style={{ position: "absolute", top: 20, left: 20, zIndex: 10 }}>
-        <div
-          style={{ ...searchBoxStyle, borderRadius: searchExpanded ? "12px 12px 0 0" : 12, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
-          onClick={() => setSearchExpanded(true)}
-        >
-          <span style={{ fontSize: 16, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setSearchExpanded(true)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && searchResults.length > 0) { handleSelectResult(searchResults[0]); setSearchExpanded(false); }
-              if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }
-            }}
-            placeholder="지역명 · 업종 검색"
-            style={{ border: "none", outline: "none", fontSize: 14, width: "100%", background: "transparent", color: "#E8E8E8" }}
-          />
-          {searchQuery && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setSearchQuery(""); setSearchResults([]); }}
-              style={{ border: "none", background: "none", cursor: "pointer", color: "#777", fontSize: 16, padding: 0, flexShrink: 0 }}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        {/* 확장 드롭다운: 지역 검색결과 + 카테고리 필터 */}
-        {searchExpanded && (
-          <div data-popup style={{
-            background: "#2A2A2A", borderRadius: "0 0 14px 14px",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.55)", width: 300,
-            border: "1px solid rgba(255,255,255,0.08)", borderTop: "none",
-            maxHeight: 480, overflowY: "auto",
-          }}>
-            {/* 지역 검색 결과 */}
-            {searchResults.length > 0 && (
-              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ padding: "8px 14px 4px", fontSize: 10, fontWeight: 700, color: "#6B7280", letterSpacing: "0.06em" }}>지역 검색 결과</div>
-                {searchResults.map((r, i) => (
-                  <button
-                    key={i}
-                    onClick={() => { handleSelectResult(r); setSearchExpanded(false); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      width: "100%", padding: "9px 14px", border: "none",
-                      background: "none", cursor: "pointer", textAlign: "left",
-                      borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
-                      transition: "background 0.1s",
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
-                    onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-                  >
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, color: r.type === "gu" ? "#FBBF24" : "#93B8EE",
-                      background: r.type === "gu" ? "rgba(251,191,36,0.12)" : "rgba(59,130,246,0.12)",
-                      borderRadius: 4, padding: "2px 6px", flexShrink: 0,
-                    }}>
-                      {r.type === "gu" ? "구" : "행정동"}
-                    </span>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>
-                        {r.type === "gu" ? r.guName : r.dongName}
-                      </div>
-                      {r.type === "dong" && <div style={{ fontSize: 11, color: "#9E9E9E" }}>{r.guName}</div>}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* 업종 필터 */}
-            <div style={{ padding: "12px 14px" }}>
-              <p style={{ ...popupSectionLabel, marginBottom: 8 }}>업종 필터</p>
-              <div style={chipGrid}>
-                {INDUSTRIES.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setSelectedIndustry(selectedIndustry === item ? null : item)}
-                    style={chipStyle(selectedIndustry === item)}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 지역 필터 */}
-            <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-              <p style={{ ...popupSectionLabel, margin: "12px 0 8px" }}>지역 필터</p>
-              <div style={chipGrid}>
-                {REGIONS.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => {
-                      const group = guPolygonGroupsRef.current.find((g) => g.guName === item);
-                      if (group) {
-                        handleSelectResult({ type: "gu", guName: item, dongName: null, centroid: group.centroid });
-                      }
-                      setSelectedRegion(selectedRegion === item ? null : item);
-                    }}
-                    style={chipStyle(selectedRegion === item)}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* 선택된 구의 행정동 목록 — 분리된 패널 */}
-        {selectedRegion && searchExpanded && (() => {
-          const dongs = guToDongsRef.current[selectedRegion] || [];
-          return (
-            <div data-popup style={{
-              marginTop: 8,
-              background: "rgba(24,24,34,0.97)",
-              borderRadius: 14,
-              boxShadow: "0 12px 36px rgba(0,0,0,0.6)",
-              border: "1px solid rgba(59,130,246,0.25)",
-              padding: "12px 14px 14px",
-              width: 300,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#FBBF24", background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 6px" }}>구</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>{selectedRegion}</span>
-                <span style={{ fontSize: 11, color: "#555" }}>({dongs.length}개 행정동)</span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {dongs.map((dong) => (
-                  <button
-                    key={dong}
-                    onClick={() => {
-                      const group = polygonGroupsRef.current.find(
-                        (g) => g.dongName === dong && g.guName === selectedRegion
-                      );
-                      if (group) {
-                        handleSelectResult({ type: "dong", guName: selectedRegion, dongName: dong, centroid: group.centroid });
-                      }
-                      setSearchExpanded(false);
-                      setSelectedRegion(null);
-                    }}
-                    style={{
-                      padding: "4px 10px", borderRadius: 7,
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      background: "rgba(255,255,255,0.05)",
-                      color: "#C8C8C8", fontSize: 11, fontWeight: 500, cursor: "pointer",
-                      transition: "all 0.1s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "rgba(59,130,246,0.2)";
-                      e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)";
-                      e.currentTarget.style.color = "#93B8EE";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
-                      e.currentTarget.style.color = "#C8C8C8";
-                    }}
-                  >
-                    {dong}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-      </div>
 
       {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
       <div style={{ position: "absolute", top: 20, right: 20, display: "flex", gap: 10, zIndex: 10 }}>
@@ -1818,15 +1589,6 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* ── 선택된 필터 뱃지 ── */}
-      {selectedIndustry && (
-        <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 8, zIndex: 10 }}>
-          <span style={badgeStyle}>
-            {selectedIndustry}
-            <button onClick={() => setSelectedIndustry(null)} style={badgeClose}>✕</button>
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -1866,7 +1628,7 @@ const storeFilterChipStyle = (active) => ({
   border: active ? "1px solid #9E9E9E" : "1px solid rgba(255,255,255,0.1)",
   background: active ? "rgba(255,255,255,0.12)" : "transparent",
   color: active ? "#E8E8E8" : "#9E9E9E",
-  fontSize: 10,
+  fontSize: 12,
   fontWeight: active ? 600 : 400,
   cursor: "pointer",
   whiteSpace: "nowrap",
@@ -1894,7 +1656,7 @@ const zoomBtnStyle = {
   border: "none",
   background: "none",
   color: "#E8E8E8",
-  fontSize: 20,
+  fontSize: 22,
   fontWeight: 400,
   cursor: "pointer",
   display: "flex",
@@ -1913,13 +1675,13 @@ const tooltipStyle = {
   boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
   backdropFilter: "blur(8px)",
   zIndex: 10,
-  fontSize: 14,
+  fontSize: 16,
   pointerEvents: "none",
   minWidth: 180,
 };
 
 const tooltipLabel = {
-  fontSize: 10,
+  fontSize: 12,
   fontWeight: 700,
   color: "#888",
   background: "rgba(255,255,255,0.07)",
@@ -1951,25 +1713,26 @@ const dongChipStyle = {
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.06)",
   color: "#C8C8C8",
-  fontSize: 12,
+  fontSize: 14,
   fontWeight: 500,
   cursor: "pointer",
   transition: "all 0.12s",
   whiteSpace: "nowrap",
 };
 
-const sidePanelStyle = {
+const leftSidebarStyle = {
   position: "absolute",
-  top: 20,
-  right: 20,
-  width: 300,
-  background: "rgba(35,35,35,0.97)",
-  borderRadius: 16,
-  boxShadow: "0 8px 30px rgba(0,0,0,0.5)",
-  padding: "20px",
-  zIndex: 20,
-  backdropFilter: "blur(8px)",
-  marginTop: 64, // 상단 버튼들 아래에 위치
+  top: 0,
+  left: 0,
+  width: 320,
+  height: "100vh",
+  background: "rgba(22,22,22,0.97)",
+  borderRight: "1px solid rgba(255,255,255,0.07)",
+  backdropFilter: "blur(10px)",
+  zIndex: 10,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
 };
 
 const closeBtnStyle = {
@@ -1980,7 +1743,7 @@ const closeBtnStyle = {
   width: 32,
   height: 32,
   cursor: "pointer",
-  fontSize: 14,
+  fontSize: 16,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1993,8 +1756,7 @@ const searchBoxStyle = {
   borderRadius: "12px",
   boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
   padding: "0 14px",
-  height: 44,
-  width: 280,
+  height: 48,
   backdropFilter: "blur(6px)",
 };
 
@@ -2006,7 +1768,7 @@ const btnStyle = (active) => ({
   border: "none",
   borderRadius: 12,
   boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 600,
   cursor: "pointer",
   backdropFilter: "blur(6px)",
@@ -2027,7 +1789,7 @@ const popupStyle = (extra = {}) => ({
 
 const popupSectionLabel = {
   margin: "0 0 8px 0",
-  fontSize: 12,
+  fontSize: 14,
   fontWeight: 700,
   color: "#9E9E9E",
   textTransform: "uppercase",
@@ -2042,7 +1804,7 @@ const chipStyle = (active) => ({
   border: active ? "2px solid #3B82F6" : "1.5px solid #4E4E4E",
   background: active ? "#1E3A5F" : "#424242",
   color: active ? "#93B8EE" : "#C8C8C8",
-  fontSize: 13,
+  fontSize: 15,
   fontWeight: active ? 600 : 400,
   cursor: "pointer",
 });
@@ -2055,7 +1817,7 @@ const menuItemStyle = {
   border: "none",
   background: "none",
   textAlign: "left",
-  fontSize: 14,
+  fontSize: 16,
   cursor: "pointer",
   borderRadius: 8,
   color: "#E8E8E8",
@@ -2069,7 +1831,7 @@ const badgeStyle = {
   color: "#fff",
   borderRadius: 20,
   padding: "6px 12px",
-  fontSize: 13,
+  fontSize: 15,
   fontWeight: 600,
   boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
 };
@@ -2079,7 +1841,7 @@ const badgeClose = {
   background: "none",
   color: "#fff",
   cursor: "pointer",
-  fontSize: 12,
+  fontSize: 14,
   padding: 0,
   lineHeight: 1,
 };
@@ -2091,7 +1853,7 @@ const viewAllBtnStyle = {
   color: "#93B8EE",
   border: "1px solid rgba(59,130,246,0.3)",
   borderRadius: 8,
-  fontSize: 13,
+  fontSize: 15,
   fontWeight: 600,
   cursor: "pointer",
 };
@@ -2114,7 +1876,7 @@ const aiBtnStyle = {
   border: "none",
   borderRadius: 12,
   boxShadow: "0 4px 15px rgba(59,130,246,0.35)",
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 700,
   cursor: "pointer",
   backdropFilter: "blur(6px)",
@@ -2126,14 +1888,14 @@ const aiSectionLabel = {
   display: "flex",
   alignItems: "center",
   gap: 8,
-  fontSize: 13,
+  fontSize: 15,
   fontWeight: 700,
   color: "#C8C8C8",
   marginBottom: 10,
 };
 
 const aiRequiredBadge = {
-  fontSize: 10,
+  fontSize: 12,
   fontWeight: 700,
   color: "#fff",
   background: "#EF4444",

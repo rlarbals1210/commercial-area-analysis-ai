@@ -174,6 +174,20 @@ def gu_analysis(request):
         순위 = 상위구수 + 1
         전체구수 = len(gu_totals)
 
+    # 전 분기 매출 계산
+    def prev_quarter(q):
+        return (q // 10 - 1) * 10 + 4 if q % 10 == 1 else q - 1
+
+    prev_target = prev_quarter(target)
+    prev_industries = (
+        CommercialData.objects
+        .filter(행정동명__in=dongs, 기준_년분기_코드=prev_target)
+        .values("통합카테고리")
+        .annotate(당월매출합=Sum("당월매출합"))
+    )
+    prev_총매출 = sum(item["당월매출합"] for item in prev_industries)
+    매출변동률 = round((총매출 - prev_총매출) / prev_총매출 * 100, 1) if prev_총매출 > 0 else None
+
     return JsonResponse({
         "gu": gu,
         "총매출": 총매출,
@@ -181,6 +195,7 @@ def gu_analysis(request):
         "전체구수": 전체구수,
         "industries": industries,
         "quarter": target,
+        "매출변동률": 매출변동률,
     })
 
 

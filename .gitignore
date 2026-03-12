@@ -20,3 +20,6 @@ ai/outputs/*.csv
 
 # Env
 .env
+
+# 네이버 플레이스 크롤링 데이터
+ai/outputs/crawl_naver_place.log
