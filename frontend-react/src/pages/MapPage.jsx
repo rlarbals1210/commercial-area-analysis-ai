@@ -23,22 +23,42 @@ export default function MapPage() {
   const dongLabelsRef = useRef([]);       // 행정동 라벨
   const guLabelsRef = useRef([]);         // 구 라벨
   const selectedGroupRef = useRef(null);
+  const selectedGuGroupRef = useRef(null); // 선택된 구 폴리곤
+  const guToDongsRef = useRef({});         // { 구이름: [행정동이름, ...] }
+  const storeMarkersRef = useRef([]);      // 개별 상가 마커 (CustomOverlay)
+  const storeInfoWindowRef = useRef(null); // 현재 열린 상가 팝업
   const GU_MODE_LEVEL = 7; // 이 레벨 이상이면 구 단위 표시
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
   const [selectedIndustry, setSelectedIndustry] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [hoveredDong, setHoveredDong] = useState(null);   // { dongName, guName }
   const [selectedDong, setSelectedDong] = useState(null); // { dongName, guName } — 팝업용
+  const [selectedGu, setSelectedGu] = useState(null);     // guName — 구 팝업용
   const [isGuMode, setIsGuMode] = useState(true);         // 구 모드 여부
   const [dongData, setDongData] = useState(null);          // API 응답 전체
   const [dongLoading, setDongLoading] = useState(false);  // 로딩 상태
   const [rankModalOpen, setRankModalOpen] = useState(false); // 전체 보기 모달
   const [availableQuarters, setAvailableQuarters] = useState([]); // 선택 가능한 분기 목록
   const [selectedQuarter, setSelectedQuarter] = useState(null);   // 선택된 분기 코드 (null=최신)
+  const [guData, setGuData] = useState(null);
+  const [guLoading, setGuLoading] = useState(false);
+  const [guRankModalOpen, setGuRankModalOpen] = useState(false);
+  const [guAvailableQuarters, setGuAvailableQuarters] = useState([]);
+  const [guSelectedQuarter, setGuSelectedQuarter] = useState(null);
+
+  // ── 상가 마커 상태 ──
+  const [showStoreMarkers, setShowStoreMarkers] = useState(false);
+  const [storeLoading, setStoreLoading] = useState(false);
+  const [storeCategoryFilter, setStoreCategoryFilter] = useState(null);
+
+  // ── 창업 적합도 상태 ──
+  const [scoreData, setScoreData] = useState(null);       // 전체 업종 점수 목록
+  const [selectedScoreCat, setSelectedScoreCat] = useState(null); // 선택된 업종
 
   // ── AI 추천 상태 ──
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -142,6 +162,12 @@ export default function MapPage() {
             selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
           polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
           selectedGroupRef.current = { dongName, polygons };
+          // 구 패널 닫기
+          if (selectedGuGroupRef.current) {
+            selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+            selectedGuGroupRef.current = null;
+          }
+          setSelectedGu(null);
 
           const bounds = new kakao.maps.LatLngBounds();
           geometry.coordinates.forEach((rings) =>
@@ -171,7 +197,11 @@ export default function MapPage() {
       });
       dongLabelsRef.current.push(dongLabel);
 
-      polygonGroupsRef.current.push({ dongName, guName, polygons });
+      polygonGroupsRef.current.push({ dongName, guName, polygons, centroid: { lat: cLat, lng: cLng } });
+
+      // guToDongsRef 구축
+      if (!guToDongsRef.current[guName]) guToDongsRef.current[guName] = [];
+      guToDongsRef.current[guName].push(dongName);
     });
   }
 
@@ -204,18 +234,13 @@ export default function MapPage() {
           setHoveredDong(null);
         });
         kakao.maps.event.addListener(polygon, "click", () => {
-          // 구 클릭 → 해당 구 중심으로 이동 후 행정동 레벨로 줌인
-          const bounds = new kakao.maps.LatLngBounds();
-          coords.forEach((ring) =>
-            ring.forEach(([lng, lat]) => bounds.extend(new kakao.maps.LatLng(lat, lng)))
-          );
-          const ne = bounds.getNorthEast();
-          const sw = bounds.getSouthWest();
-          const center = new kakao.maps.LatLng(
-            (ne.getLat() + sw.getLat()) / 2,
-            (ne.getLng() + sw.getLng()) / 2
-          );
-          map.panTo(center);
+          // 이전 선택 구 폴리곤 초기화
+          if (selectedGuGroupRef.current)
+            selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+          polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+          selectedGuGroupRef.current = { guName, polygons };
+          setSelectedGu(guName);
+          setSelectedDong(null); // 행정동 패널 닫기
         });
       });
 
@@ -235,9 +260,152 @@ export default function MapPage() {
       });
       guLabelsRef.current.push(guLabel);
 
-      guPolygonGroupsRef.current.push({ guName, polygons });
+      guPolygonGroupsRef.current.push({ guName, polygons, centroid: { lat: guCLat, lng: guCLng } });
     });
   }
+
+  // ── 상가 마커 관련 ──
+  function clearStoreMarkers() {
+    storeMarkersRef.current.forEach((m) => m.setMap(null));
+    storeMarkersRef.current = [];
+    if (storeInfoWindowRef.current) {
+      storeInfoWindowRef.current.setMap(null);
+      storeInfoWindowRef.current = null;
+    }
+  }
+
+  function showStoreMarkersOnMap(map, stores) {
+    const { kakao } = window;
+    stores.forEach((store) => {
+      const color = STORE_CATEGORY_COLORS[store.통합카테고리] || "#9E9E9E";
+
+      // 마커 DOM
+      const el = document.createElement("div");
+      el.title = store.상호명;
+      el.style.cssText = `
+        width: 10px; height: 10px;
+        background: ${color};
+        border: 2px solid rgba(255,255,255,0.8);
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+        transition: transform 0.1s;
+      `;
+      el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.6)"; });
+      el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
+      el.addEventListener("click", () => {
+        // 기존 팝업 닫기
+        if (storeInfoWindowRef.current) {
+          storeInfoWindowRef.current.setMap(null);
+          storeInfoWindowRef.current = null;
+        }
+        const popup = document.createElement("div");
+        popup.style.cssText = `
+          background: rgba(20,20,30,0.95);
+          border: 1.5px solid ${color};
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-family: 'Pretendard', sans-serif;
+          min-width: 140px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+          pointer-events: auto;
+          position: relative;
+        `;
+        popup.innerHTML = `
+          <div style="font-size:11px;color:${color};font-weight:700;margin-bottom:3px;">${store.통합카테고리}</div>
+          <div style="font-size:13px;font-weight:700;color:#E8E8E8;margin-bottom:2px;">${store.상호명}</div>
+          <div style="font-size:10px;color:#9E9E9E;">${store.상권업종소분류명}</div>
+          ${store.도로명주소 ? `<div style="font-size:10px;color:#777;margin-top:4px;border-top:1px solid #333;padding-top:4px;">${store.도로명주소}</div>` : ""}
+        `;
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "✕";
+        closeBtn.style.cssText = `
+          position:absolute; top:6px; right:8px;
+          border:none; background:none; color:#9E9E9E;
+          cursor:pointer; font-size:12px; padding:0; line-height:1;
+        `;
+        closeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (storeInfoWindowRef.current) {
+            storeInfoWindowRef.current.setMap(null);
+            storeInfoWindowRef.current = null;
+          }
+        });
+        popup.appendChild(closeBtn);
+
+        const infoOverlay = new kakao.maps.CustomOverlay({
+          position: new kakao.maps.LatLng(store.위도, store.경도),
+          content: popup,
+          xAnchor: 0.5,
+          yAnchor: 1.6,
+          zIndex: 10,
+        });
+        infoOverlay.setMap(map);
+        storeInfoWindowRef.current = infoOverlay;
+      });
+
+      const overlay = new kakao.maps.CustomOverlay({
+        position: new kakao.maps.LatLng(store.위도, store.경도),
+        content: el,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        zIndex: 5,
+      });
+      overlay.setMap(map);
+      storeMarkersRef.current.push(overlay);
+    });
+  }
+
+  // ── 행정동 선택 + 마커 토글 변경 시: 상가 마커 fetch/clear ──
+  useEffect(() => {
+    clearStoreMarkers();
+    const map = mapInstanceRef.current;
+    if (!showStoreMarkers || !selectedDong || !map || !window.kakao) return;
+
+    let cancelled = false;
+    setStoreLoading(true);
+    const params = new URLSearchParams({ dong: selectedDong.dongName, limit: 500 });
+    if (storeCategoryFilter) params.set("category", storeCategoryFilter);
+
+    fetch(`http://localhost:8000/api/stores/?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        showStoreMarkersOnMap(map, data.stores || []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setStoreLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [showStoreMarkers, selectedDong, storeCategoryFilter]);
+
+  // 업종 필터 선택 시 상가 마커 자동 표시
+  useEffect(() => {
+    if (selectedIndustry && selectedDong) {
+      setStoreCategoryFilter(selectedIndustry);
+      setShowStoreMarkers(true);
+    }
+  }, [selectedIndustry]);
+
+  // 행정동 패널 닫힐 때 마커 + 점수 초기화
+  useEffect(() => {
+    if (!selectedDong) {
+      clearStoreMarkers();
+      setShowStoreMarkers(false);
+      setStoreCategoryFilter(null);
+      setScoreData(null);
+      setSelectedScoreCat(null);
+    }
+  }, [selectedDong]);
+
+  // 행정동 선택 시 전체 업종 점수 fetch
+  useEffect(() => {
+    if (!selectedDong) return;
+    fetch(`http://localhost:8000/api/score-all/?dong=${encodeURIComponent(selectedDong.dongName)}`)
+      .then((r) => r.json())
+      .then((data) => setScoreData(data.scores || []))
+      .catch(() => setScoreData([]));
+  }, [selectedDong]);
 
   // ── 행정동 변경 시: 분기 목록 fetch + 선택 분기 초기화 ──
   useEffect(() => {
@@ -269,6 +437,46 @@ export default function MapPage() {
       .finally(() => setDongLoading(false));
   }, [selectedDong, selectedQuarter]);
 
+  // ── 구 변경 시: 분기 목록 fetch ──
+  useEffect(() => {
+    if (!selectedGu) {
+      setGuAvailableQuarters([]);
+      setGuSelectedQuarter(null);
+      return;
+    }
+    setGuAvailableQuarters([]);
+    setGuSelectedQuarter(null);
+    const dongs = guToDongsRef.current[selectedGu] || [];
+    if (!dongs.length) return;
+    fetch(`http://localhost:8000/api/gu-quarters/?dongs=${encodeURIComponent(dongs.join(","))}`)
+      .then((r) => r.json())
+      .then((data) => setGuAvailableQuarters(data.quarters || []))
+      .catch(() => setGuAvailableQuarters([]));
+  }, [selectedGu]);
+
+  // ── 구 또는 구 선택 분기 변경 시: 분석 데이터 fetch ──
+  useEffect(() => {
+    if (!selectedGu) return;
+    const dongs = guToDongsRef.current[selectedGu] || [];
+    if (!dongs.length) return;
+    setGuData(null);
+    setGuLoading(true);
+    fetch("http://localhost:8000/api/gu-analysis/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        gu: selectedGu,
+        dongs,
+        gu_dongs_map: guToDongsRef.current,
+        quarter: guSelectedQuarter || null,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) => setGuData(data))
+      .catch(() => setGuData(null))
+      .finally(() => setGuLoading(false));
+  }, [selectedGu, guSelectedQuarter]);
+
   // ── AI 추천 요청 ──
   function handleAiRecommend() {
     if (aiMode === "dong" && !aiIndustry) return;
@@ -288,6 +496,35 @@ export default function MapPage() {
     }, 1800);
   }
 
+  // ── 구 패널에서 행정동 선택 → 줌인 + 선택 ──
+  function handleSelectDongFromGu(dongName) {
+    const map = mapInstanceRef.current;
+    if (!map || !window.kakao) return;
+
+    const group = polygonGroupsRef.current.find(
+      (g) => g.dongName === dongName && g.guName === selectedGu
+    );
+    if (!group) return;
+
+    // 구 폴리곤 초기화
+    if (selectedGuGroupRef.current) {
+      selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+      selectedGuGroupRef.current = null;
+    }
+    // 이전 동 폴리곤 초기화
+    if (selectedGroupRef.current) {
+      selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+    }
+    group.polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+    selectedGroupRef.current = group;
+
+    map.setLevel(4, { animate: true });
+    map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng));
+
+    setSelectedGu(null);
+    setSelectedDong({ dongName, guName: group.guName });
+  }
+
   function openAiModal({ region = null, industry = null, dong = "" } = {}) {
     setAiModalOpen(true);
     setAiStep("mode");
@@ -297,7 +534,67 @@ export default function MapPage() {
     setAiDong(dong);
     setAiResults(null);
     setMenuOpen(false);
-    setCategoryOpen(false);
+    setSearchExpanded(false);
+  }
+
+  // ── 검색어 변경 시 결과 필터링 ──
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) { setSearchResults([]); return; }
+    const results = [];
+    // 구 이름 매칭 (우선)
+    guPolygonGroupsRef.current.forEach(({ guName, centroid }) => {
+      if (guName.includes(q)) results.push({ type: "gu", guName, dongName: null, centroid });
+    });
+    // 행정동 이름 매칭
+    polygonGroupsRef.current.forEach(({ dongName, guName, centroid }) => {
+      if (dongName.includes(q)) results.push({ type: "dong", guName, dongName, centroid });
+    });
+    setSearchResults(results.slice(0, 10));
+  }, [searchQuery]);
+
+  // ── 검색 결과 선택 → 지도 이동 + 폴리곤 선택 ──
+  function handleSelectResult({ type, guName, dongName, centroid }) {
+    const map = mapInstanceRef.current;
+    if (!map || !centroid) return;
+    setSearchQuery("");
+    setSearchResults([]);
+
+    if (type === "gu") {
+      // 구 모드 유지, 구 선택
+      if (map.getLevel() < GU_MODE_LEVEL) map.setLevel(8, { animate: true });
+      map.panTo(new window.kakao.maps.LatLng(centroid.lat, centroid.lng));
+      const group = guPolygonGroupsRef.current.find((g) => g.guName === guName);
+      if (group) {
+        if (selectedGuGroupRef.current)
+          selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+        group.polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+        selectedGuGroupRef.current = group;
+      }
+      if (selectedGroupRef.current) {
+        selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+        selectedGroupRef.current = null;
+      }
+      setSelectedDong(null);
+      setSelectedGu(guName);
+    } else {
+      // 행정동 모드로 줌인 후 선택
+      if (map.getLevel() >= GU_MODE_LEVEL) map.setLevel(5, { animate: true });
+      map.panTo(new window.kakao.maps.LatLng(centroid.lat, centroid.lng));
+      const group = polygonGroupsRef.current.find((g) => g.dongName === dongName && g.guName === guName);
+      if (group) {
+        if (selectedGroupRef.current)
+          selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+        group.polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+        selectedGroupRef.current = group;
+      }
+      if (selectedGuGroupRef.current) {
+        selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+        selectedGuGroupRef.current = null;
+      }
+      setSelectedGu(null);
+      setSelectedDong({ dongName, guName });
+    }
   }
 
   // ── 팝업 외부 클릭 시 닫기 ──
@@ -305,7 +602,7 @@ export default function MapPage() {
     const handleClickOutside = (e) => {
       if (!e.target.closest("[data-popup]")) {
         setMenuOpen(false);
-        setCategoryOpen(false);
+        setSearchExpanded(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -387,7 +684,7 @@ export default function MapPage() {
             </div>
           )}
           <div style={{ color: "#9E9E9E", fontSize: 11, marginTop: 8, borderTop: "1px solid #3A3A3A", paddingTop: 6 }}>
-            {hoveredDong.dongName ? "클릭하면 상세 정보" : "클릭하면 행정동 보기"}
+            클릭하면 상세 정보
           </div>
         </div>
       )}
@@ -558,6 +855,116 @@ export default function MapPage() {
                     전체 보기 ({industries.length}개 업종) →
                   </button>
 
+                  {/* 상가 마커 토글 */}
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      onClick={() => setShowStoreMarkers((v) => !v)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 0",
+                        background: showStoreMarkers ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.05)",
+                        color: showStoreMarkers ? "#34D399" : "#9E9E9E",
+                        border: `1px solid ${showStoreMarkers ? "rgba(16,185,129,0.5)" : "rgba(255,255,255,0.1)"}`,
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {storeLoading ? "불러오는 중..." : showStoreMarkers ? "📍 상가 마커 표시 중 (클릭으로 숨기기)" : "📍 상가 마커 보기"}
+                    </button>
+                    {showStoreMarkers && (
+                      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        <button
+                          onClick={() => setStoreCategoryFilter(null)}
+                          style={storeFilterChipStyle(!storeCategoryFilter)}
+                        >전체</button>
+                        {Object.keys(STORE_CATEGORY_COLORS).map((cat) => (
+                          <button
+                            key={cat}
+                            onClick={() => setStoreCategoryFilter(storeCategoryFilter === cat ? null : cat)}
+                            style={{
+                              ...storeFilterChipStyle(storeCategoryFilter === cat),
+                              borderColor: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined,
+                              color: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined,
+                            }}
+                          >
+                            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat], marginRight: 4, verticalAlign: "middle" }} />
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 창업 적합도 섹션 — 주석 처리
+                  {scoreData && scoreData.length > 0 && (() => {
+                    const selected = scoreData.find((s) => s["통합카테고리"] === selectedScoreCat);
+                    const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
+                    return (
+                      <div style={{ marginTop: 8, padding: "12px", background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 8 }}>창업 적합도</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: selected ? 10 : 0 }}>
+                          {scoreData.map((s) => {
+                            const isActive = selectedScoreCat === s["통합카테고리"];
+                            const gc = gradeColor[s["등급"]] || "#9E9E9E";
+                            return (
+                              <button
+                                key={s["통합카테고리"]}
+                                onClick={() => setSelectedScoreCat(isActive ? null : s["통합카테고리"])}
+                                style={{
+                                  padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                                  border: isActive ? `1px solid ${gc}` : "1px solid rgba(255,255,255,0.1)",
+                                  background: isActive ? `${gc}22` : "transparent",
+                                  color: isActive ? gc : "#9E9E9E", transition: "all 0.12s",
+                                }}
+                              >
+                                {s["통합카테고리"]}
+                                <span style={{ marginLeft: 4, fontWeight: 800, color: gc }}>{s["등급"]}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {selected && (() => {
+                          const gc = gradeColor[selected["등급"]] || "#9E9E9E";
+                          const barWidth = Math.round(selected["성장확률"]);
+                          return (
+                            <div style={{ padding: "10px 12px", background: "rgba(0,0,0,0.3)", borderRadius: 8, border: `1px solid ${gc}44` }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>{selected["통합카테고리"]}</span>
+                                <span style={{ fontSize: 22, fontWeight: 800, color: gc }}>{selected["등급"]}</span>
+                              </div>
+                              <div style={{ marginBottom: 8 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                  <span style={{ fontSize: 10, color: "#9E9E9E" }}>성장 가능성</span>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: gc }}>{selected["성장확률"].toFixed(1)}점</span>
+                                </div>
+                                <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 4, height: 6, overflow: "hidden" }}>
+                                  <div style={{ width: `${barWidth}%`, height: "100%", background: `linear-gradient(90deg, ${gc}, ${gc}99)`, borderRadius: 4, transition: "width 0.4s" }} />
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <div style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.05)", borderRadius: 6, textAlign: "center" }}>
+                                  <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 2 }}>업종 내 순위</div>
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>
+                                    {selected["업종내_순위"]}위
+                                    <span style={{ fontSize: 9, color: "#9E9E9E", fontWeight: 400, marginLeft: 2 }}>/ {selected["업종내_전체동수"]}</span>
+                                  </div>
+                                </div>
+                                <div style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.05)", borderRadius: 6, textAlign: "center" }}>
+                                  <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 2 }}>상위</div>
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: gc }}>{selected["상위_퍼센트"].toFixed(1)}%</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })()}
+                  */}
+
                   {/* AI 추천 버튼 */}
                   <button
                     onClick={() => openAiModal({ region: selectedDong.guName, dong: selectedDong.dongName })}
@@ -583,6 +990,247 @@ export default function MapPage() {
           </div>
         </div>
       )}
+
+      {/* ── 구 클릭 상세 팝업 ── */}
+      {selectedGu && (
+        <div style={sidePanelStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedGu(null);
+                setGuRankModalOpen(false);
+                if (selectedGuGroupRef.current) {
+                  selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+                  selectedGuGroupRef.current = null;
+                }
+              }}
+              style={closeBtnStyle}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* ── 연도/분기 선택 ── */}
+          {guAvailableQuarters.length > 0 && (() => {
+            const years = [...new Set(guAvailableQuarters.map((q) => Math.floor(q / 10)))];
+            const activeYear = guSelectedQuarter ? Math.floor(guSelectedQuarter / 10) : Math.floor(guAvailableQuarters[0] / 10);
+            const quartersOfYear = guAvailableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 4, marginBottom: 6, overflowX: "auto", paddingBottom: 2 }}>
+                  {years.map((y) => (
+                    <button
+                      key={y}
+                      onClick={() => {
+                        const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y);
+                        setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first);
+                      }}
+                      style={{
+                        flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                        cursor: "pointer", border: "none",
+                        background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)",
+                        color: activeYear === y ? "#fff" : "#9E9E9E", transition: "all 0.12s",
+                      }}
+                    >{y}</button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {quartersOfYear.map((q) => {
+                    const isLatest = q === guAvailableQuarters[0];
+                    const isActive = guSelectedQuarter === q || (!guSelectedQuarter && isLatest);
+                    return (
+                      <button
+                        key={q}
+                        onClick={() => setGuSelectedQuarter(isLatest ? null : q)}
+                        style={{
+                          flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 500,
+                          cursor: "pointer",
+                          border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)",
+                          background: isActive ? "rgba(59,130,246,0.18)" : "transparent",
+                          color: isActive ? "#93B8EE" : "#9E9E9E", transition: "all 0.12s",
+                        }}
+                      >{q % 10}분기</button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div style={{ borderTop: "1px solid #4A4A4A", paddingTop: 14 }}>
+            {guLoading && (
+              <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
+            )}
+            {!guLoading && !guData && (
+              <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>
+            )}
+            {!guLoading && guData && (() => {
+              const industries = guData.industries || [];
+              const top6Rev   = industries.slice(0, 6);
+              const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 6);
+              const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
+              const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
+              return (
+                <>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                    <div style={statCardStyle}>
+                      <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 4 }}>총 매출</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>{fmtRevenue(guData.총매출)}</div>
+                    </div>
+                    <div style={statCardStyle}>
+                      <div style={{ fontSize: 10, color: "#9E9E9E", marginBottom: 4 }}>전체 순위</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#93B8EE" }}>
+                        {guData.순위}위
+                        <span style={{ fontSize: 10, color: "#9E9E9E", fontWeight: 400, marginLeft: 4 }}>
+                          / {guData.전체구수}구
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 7 }}>업종별 매출 TOP 6</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+                    {top6Rev.map((item) => (
+                      <div key={item["통합카테고리"]}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                          <span style={{ fontSize: 11, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 11, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                        </div>
+                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
+                          <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 7 }}>업종별 상가 수 TOP 6</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+                    {top6Store.map((item) => (
+                      <div key={item["통합카테고리"]}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                          <span style={{ fontSize: 11, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 11, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                        </div>
+                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
+                          <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button onClick={() => setGuRankModalOpen(true)} style={viewAllBtnStyle}>
+                    전체 보기 ({industries.length}개 업종) →
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── 구 선택 시 행정동 목록 플로팅 패널 (하단 중앙) ── */}
+      {selectedGu && (() => {
+        const dongs = guToDongsRef.current[selectedGu] || [];
+        return (
+          <div style={dongListPanelStyle}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "#FBBF24", fontWeight: 700, background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 7px" }}>구</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} 행정동 목록</span>
+                <span style={{ fontSize: 11, color: "#9E9E9E" }}>({dongs.length}개)</span>
+              </div>
+              <div style={{ fontSize: 11, color: "#6B7280" }}>클릭하면 해당 동으로 이동</div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 120, overflowY: "auto" }}>
+              {dongs.map((dong) => (
+                <button
+                  key={dong}
+                  onClick={() => handleSelectDongFromGu(dong)}
+                  style={dongChipStyle}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(59,130,246,0.25)";
+                    e.currentTarget.style.borderColor = "rgba(59,130,246,0.7)";
+                    e.currentTarget.style.color = "#93B8EE";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+                    e.currentTarget.style.color = "#C8C8C8";
+                  }}
+                >
+                  {dong}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── 구 전체 보기 모달 ── */}
+      {guRankModalOpen && guData && (() => {
+        const industries = guData.industries || [];
+        const maxRevenue = Math.max(...industries.map((d) => d["당월매출합"]), 1);
+        const storesSorted = [...industries].sort((a, b) => b["점포수"] - a["점포수"]);
+        const maxStores = Math.max(...storesSorted.map((d) => d["점포수"]), 1);
+        return (
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={() => setGuRankModalOpen(false)}
+          >
+            <div
+              style={{ background: "#2A2A2A", borderRadius: 16, padding: "24px", width: 480, maxHeight: "80vh", overflowY: "auto", boxShadow: "0 16px 48px rgba(0,0,0,0.6)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} 전체 업종 현황</div>
+                </div>
+                <button onClick={() => setGuRankModalOpen(false)} style={closeBtnStyle}>✕</button>
+              </div>
+
+              {guLoading ? (
+                <p style={{ color: "#9E9E9E", fontSize: 13, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 10 }}>업종별 매출 (전체)</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
+                    {industries.map((item) => (
+                      <div key={item["통합카테고리"]}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ fontSize: 12, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 12, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                        </div>
+                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
+                          <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 10 }}>업종별 상가 수 (전체)</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {storesSorted.map((item) => (
+                      <div key={item["통합카테고리"]}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ fontSize: 12, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 12, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                        </div>
+                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
+                          <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── 전체 보기 모달 ── */}
       {rankModalOpen && dongData && (() => {
@@ -975,41 +1623,81 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── 상단 왼쪽: 검색창 ── */}
-      <div style={searchBoxStyle}>
-        <span style={{ fontSize: 16, marginRight: 8, color: "#777" }}>🔍</span>
-        <input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="업종 또는 지역 검색"
-          style={{ border: "none", outline: "none", fontSize: 14, width: "100%", background: "transparent", color: "#E8E8E8" }}
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery("")}
-            style={{ border: "none", background: "none", cursor: "pointer", color: "#777", fontSize: 16, padding: 0 }}
-          >
-            ✕
-          </button>
-        )}
-      </div>
+      {/* ── 상단 왼쪽: 통합 검색창 ── */}
+      <div data-popup style={{ position: "absolute", top: 20, left: 20, zIndex: 10 }}>
+        <div
+          style={{ ...searchBoxStyle, borderRadius: searchExpanded ? "12px 12px 0 0" : 12, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
+          onClick={() => setSearchExpanded(true)}
+        >
+          <span style={{ fontSize: 16, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchExpanded(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchResults.length > 0) { handleSelectResult(searchResults[0]); setSearchExpanded(false); }
+              if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }
+            }}
+            placeholder="지역명 · 업종 검색"
+            style={{ border: "none", outline: "none", fontSize: 14, width: "100%", background: "transparent", color: "#E8E8E8" }}
+          />
+          {searchQuery && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setSearchQuery(""); setSearchResults([]); }}
+              style={{ border: "none", background: "none", cursor: "pointer", color: "#777", fontSize: 16, padding: 0, flexShrink: 0 }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
-      {/* ── 상단 오른쪽: AI 추천 + 카테고리 버튼 + 메뉴 버튼 ── */}
-      <div style={{ position: "absolute", top: 20, right: 20, display: "flex", gap: 10, zIndex: 10 }}>
+        {/* 확장 드롭다운: 지역 검색결과 + 카테고리 필터 */}
+        {searchExpanded && (
+          <div data-popup style={{
+            background: "#2A2A2A", borderRadius: "0 0 14px 14px",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.55)", width: 300,
+            border: "1px solid rgba(255,255,255,0.08)", borderTop: "none",
+            maxHeight: 480, overflowY: "auto",
+          }}>
+            {/* 지역 검색 결과 */}
+            {searchResults.length > 0 && (
+              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ padding: "8px 14px 4px", fontSize: 10, fontWeight: 700, color: "#6B7280", letterSpacing: "0.06em" }}>지역 검색 결과</div>
+                {searchResults.map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { handleSelectResult(r); setSearchExpanded(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      width: "100%", padding: "9px 14px", border: "none",
+                      background: "none", cursor: "pointer", textAlign: "left",
+                      borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                  >
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: r.type === "gu" ? "#FBBF24" : "#93B8EE",
+                      background: r.type === "gu" ? "rgba(251,191,36,0.12)" : "rgba(59,130,246,0.12)",
+                      borderRadius: 4, padding: "2px 6px", flexShrink: 0,
+                    }}>
+                      {r.type === "gu" ? "구" : "행정동"}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>
+                        {r.type === "gu" ? r.guName : r.dongName}
+                      </div>
+                      {r.type === "dong" && <div style={{ fontSize: 11, color: "#9E9E9E" }}>{r.guName}</div>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
 
-        {/* AI 추천 버튼 */}
-        <button onClick={openAiModal} style={aiBtnStyle}>
-          ✨ AI 추천
-        </button>
-
-        {/* 카테고리 검색 버튼 */}
-        <div data-popup style={{ position: "relative" }}>
-          <button onClick={() => { setCategoryOpen((v) => !v); setMenuOpen(false); }} style={btnStyle(categoryOpen)}>
-            카테고리 검색
-          </button>
-          {categoryOpen && (
-            <div data-popup style={popupStyle({ right: 0 })}>
-              <p style={popupSectionLabel}>업종</p>
+            {/* 업종 필터 */}
+            <div style={{ padding: "12px 14px" }}>
+              <p style={{ ...popupSectionLabel, marginBottom: 8 }}>업종 필터</p>
               <div style={chipGrid}>
                 {INDUSTRIES.map((item) => (
                   <button
@@ -1021,27 +1709,103 @@ export default function MapPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ borderTop: "1px solid #4A4A4A", margin: "12px 0" }} />
-              <p style={popupSectionLabel}>지역</p>
+            </div>
+
+            {/* 지역 필터 */}
+            <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <p style={{ ...popupSectionLabel, margin: "12px 0 8px" }}>지역 필터</p>
               <div style={chipGrid}>
                 {REGIONS.map((item) => (
                   <button
                     key={item}
-                    onClick={() => setSelectedRegion(selectedRegion === item ? null : item)}
+                    onClick={() => {
+                      const group = guPolygonGroupsRef.current.find((g) => g.guName === item);
+                      if (group) {
+                        handleSelectResult({ type: "gu", guName: item, dongName: null, centroid: group.centroid });
+                      }
+                      setSelectedRegion(selectedRegion === item ? null : item);
+                    }}
                     style={chipStyle(selectedRegion === item)}
                   >
                     {item}
                   </button>
                 ))}
               </div>
-              <button style={applyBtnStyle}>필터 적용</button>
             </div>
-          )}
-        </div>
+
+          </div>
+        )}
+
+        {/* 선택된 구의 행정동 목록 — 분리된 패널 */}
+        {selectedRegion && searchExpanded && (() => {
+          const dongs = guToDongsRef.current[selectedRegion] || [];
+          return (
+            <div data-popup style={{
+              marginTop: 8,
+              background: "rgba(24,24,34,0.97)",
+              borderRadius: 14,
+              boxShadow: "0 12px 36px rgba(0,0,0,0.6)",
+              border: "1px solid rgba(59,130,246,0.25)",
+              padding: "12px 14px 14px",
+              width: 300,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#FBBF24", background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 6px" }}>구</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>{selectedRegion}</span>
+                <span style={{ fontSize: 11, color: "#555" }}>({dongs.length}개 행정동)</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {dongs.map((dong) => (
+                  <button
+                    key={dong}
+                    onClick={() => {
+                      const group = polygonGroupsRef.current.find(
+                        (g) => g.dongName === dong && g.guName === selectedRegion
+                      );
+                      if (group) {
+                        handleSelectResult({ type: "dong", guName: selectedRegion, dongName: dong, centroid: group.centroid });
+                      }
+                      setSearchExpanded(false);
+                      setSelectedRegion(null);
+                    }}
+                    style={{
+                      padding: "4px 10px", borderRadius: 7,
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      background: "rgba(255,255,255,0.05)",
+                      color: "#C8C8C8", fontSize: 11, fontWeight: 500, cursor: "pointer",
+                      transition: "all 0.1s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(59,130,246,0.2)";
+                      e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)";
+                      e.currentTarget.style.color = "#93B8EE";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+                      e.currentTarget.style.color = "#C8C8C8";
+                    }}
+                  >
+                    {dong}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
+      <div style={{ position: "absolute", top: 20, right: 20, display: "flex", gap: 10, zIndex: 10 }}>
+
+        {/* AI 추천 버튼 */}
+        <button onClick={openAiModal} style={aiBtnStyle}>
+          ✨ AI 추천
+        </button>
 
         {/* 메뉴 버튼 */}
         <div data-popup style={{ position: "relative" }}>
-          <button onClick={() => { setMenuOpen((v) => !v); setCategoryOpen(false); }} style={btnStyle(menuOpen)}>
+          <button onClick={() => { setMenuOpen((v) => !v); setSearchExpanded(false); }} style={btnStyle(menuOpen)}>
             ☰ 메뉴
           </button>
           {menuOpen && (
@@ -1055,25 +1819,58 @@ export default function MapPage() {
       </div>
 
       {/* ── 선택된 필터 뱃지 ── */}
-      {(selectedIndustry || selectedRegion) && (
+      {selectedIndustry && (
         <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 8, zIndex: 10 }}>
-          {selectedIndustry && (
-            <span style={badgeStyle}>
-              {selectedIndustry}
-              <button onClick={() => setSelectedIndustry(null)} style={badgeClose}>✕</button>
-            </span>
-          )}
-          {selectedRegion && (
-            <span style={badgeStyle}>
-              {selectedRegion}
-              <button onClick={() => setSelectedRegion(null)} style={badgeClose}>✕</button>
-            </span>
-          )}
+          <span style={badgeStyle}>
+            {selectedIndustry}
+            <button onClick={() => setSelectedIndustry(null)} style={badgeClose}>✕</button>
+          </span>
         </div>
       )}
     </div>
   );
 }
+
+/* ── 상가 카테고리 색상 ── */
+const STORE_CATEGORY_COLORS = {
+  "한식":           "#FF6B6B",
+  "중식":           "#FF8C00",
+  "일식":           "#FFD700",
+  "양식/기타외식":  "#C084FC",
+  "분식/간식":      "#FB923C",
+  "패스트푸드/치킨":"#F97316",
+  "카페":           "#92400E",
+  "주점":           "#7C3AED",
+  "편의점":         "#16A34A",
+  "식품 소매":      "#65A30D",
+  "의료/약국":      "#DC2626",
+  "미용실":         "#EC4899",
+  "뷰티/화장품":    "#F472B6",
+  "스포츠/레저":    "#0EA5E9",
+  "스포츠 강습":    "#38BDF8",
+  "일반학원":       "#3B82F6",
+  "예술학원":       "#818CF8",
+  "의류/패션":      "#A78BFA",
+  "전자/통신":      "#06B6D4",
+  "생활용품 소매":  "#84CC16",
+  "수리/세탁":      "#94A3B8",
+  "숙박":           "#F59E0B",
+  "오락/유흥":      "#EF4444",
+  "애완동물":       "#34D399",
+  "B2B 서비스":     "#6B7280",
+};
+
+const storeFilterChipStyle = (active) => ({
+  padding: "3px 8px",
+  borderRadius: 12,
+  border: active ? "1px solid #9E9E9E" : "1px solid rgba(255,255,255,0.1)",
+  background: active ? "rgba(255,255,255,0.12)" : "transparent",
+  color: active ? "#E8E8E8" : "#9E9E9E",
+  fontSize: 10,
+  fontWeight: active ? 600 : 400,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+});
 
 /* ── 스타일 ── */
 
@@ -1132,6 +1929,35 @@ const tooltipLabel = {
   flexShrink: 0,
 };
 
+const dongListPanelStyle = {
+  position: "absolute",
+  bottom: 32,
+  left: "50%",
+  transform: "translateX(-50%)",
+  background: "rgba(28,28,38,0.97)",
+  borderRadius: 16,
+  boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
+  padding: "14px 18px",
+  zIndex: 20,
+  backdropFilter: "blur(10px)",
+  border: "1px solid rgba(255,255,255,0.09)",
+  maxWidth: 680,
+  minWidth: 340,
+};
+
+const dongChipStyle = {
+  padding: "5px 11px",
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.06)",
+  color: "#C8C8C8",
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: "pointer",
+  transition: "all 0.12s",
+  whiteSpace: "nowrap",
+};
+
 const sidePanelStyle = {
   position: "absolute",
   top: 20,
@@ -1161,9 +1987,6 @@ const closeBtnStyle = {
 };
 
 const searchBoxStyle = {
-  position: "absolute",
-  top: 20,
-  left: 20,
   display: "flex",
   alignItems: "center",
   background: "rgba(45,45,45,0.97)",
@@ -1173,7 +1996,6 @@ const searchBoxStyle = {
   height: 44,
   width: 280,
   backdropFilter: "blur(6px)",
-  zIndex: 10,
 };
 
 const btnStyle = (active) => ({
@@ -1225,18 +2047,6 @@ const chipStyle = (active) => ({
   cursor: "pointer",
 });
 
-const applyBtnStyle = {
-  marginTop: 14,
-  width: "100%",
-  padding: "10px 0",
-  background: "#3B82F6",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-};
 
 const menuItemStyle = {
   display: "block",
