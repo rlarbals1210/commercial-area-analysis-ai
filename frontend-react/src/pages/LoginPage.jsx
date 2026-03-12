@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { motion } from "framer-motion";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [form, setForm] = useState({ userId: "", password: "" });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -13,81 +18,83 @@ export default function LoginPage() {
 
   return (
     <div style={pageStyle}>
-      {/* 배경 */}
-      <div style={bgStyle} />
+      <motion.div
+        style={cardStyle}
+        initial={{ opacity: 0, y: 48, scale: 0.92 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: "spring", stiffness: 320, damping: 18 }}
+      >
+        {/* 로고 */}
+        <div style={{ textAlign: "center", marginBottom: 8 }}>
+          <div style={logoWrapStyle}>
+            <span style={{ fontSize: 22 }}>📍</span>
+          </div>
+        </div>
 
-      {/* 카드 */}
-      <div style={cardStyle}>
-        {/* 뒤로가기 */}
-        <button onClick={() => navigate("/")} style={backBtnStyle}>
-          ← 지도로 돌아가기
-        </button>
-
-        {/* 로고/타이틀 */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={logoStyle}>📍</div>
-          <h1 style={{ margin: "12px 0 4px", fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>
-            상권분석 AI
-          </h1>
-          <p style={{ margin: 0, fontSize: 14, color: "#9E9E9E" }}>로그인하여 분석 결과를 확인하세요</p>
+        {/* 타이틀 */}
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <h1 style={titleStyle}>로그인</h1>
+          <p style={subtitleStyle}>상권분석 AI 서비스에 오신 것을 환영합니다</p>
         </div>
 
         {/* 폼 */}
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <form onSubmit={handleSubmit} style={formStyle}>
           <div style={fieldGroup}>
-            <label style={labelStyle}>이메일</label>
+            <label style={labelStyle}>아이디</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@email.com"
+              type="text"
+              name="userId"
+              value={form.userId}
+              onChange={handleChange}
+              placeholder="아이디를 입력하세요"
               style={inputStyle}
               required
             />
           </div>
-
           <div style={fieldGroup}>
             <label style={labelStyle}>비밀번호</label>
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              name="password"
+              value={form.password}
+              onChange={handleChange}
               placeholder="비밀번호를 입력하세요"
               style={inputStyle}
               required
             />
           </div>
-
-          <button type="submit" style={submitBtnStyle}>
+          <button type="submit" style={primaryBtnStyle}>
             로그인
           </button>
         </form>
 
         {/* 구분선 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "24px 0" }}>
-          <div style={{ flex: 1, height: 1, background: "#4A4A4A" }} />
-          <span style={{ fontSize: 13, color: "#777" }}>또는</span>
-          <div style={{ flex: 1, height: 1, background: "#4A4A4A" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0" }}>
+          <div style={{ flex: 1, height: 1, background: "#E5E7EB" }} />
+          <span style={{ fontSize: 12, color: "#9CA3AF" }}>또는</span>
+          <div style={{ flex: 1, height: 1, background: "#E5E7EB" }} />
         </div>
 
         {/* 소셜 로그인 (UI만) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <button style={socialBtnStyle("#FEE500", "#3C1E1E")}>
-            <span style={{ fontSize: 18 }}>💬</span> 카카오로 시작하기
+            <span style={{ fontSize: 16 }}>💬</span> 카카오로 시작하기
           </button>
           <button style={socialBtnStyle("#03C75A", "#fff")}>
-            <span style={{ fontSize: 18 }}>N</span> 네이버로 시작하기
+            <span style={{ fontSize: 15, fontWeight: 800 }}>N</span> 네이버로 시작하기
           </button>
         </div>
 
         {/* 회원가입 링크 */}
-        <p style={{ textAlign: "center", marginTop: 24, fontSize: 14, color: "#9E9E9E" }}>
+        <p style={footerTextStyle}>
           계정이 없으신가요?{" "}
-          <Link to="/signup" style={{ color: "#6B9FE4", fontWeight: 600, textDecoration: "none" }}>
-            회원가입
-          </Link>
+          <Link to="/signup" style={linkStyle}>회원가입</Link>
         </p>
-      </div>
+
+        <button onClick={() => navigate("/")} style={backBtnStyle}>
+          ← 지도로 돌아가기
+        </button>
+      </motion.div>
     </div>
   );
 }
@@ -101,70 +108,78 @@ const pageStyle = {
   alignItems: "center",
   justifyContent: "center",
   fontFamily: "'Pretendard', sans-serif",
-  position: "relative",
-  background: "#2D2D2D",
-};
-
-const bgStyle = {
-  position: "absolute",
-  inset: 0,
-  background: "linear-gradient(135deg, #3B3B3B 0%, #252525 100%)",
-  opacity: 0.6,
+  background: "linear-gradient(135deg, #EEF2FF 0%, #F0F9FF 100%)",
 };
 
 const cardStyle = {
-  position: "relative",
-  background: "#363636",
+  background: "#ffffff",
   borderRadius: 20,
-  padding: "36px 40px",
+  padding: "40px 44px",
   width: "100%",
   maxWidth: 420,
-  boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+  boxShadow: "0 8px 40px rgba(59,130,246,0.10), 0 2px 12px rgba(0,0,0,0.06)",
 };
 
-const backBtnStyle = {
-  border: "none",
-  background: "none",
-  cursor: "pointer",
+const logoWrapStyle = {
+  width: 52,
+  height: 52,
+  borderRadius: 14,
+  background: "linear-gradient(135deg, #3B82F6, #6366F1)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  margin: "0 auto 12px",
+  boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+};
+
+const titleStyle = {
+  margin: "0 0 4px",
+  fontSize: 22,
+  fontWeight: 700,
+  color: "#111827",
+};
+
+const subtitleStyle = {
+  margin: 0,
   fontSize: 13,
-  color: "#9E9E9E",
-  padding: 0,
-  marginBottom: 20,
-  display: "block",
+  color: "#6B7280",
 };
 
-const logoStyle = {
-  fontSize: 40,
-  lineHeight: 1,
+const formStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 14,
 };
 
 const fieldGroup = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: 5,
 };
 
 const labelStyle = {
   fontSize: 13,
   fontWeight: 600,
-  color: "#C0C0C0",
+  color: "#374151",
 };
 
 const inputStyle = {
-  height: 46,
+  height: 44,
   padding: "0 14px",
-  border: "1.5px solid #4E4E4E",
+  border: "1.5px solid #E5E7EB",
   borderRadius: 10,
   fontSize: 14,
   outline: "none",
-  color: "#E8E8E8",
-  background: "#424242",
+  color: "#111827",
+  background: "#F9FAFB",
   transition: "border-color 0.15s",
+  boxSizing: "border-box",
+  width: "100%",
 };
 
-const submitBtnStyle = {
-  height: 48,
-  background: "#3B82F6",
+const primaryBtnStyle = {
+  height: 46,
+  background: "linear-gradient(135deg, #3B82F6, #6366F1)",
   color: "#fff",
   border: "none",
   borderRadius: 10,
@@ -172,12 +187,13 @@ const submitBtnStyle = {
   fontWeight: 700,
   cursor: "pointer",
   marginTop: 4,
+  boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
 };
 
 const socialBtnStyle = (bg, color) => ({
-  height: 46,
+  height: 44,
   background: bg,
-  color: color,
+  color,
   border: "none",
   borderRadius: 10,
   fontSize: 14,
@@ -188,3 +204,27 @@ const socialBtnStyle = (bg, color) => ({
   justifyContent: "center",
   gap: 8,
 });
+
+const footerTextStyle = {
+  textAlign: "center",
+  marginTop: 22,
+  fontSize: 14,
+  color: "#6B7280",
+};
+
+const linkStyle = {
+  color: "#3B82F6",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+
+const backBtnStyle = {
+  display: "block",
+  margin: "12px auto 0",
+  border: "none",
+  background: "none",
+  cursor: "pointer",
+  fontSize: 13,
+  color: "#9CA3AF",
+  padding: 0,
+};

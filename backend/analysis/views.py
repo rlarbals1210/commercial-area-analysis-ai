@@ -73,6 +73,16 @@ def analysis(request):
     상위동수 = dong_revenues.filter(총매출__gt=총매출).count()
     순위 = 상위동수 + 1
 
+    # 전년도 동 분기 매출 (YoY)
+    prev_yoy_target = target - 10
+    prev_yoy_총매출 = (
+        CommercialData.objects
+        .filter(행정동명=dong, 기준_년분기_코드=prev_yoy_target)
+        .values_list("행정동_전체매출", flat=True)
+        .first() or 0
+    )
+    매출변동률 = round((총매출 - prev_yoy_총매출) / prev_yoy_총매출 * 100, 1) if prev_yoy_총매출 > 0 else None
+
     return JsonResponse({
         "dong": dong,
         "총매출": 총매출,
@@ -80,6 +90,7 @@ def analysis(request):
         "전체동수": 전체동수,
         "industries": rows,
         "quarter": target,
+        "매출변동률": 매출변동률,
     })
 
 
@@ -174,14 +185,11 @@ def gu_analysis(request):
         순위 = 상위구수 + 1
         전체구수 = len(gu_totals)
 
-    # 전 분기 매출 계산
-    def prev_quarter(q):
-        return (q // 10 - 1) * 10 + 4 if q % 10 == 1 else q - 1
-
-    prev_target = prev_quarter(target)
+    # 전년도 동 분기 매출 계산 (YoY)
+    prev_yoy_target = target - 10
     prev_industries = (
         CommercialData.objects
-        .filter(행정동명__in=dongs, 기준_년분기_코드=prev_target)
+        .filter(행정동명__in=dongs, 기준_년분기_코드=prev_yoy_target)
         .values("통합카테고리")
         .annotate(당월매출합=Sum("당월매출합"))
     )

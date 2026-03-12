@@ -10,9 +10,10 @@ const REGIONS = [
   "용산구", "은평구", "종로구", "중구", "중랑구",
 ];
 
-const POLYGON_DEFAULT = { fillColor: "#9EC8F0", fillOpacity: 0.15, strokeColor: "#6B9FD4", strokeOpacity: 0.8 };
-const POLYGON_HOVER   = { fillColor: "#3B82F6", fillOpacity: 0.45, strokeColor: "#1D4ED8", strokeOpacity: 1 };
-const POLYGON_SELECTED = { fillColor: "#EF4444", fillOpacity: 0.4, strokeColor: "#B91C1C", strokeOpacity: 1 };
+const POLYGON_DEFAULT  = { fillColor: "#9EC8F0", fillOpacity: 0.15, strokeColor: "#6B9FD4", strokeOpacity: 0.8 };
+const POLYGON_HOVER    = { fillColor: "#3B82F6", fillOpacity: 0.45, strokeColor: "#1D4ED8", strokeOpacity: 1 };
+const POLYGON_SELECTED = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColor: "#1D4ED8", strokeOpacity: 1 };
+
 
 export default function MapPage() {
   const navigate = useNavigate();
@@ -27,10 +28,13 @@ export default function MapPage() {
   const guToDongsRef = useRef({});         // { 구이름: [행정동이름, ...] }
   const storeMarkersRef = useRef([]);      // 개별 상가 마커 (CustomOverlay)
   const storeInfoWindowRef = useRef(null); // 현재 열린 상가 팝업
-  const guBadgeOverlayRef = useRef(null);  // 구 선택 시 지도 위 매출 뱃지
-  const GU_MODE_LEVEL = 7; // 이 레벨 이상이면 구 단위 표시
+  const guBadgeOverlayRef = useRef(null);   // 구 선택 시 지도 위 매출 뱃지
+  const dongBadgeOverlayRef = useRef(null); // 행정동 선택 시 지도 위 매출 뱃지
+  const GU_MODE_LEVEL = 7;        // 이 레벨 이상이면 구 단위 표시
+  const DONG_BADGE_HIDE_LEVEL = 6; // 이 레벨 미만이면 행정동 뱃지 숨김
 
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [fadeOut, setFadeOut] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,6 +55,8 @@ export default function MapPage() {
   const [guRankModalOpen, setGuRankModalOpen] = useState(false);
   const [guAvailableQuarters, setGuAvailableQuarters] = useState([]);
   const [guSelectedQuarter, setGuSelectedQuarter] = useState(null);
+  const [quarterPopupOpen, setQuarterPopupOpen] = useState(false);
+  const [guQuarterPopupOpen, setGuQuarterPopupOpen] = useState(false);
 
   // ── 상가 마커 상태 ──
   const [showStoreMarkers, setShowStoreMarkers] = useState(false);
@@ -69,6 +75,12 @@ export default function MapPage() {
   const [aiRegion, setAiRegion] = useState(null);
   const [aiDong, setAiDong] = useState("");
   const [aiResults, setAiResults] = useState(null);
+
+  // ── 페이드인 오버레이 ──
+  useEffect(() => {
+    const t = setTimeout(() => setFadeOut(true), 50);
+    return () => clearTimeout(t);
+  }, []);
 
   // ── 카카오 지도 스크립트 로드 ──
   useEffect(() => {
@@ -123,11 +135,20 @@ export default function MapPage() {
     polygonGroupsRef.current.forEach(({ polygons }) =>
       polygons.forEach((p) => p.setMap(guMode ? null : map))
     );
-    guPolygonGroupsRef.current.forEach(({ polygons }) =>
-      polygons.forEach((p) => p.setMap(guMode ? map : null))
-    );
+    guPolygonGroupsRef.current.forEach(({ guName, polygons }) => {
+      const isSelected = selectedGuGroupRef.current?.guName === guName;
+      polygons.forEach((p) => {
+        p.setMap(guMode || isSelected ? map : null);
+        if (!guMode && isSelected) p.setOptions(POLYGON_SELECTED);
+      });
+    });
     dongLabelsRef.current.forEach((label) => label.setMap(guMode ? null : map));
     guLabelsRef.current.forEach((label) => label.setMap(guMode ? map : null));
+    // 구 모드 전환 시 뱃지 표시/숨김
+    if (guBadgeOverlayRef.current)
+      guBadgeOverlayRef.current.setMap(guMode ? map : null);
+    if (dongBadgeOverlayRef.current)
+      dongBadgeOverlayRef.current.setMap(guMode || level < DONG_BADGE_HIDE_LEVEL ? null : map);
     setIsGuMode(guMode);
     setHoveredDong(null);
   }
@@ -144,7 +165,7 @@ export default function MapPage() {
 
       const polygons = geometry.coordinates.map((rings) => {
         const path = rings[0].map(([lng, lat]) => new kakao.maps.LatLng(lat, lng));
-        return new kakao.maps.Polygon({ path, strokeWeight: 1, ...POLYGON_DEFAULT });
+        return new kakao.maps.Polygon({ path, strokeWeight: 1, zIndex: 2, ...POLYGON_DEFAULT });
       });
 
       polygons.forEach((polygon) => {
@@ -222,7 +243,7 @@ export default function MapPage() {
 
       const polygons = coords.map((ring) => {
         const path = ring.map(([lng, lat]) => new kakao.maps.LatLng(lat, lng));
-        return new kakao.maps.Polygon({ path, strokeWeight: 1.5, ...POLYGON_DEFAULT });
+        return new kakao.maps.Polygon({ path, strokeWeight: 1.5, zIndex: 1, ...POLYGON_DEFAULT });
       });
 
       polygons.forEach((polygon) => {
@@ -231,7 +252,9 @@ export default function MapPage() {
           setHoveredDong({ dongName: null, guName });
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
-          polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+          // 선택된 구는 DEFAULT로 리셋하지 않고 SELECTED 유지
+          const isSelected = selectedGuGroupRef.current?.guName === guName;
+          polygons.forEach((p) => p.setOptions(isSelected ? POLYGON_SELECTED : POLYGON_DEFAULT));
           setHoveredDong(null);
         });
         kakao.maps.event.addListener(polygon, "click", () => {
@@ -242,6 +265,11 @@ export default function MapPage() {
           selectedGuGroupRef.current = { guName, polygons };
           setSelectedGu(guName);
           setSelectedDong(null); // 행정동 패널 닫기
+          // 선택한 구 중심으로 이동
+          const map = mapInstanceRef.current;
+          if (map) {
+            map.panTo(new kakao.maps.LatLng(guCLat, guCLng));
+          }
         });
       });
 
@@ -517,7 +545,7 @@ export default function MapPage() {
       ">
         <div style="font-size: 13px; font-weight: 700; color: #E8E8E8; margin-bottom: 3px;">${selectedGu}</div>
         <div style="font-size: 17px; font-weight: 800; color: #fff; line-height: 1.2;">${매출텍스트}</div>
-        ${변동텍스트 ? `<div style="font-size: 14px; font-weight: 700; color: ${변동색}; margin-top: 3px;">${변동텍스트}</div>` : ""}
+        ${변동텍스트 ? `<div style="font-size: 11px; color: #9E9E9E; margin-top: 4px; margin-bottom: 1px;">전년 동분기 대비</div><div style="font-size: 14px; font-weight: 700; color: ${변동색};">${변동텍스트}</div>` : ""}
       </div>`;
 
     const overlay = new kakao.maps.CustomOverlay({
@@ -528,6 +556,59 @@ export default function MapPage() {
     overlay.setMap(mapInstanceRef.current);
     guBadgeOverlayRef.current = overlay;
   }, [selectedGu, guData]);
+
+  // ── 행정동 선택 시 지도 위 매출 뱃지 오버레이 ──
+  useEffect(() => {
+    const { kakao } = window;
+    if (!kakao || !mapInstanceRef.current) return;
+
+    if (dongBadgeOverlayRef.current) {
+      dongBadgeOverlayRef.current.setMap(null);
+      dongBadgeOverlayRef.current = null;
+    }
+    if (!selectedDong || !dongData) return;
+
+    const group = polygonGroupsRef.current.find(
+      (g) => g.dongName === selectedDong.dongName && g.guName === selectedDong.guName
+    );
+    if (!group?.centroid) return;
+
+    const { lat, lng } = group.centroid;
+    const 변동률 = dongData.매출변동률;
+    const 변동색 = 변동률 == null ? "#9E9E9E" : 변동률 >= 0 ? "#34D399" : "#F87171";
+    const 변동텍스트 = 변동률 == null ? "" : `${변동률 >= 0 ? "+" : ""}${변동률}%`;
+
+    const eok = dongData.총매출 / 100_000_000;
+    const 매출텍스트 = eok >= 1 ? `${eok.toFixed(0)}억` : `${Math.round(dongData.총매출 / 10_000).toLocaleString()}만`;
+
+    const content = `
+      <div style="
+        background: rgba(18,18,18,0.62);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px;
+        padding: 10px 14px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        text-align: center;
+        pointer-events: none;
+        font-family: 'Pretendard', sans-serif;
+        min-width: 90px;
+        transform: translateX(-50%);
+      ">
+        <div style="font-size: 13px; font-weight: 700; color: #E8E8E8; margin-bottom: 3px;">${selectedDong.dongName}</div>
+        <div style="font-size: 17px; font-weight: 800; color: #fff; line-height: 1.2;">${매출텍스트}</div>
+        ${변동텍스트 ? `<div style="font-size: 11px; color: #9E9E9E; margin-top: 4px; margin-bottom: 1px;">전년 동분기 대비</div><div style="font-size: 14px; font-weight: 700; color: ${변동색};">${변동텍스트}</div>` : ""}
+      </div>`;
+
+    const overlay = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(lat, lng),
+      content,
+      zIndex: 5,
+    });
+    overlay.setMap(mapInstanceRef.current);
+    dongBadgeOverlayRef.current = overlay;
+  }, [selectedDong, dongData]);
+
 
   // ── AI 추천 요청 ──
   function handleAiRecommend() {
@@ -655,6 +736,8 @@ export default function MapPage() {
       if (!e.target.closest("[data-popup]")) {
         setMenuOpen(false);
         setSearchExpanded(false);
+        setQuarterPopupOpen(false);
+        setGuQuarterPopupOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -667,8 +750,25 @@ export default function MapPage() {
       {/* 지도 영역 */}
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
 
+      {/* 페이드인 오버레이 */}
+      <div style={{
+        position: "fixed", inset: 0, background: "#fff",
+        opacity: fadeOut ? 0 : 1,
+        transition: "opacity 0.7s ease",
+        pointerEvents: "none",
+        zIndex: 9999,
+      }} />
+
       {/* ── 왼쪽 사이드바 ── */}
-      <div style={leftSidebarStyle}>
+      <div style={{
+        ...leftSidebarStyle,
+        ...(!selectedDong && !selectedGu && !selectedIndustry && {
+          background: "transparent",
+          borderRight: "none",
+          backdropFilter: "none",
+          boxShadow: "none",
+        }),
+      }}>
 
         {/* 검색창 */}
         <div data-popup style={{ position: "relative", padding: "16px 16px 10px", flexShrink: 0 }}>
@@ -825,22 +925,35 @@ export default function MapPage() {
 
               {availableQuarters.length > 0 && (() => {
                 const years = [...new Set(availableQuarters.map((q) => Math.floor(q / 10)))];
-                const activeYear = selectedQuarter ? Math.floor(selectedQuarter / 10) : Math.floor(availableQuarters[0] / 10);
+                const activeQ = selectedQuarter || availableQuarters[0];
+                const activeYear = Math.floor(activeQ / 10);
                 const quartersOfYear = availableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
+                const label = `${activeYear}년 ${activeQ % 10}분기`;
                 return (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ display: "flex", gap: 4, marginBottom: 6, overflowX: "auto", paddingBottom: 2 }}>
-                      {years.map((y) => (
-                        <button key={y} onClick={() => { const first = availableQuarters.find((q) => Math.floor(q / 10) === y); setSelectedQuarter(first === availableQuarters[0] ? null : first); }} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", transition: "all 0.12s" }}>{y}</button>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {quartersOfYear.map((q) => {
-                        const isLatest = q === availableQuarters[0];
-                        const isActive = selectedQuarter === q || (!selectedQuarter && isLatest);
-                        return (<button key={q} onClick={() => setSelectedQuarter(isLatest ? null : q)} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.18)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E", transition: "all 0.12s" }}>{q % 10}분기</button>);
-                      })}
-                    </div>
+                  <div data-popup style={{ position: "relative", marginBottom: 12 }}>
+                    <button
+                      data-popup
+                      onClick={() => setQuarterPopupOpen((v) => !v)}
+                      style={quarterTriggerStyle}
+                    >
+                      📅 {label} <span style={{ fontSize: 10, marginLeft: 2 }}>▾</span>
+                    </button>
+                    {quarterPopupOpen && (
+                      <div data-popup style={quarterDropdownStyle}>
+                        <div style={{ display: "flex", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
+                          {years.map((y) => (
+                            <button key={y} data-popup onClick={() => { const first = availableQuarters.find((q) => Math.floor(q / 10) === y); setSelectedQuarter(first === availableQuarters[0] ? null : first); }} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E" }}>{y}</button>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {quartersOfYear.map((q) => {
+                            const isLatest = q === availableQuarters[0];
+                            const isActive = selectedQuarter === q || (!selectedQuarter && isLatest);
+                            return (<button key={q} data-popup onClick={() => { setSelectedQuarter(isLatest ? null : q); setQuarterPopupOpen(false); }} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.2)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E" }}>{q % 10}분기</button>);
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -949,22 +1062,35 @@ export default function MapPage() {
 
               {guAvailableQuarters.length > 0 && (() => {
                 const years = [...new Set(guAvailableQuarters.map((q) => Math.floor(q / 10)))];
-                const activeYear = guSelectedQuarter ? Math.floor(guSelectedQuarter / 10) : Math.floor(guAvailableQuarters[0] / 10);
+                const activeQ = guSelectedQuarter || guAvailableQuarters[0];
+                const activeYear = Math.floor(activeQ / 10);
                 const quartersOfYear = guAvailableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
+                const label = `${activeYear}년 ${activeQ % 10}분기`;
                 return (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ display: "flex", gap: 4, marginBottom: 6, overflowX: "auto", paddingBottom: 2 }}>
-                      {years.map((y) => (
-                        <button key={y} onClick={() => { const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y); setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first); }} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", transition: "all 0.12s" }}>{y}</button>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {quartersOfYear.map((q) => {
-                        const isLatest = q === guAvailableQuarters[0];
-                        const isActive = guSelectedQuarter === q || (!guSelectedQuarter && isLatest);
-                        return (<button key={q} onClick={() => setGuSelectedQuarter(isLatest ? null : q)} style={{ flexShrink: 0, padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.18)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E", transition: "all 0.12s" }}>{q % 10}분기</button>);
-                      })}
-                    </div>
+                  <div data-popup style={{ position: "relative", marginBottom: 12 }}>
+                    <button
+                      data-popup
+                      onClick={() => setGuQuarterPopupOpen((v) => !v)}
+                      style={quarterTriggerStyle}
+                    >
+                      📅 {label} <span style={{ fontSize: 10, marginLeft: 2 }}>▾</span>
+                    </button>
+                    {guQuarterPopupOpen && (
+                      <div data-popup style={quarterDropdownStyle}>
+                        <div style={{ display: "flex", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
+                          {years.map((y) => (
+                            <button key={y} data-popup onClick={() => { const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y); setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first); }} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E" }}>{y}</button>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {quartersOfYear.map((q) => {
+                            const isLatest = q === guAvailableQuarters[0];
+                            const isActive = guSelectedQuarter === q || (!guSelectedQuarter && isLatest);
+                            return (<button key={q} data-popup onClick={() => { setGuSelectedQuarter(isLatest ? null : q); setGuQuarterPopupOpen(false); }} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.2)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E" }}>{q % 10}분기</button>);
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -1055,8 +1181,22 @@ export default function MapPage() {
 
         </div>
 
-        {/* 하단 고정: 구 보기 버튼 (선택된 항목 있을 때만 표시) */}
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, display: (selectedDong || selectedGu) ? "block" : "none" }}>
+        {/* 하단 고정: 버튼 영역 (선택된 항목 있을 때만 표시) */}
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, display: (selectedDong || selectedGu) ? "flex" : "none", flexDirection: "column", gap: 8 }}>
+          {selectedGu && (
+            <button
+              style={{ width: "100%", height: 42, background: "rgba(16,185,129,0.15)", color: "#34D399", border: "1px solid rgba(16,185,129,0.35)", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" }}
+              onClick={() => {
+                const map = mapInstanceRef.current;
+                if (!map) return;
+                const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
+                if (group) {
+                  map.setLevel(6, { animate: true });
+                  map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng));
+                }
+              }}
+            >행정동 보기</button>
+          )}
           <button
             style={{ width: "100%", height: 42, background: isGuMode ? "#3B82F6" : "rgba(255,255,255,0.07)", color: isGuMode ? "#fff" : "#E8E8E8", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" }}
             onClick={() => {
@@ -1726,13 +1866,41 @@ const leftSidebarStyle = {
   left: 0,
   width: 320,
   height: "100vh",
-  background: "rgba(22,22,22,0.97)",
+  background: "rgba(42,42,52,0.88)",
   borderRight: "1px solid rgba(255,255,255,0.07)",
   backdropFilter: "blur(10px)",
   zIndex: 10,
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
+};
+
+const quarterTriggerStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "5px 12px",
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.06)",
+  color: "#C0C0C0",
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+  transition: "all 0.15s",
+};
+
+const quarterDropdownStyle = {
+  position: "absolute",
+  top: "calc(100% + 6px)",
+  left: 0,
+  zIndex: 50,
+  background: "#1E1E2E",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 10,
+  padding: "12px 14px",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+  minWidth: 200,
 };
 
 const closeBtnStyle = {
