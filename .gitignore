@@ -16,7 +16,7 @@ db.sqlite3
 data/raw_data/
 
 # 전처리 결과 데이터 (대용량)
-ai/outputs/*.csv
+ai/outputs/
 
 # Env
 .env
