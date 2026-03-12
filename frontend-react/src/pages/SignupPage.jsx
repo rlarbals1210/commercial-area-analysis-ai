@@ -3,9 +3,19 @@ import { useNavigate, Link } from "react-router-dom";
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [form, setForm] = useState({
+    userId: "",
+    password: "",
+    passwordConfirm: "",
+    name: "",
+    phone: "",
+    email: "",
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -31,12 +41,13 @@ export default function SignupPage() {
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={fieldGroup}>
-            <label style={labelStyle}>이메일</label>
+            <label style={labelStyle}>아이디</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@email.com"
+              type="text"
+              name="userId"
+              value={form.userId}
+              onChange={handleChange}
+              placeholder="사용할 아이디를 입력하세요"
               style={inputStyle}
               required
             />
@@ -46,8 +57,9 @@ export default function SignupPage() {
             <label style={labelStyle}>비밀번호</label>
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              name="password"
+              value={form.password}
+              onChange={handleChange}
               placeholder="비밀번호를 입력하세요"
               style={inputStyle}
               required
@@ -58,9 +70,49 @@ export default function SignupPage() {
             <label style={labelStyle}>비밀번호 확인</label>
             <input
               type="password"
-              value={passwordConfirm}
-              onChange={(e) => setPasswordConfirm(e.target.value)}
+              name="passwordConfirm"
+              value={form.passwordConfirm}
+              onChange={handleChange}
               placeholder="비밀번호를 다시 입력하세요"
+              style={inputStyle}
+              required
+            />
+          </div>
+
+          <div style={fieldGroup}>
+            <label style={labelStyle}>이름</label>
+            <input
+              type="text"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              placeholder="이름을 입력하세요"
+              style={inputStyle}
+              required
+            />
+          </div>
+
+          <div style={fieldGroup}>
+            <label style={labelStyle}>전화번호</label>
+            <input
+              type="tel"
+              name="phone"
+              value={form.phone}
+              onChange={handleChange}
+              placeholder="010-0000-0000"
+              style={inputStyle}
+              required
+            />
+          </div>
+
+          <div style={fieldGroup}>
+            <label style={labelStyle}>이메일</label>
+            <input
+              type="email"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+              placeholder="example@email.com"
               style={inputStyle}
               required
             />
@@ -93,10 +145,11 @@ const pageStyle = {
   fontFamily: "'Pretendard', sans-serif",
   position: "relative",
   background: "#2D2D2D",
+  overflowY: "auto",
 };
 
 const bgStyle = {
-  position: "absolute",
+  position: "fixed",
   inset: 0,
   background: "linear-gradient(135deg, #3B3B3B 0%, #252525 100%)",
   opacity: 0.6,
@@ -110,6 +163,7 @@ const cardStyle = {
   width: "100%",
   maxWidth: 420,
   boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+  margin: "24px 0",
 };
 
 const backBtnStyle = {
