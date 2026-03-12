@@ -54,8 +54,16 @@ class Command(BaseCommand):
                     총유동인구        = toint(row["총유동인구"]),
                     유동_20대         = toint(row["유동_20대"]),
 
+                    총_직장_인구_수   = toint(row.get("총_직장_인구_수"), None),
+                    직장_20대_인구    = toint(row.get("직장_20대_인구"), None),
+                    주거인구          = toint(row.get("주거인구"), None),
+
                     점포수            = toint(row["점포수"]),
                     행정동_전체점포수 = toint(row["행정동_전체점포수"]),
+
+                    개업_율_평균      = tofloat(row.get("개업_율_평균"), None),
+                    폐업_률_평균      = tofloat(row.get("폐업_률_평균"), None),
+                    프랜차이즈_점포수 = toint(row.get("프랜차이즈_점포수"), None),
 
                     업종_점포당매출   = tofloat(row["업종_점포당매출"]),
                     업종_매출점유율   = tofloat(row["업종_매출점유율"]),
@@ -63,6 +71,7 @@ class Command(BaseCommand):
                     경쟁강도          = tofloat(row["경쟁강도"]),
                     매출_20대비율     = tofloat(row["매출_20대비율"]),
                     유동_20대비율     = tofloat(row["유동_20대비율"]),
+                    직장_20대_비율    = tofloat(row.get("직장_20대_비율"), None),
                     MZ_차이           = tofloat(row["MZ_차이"]),
                     유동대비매출      = tofloat(row["유동대비매출"]),
                     점포대비유동      = tofloat(row["점포대비유동"]),
