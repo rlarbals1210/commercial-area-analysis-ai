@@ -26,8 +26,11 @@ export default function MapPage() {
   const selectedGroupRef = useRef(null);
   const selectedGuGroupRef = useRef(null); // 선택된 구 폴리곤
   const guToDongsRef = useRef({});         // { 구이름: [행정동이름, ...] }
-  const storeMarkersRef = useRef([]);      // 개별 상가 마커 (CustomOverlay)
-  const storeInfoWindowRef = useRef(null); // 현재 열린 상가 팝업
+  const storeMarkersRef = useRef([]);         // 개별 상가 마커 (CustomOverlay)
+  const allStoresRef = useRef([]);            // fetch된 전체 상가 (클라이언트 필터링용)
+  const storeCategoryFilterRef = useRef([]); // 필터 최신값 (zoom 핸들러 클로저용)
+  const storeZoomListenerRef = useRef(null);  // 줌 변경 이벤트 핸들러
+  const storeInfoWindowRef = useRef(null);    // 현재 열린 상가 팝업
   const guBadgeOverlayRef = useRef(null);   // 구 선택 시 지도 위 매출 뱃지
   const dongBadgeOverlayRef = useRef(null); // 행정동 선택 시 지도 위 매출 뱃지
   const GU_MODE_LEVEL = 7;        // 이 레벨 이상이면 구 단위 표시
@@ -64,7 +67,7 @@ export default function MapPage() {
   // ── 상가 마커 상태 ──
   const [showStoreMarkers, setShowStoreMarkers] = useState(false);
   const [storeLoading, setStoreLoading] = useState(false);
-  const [storeCategoryFilter, setStoreCategoryFilter] = useState(null);
+  const [storeCategoryFilter, setStoreCategoryFilter] = useState([]);
 
   // ── 창업 적합도 상태 ──
   const [scoreData, setScoreData] = useState(null);       // 전체 업종 점수 목록
@@ -79,6 +82,7 @@ export default function MapPage() {
   const [aiRegion, setAiRegion] = useState(null);
   const [aiDong, setAiDong] = useState("");
   const [aiResults, setAiResults] = useState(null);
+  const [showIndustryPicker, setShowIndustryPicker] = useState(false);
 
   // ── 카카오 맵 animate:true를 220ms 간격으로 겹쳐 체이닝 → 부드러운 연속 줌 ──
   function smoothZoom(map, targetLevel, onDone) {
@@ -318,26 +322,125 @@ export default function MapPage() {
       storeInfoWindowRef.current.setMap(null);
       storeInfoWindowRef.current = null;
     }
+    const map = mapInstanceRef.current;
+    if (map && storeZoomListenerRef.current && window.kakao) {
+      window.kakao.maps.event.removeListener(map, "zoom_changed", storeZoomListenerRef.current);
+      storeZoomListenerRef.current = null;
+    }
   }
 
-  function showStoreMarkersOnMap(map, stores) {
-    const { kakao } = window;
-    stores.forEach((store) => {
-      const color = STORE_CATEGORY_COLORS[store.통합카테고리] || "#9E9E9E";
+  // 줌 레벨별 그리드 셀 크기 (도 단위) — 클수록 더 많이 묶임
+  const CLUSTER_CELL = { 1:0, 2:0, 3:0.001, 4:0.002, 5:0.004, 6:0.008, 7:0.016, 8:0.03, 9:0.06, 10:0.12 };
 
-      // 마커 DOM
+  function clusterStores(stores, zoom) {
+    const cellSize = CLUSTER_CELL[zoom] ?? 0.001;
+    if (cellSize === 0) return stores.map((s) => ({ single: s }));
+    const cells = {};
+    stores.forEach((s) => {
+      // 업종 + 그리드 위치를 함께 키로 사용 → 같은 업종끼리만 묶임
+      const key = `${s.통합카테고리}|${Math.floor(s.경도 / cellSize)},${Math.floor(s.위도 / cellSize)}`;
+      if (!cells[key]) cells[key] = [];
+      cells[key].push(s);
+    });
+    return Object.values(cells).map((group) =>
+      group.length === 1
+        ? { single: group[0] }
+        : {
+            count: group.length,
+            category: group[0].통합카테고리,
+            lat: group.reduce((a, s) => a + s.위도, 0) / group.length,
+            lng: group.reduce((a, s) => a + s.경도, 0) / group.length,
+          }
+    );
+  }
+
+  function renderStoreMarkers(map, stores) {
+    clearStoreMarkers();
+    const { kakao } = window;
+    const zoom = map.getLevel();
+    clusterStores(stores, zoom).forEach((item) => {
+      if (item.single) {
+        addPinMarker(map, item.single);
+      } else {
+        addClusterMarker(map, item);
+      }
+    });
+    // 줌 변경 시 재렌더
+    const handler = () => {
+      const filtered = storeCategoryFilterRef.current.length === 0
+        ? allStoresRef.current
+        : allStoresRef.current.filter((s) => storeCategoryFilterRef.current.includes(s.통합카테고리));
+      renderStoreMarkers(map, filtered);
+    };
+    storeZoomListenerRef.current = handler;
+    kakao.maps.event.addListener(map, "zoom_changed", handler);
+  }
+
+  function addClusterMarker(map, { count, category, lat, lng }) {
+    const { kakao } = window;
+    const color = STORE_CATEGORY_COLORS[category] || "#3B82F6";
+    const size = Math.min(28 + Math.floor(Math.log2(count) * 5), 52);
+    const el = document.createElement("div");
+    el.style.cssText = `
+      width:${size}px; height:${size}px;
+      background: ${color};
+      border: 2.5px solid #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 0 10px ${color}, 0 1px 4px rgba(0,0,0,0.4);
+      font-family: 'Pretendard', sans-serif;
+      font-size: ${size < 36 ? 11 : 13}px;
+      font-weight: 700; color: #fff;
+      transition: transform 0.2s;
+    `;
+    el.textContent = count > 999 ? "999+" : count;
+    el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.15)"; });
+    el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
+    el.addEventListener("click", () => {
+      map.setCenter(new kakao.maps.LatLng(lat, lng));
+      map.setLevel(Math.max(1, map.getLevel() - 2));
+    });
+    const overlay = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(lat, lng),
+      content: el, xAnchor: 0.5, yAnchor: 0.5, zIndex: 6,
+    });
+    overlay.setMap(map);
+    storeMarkersRef.current.push(overlay);
+  }
+
+  function addPinMarker(map, store) {
+    const { kakao } = window;
+    const color = STORE_CATEGORY_COLORS[store.통합카테고리] || "#9E9E9E";
+
+      // 핀 마커 DOM
       const el = document.createElement("div");
       el.title = store.상호명;
       el.style.cssText = `
-        width: 10px; height: 10px;
-        background: ${color};
-        border: 2px solid rgba(255,255,255,0.8);
-        border-radius: 50%;
+        display: flex; flex-direction: column; align-items: center;
         cursor: pointer;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
-        transition: transform 0.4s cubic-bezier(0.34, 1.7, 0.64, 1);
+        filter: drop-shadow(0 2px 5px rgba(0,0,0,0.55));
+        transition: transform 0.35s cubic-bezier(0.34, 1.7, 0.64, 1);
+        transform-origin: bottom center;
       `;
-      el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.6)"; });
+      const pinHead = document.createElement("div");
+      pinHead.style.cssText = `
+        width: 16px; height: 16px;
+        background: ${color};
+        border: 2.5px solid #fff;
+        border-radius: 50%;
+      `;
+      const pinStem = document.createElement("div");
+      pinStem.style.cssText = `
+        width: 0; height: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 9px solid ${color};
+        margin-top: -1px;
+      `;
+      el.appendChild(pinHead);
+      el.appendChild(pinStem);
+      el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.5)"; });
       el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
       el.addEventListener("click", () => {
         // 기존 팝업 닫기
@@ -394,41 +497,55 @@ export default function MapPage() {
         position: new kakao.maps.LatLng(store.위도, store.경도),
         content: el,
         xAnchor: 0.5,
-        yAnchor: 0.5,
+        yAnchor: 1.0,
         zIndex: 5,
       });
       overlay.setMap(map);
       storeMarkersRef.current.push(overlay);
-    });
   }
 
-  // ── 행정동 선택 + 마커 토글 변경 시: 상가 마커 fetch/clear ──
+  function getFilteredStores() {
+    return storeCategoryFilterRef.current.length === 0
+      ? allStoresRef.current
+      : allStoresRef.current.filter((s) => storeCategoryFilterRef.current.includes(s.통합카테고리));
+  }
+
+  // ── 행정동 선택 + 마커 토글 변경 시: 상가 마커 fetch ──
   useEffect(() => {
     clearStoreMarkers();
+    allStoresRef.current = [];
     const map = mapInstanceRef.current;
     if (!showStoreMarkers || !selectedDong || !map || !window.kakao) return;
 
     let cancelled = false;
     setStoreLoading(true);
-    const params = new URLSearchParams({ dong: selectedDong.dongName, limit: 500 });
-    if (storeCategoryFilter) params.set("category", storeCategoryFilter);
+    const params = new URLSearchParams({ dong: selectedDong.dongName, limit: 1000 });
 
     fetch(`http://localhost:8000/api/stores/?${params}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        showStoreMarkersOnMap(map, data.stores || []);
+        allStoresRef.current = data.stores || [];
+        renderStoreMarkers(map, getFilteredStores());
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setStoreLoading(false); });
 
     return () => { cancelled = true; };
-  }, [showStoreMarkers, selectedDong, storeCategoryFilter]);
+  }, [showStoreMarkers, selectedDong]);
+
+  // ── 필터 변경 시: ref 동기화 + 마커 재렌더 ──
+  useEffect(() => {
+    storeCategoryFilterRef.current = storeCategoryFilter;
+    const map = mapInstanceRef.current;
+    if (!showStoreMarkers || !map || !window.kakao || !allStoresRef.current.length) return;
+    renderStoreMarkers(map, getFilteredStores());
+  }, [storeCategoryFilter]);
 
   // 업종 필터 선택 시 상가 마커 자동 표시
   useEffect(() => {
     if (selectedIndustry && selectedDong) {
-      setStoreCategoryFilter(selectedIndustry);
+      setStoreCategoryFilter([selectedIndustry]);
       setShowStoreMarkers(true);
     }
   }, [selectedIndustry]);
@@ -438,7 +555,7 @@ export default function MapPage() {
     if (!selectedDong) {
       clearStoreMarkers();
       setShowStoreMarkers(false);
-      setStoreCategoryFilter(null);
+      setStoreCategoryFilter([]);
       setScoreData(null);
       setSelectedScoreCat(null);
     }
@@ -686,6 +803,23 @@ export default function MapPage() {
     setAiResults(null);
     setMenuOpen(false);
     setSearchExpanded(false);
+  }
+
+  function openAiDongRecommend(dongName, guName) {
+    setAiModalOpen(true);
+    setAiMode("industry");
+    setAiDong(dongName);
+    setAiRegion(guName);
+    setAiIndustry(null);
+    setAiResults(null);
+    setShowIndustryPicker(false);
+    setMenuOpen(false);
+    setSearchExpanded(false);
+    setAiStep("loading");
+    setTimeout(() => {
+      setAiResults(MOCK_INDUSTRY_RESULTS(dongName));
+      setAiStep("result");
+    }, 1800);
   }
 
   // ── 검색어 변경 시 결과 필터링 ──
@@ -1069,18 +1203,21 @@ export default function MapPage() {
                           {storeLoading ? "불러오는 중..." : showStoreMarkers ? "📍 상가 마커 표시 중 (클릭으로 숨기기)" : "📍 상가 마커 보기"}
                         </button>
                         {showStoreMarkers && (
-                          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            <button onClick={() => setStoreCategoryFilter(null)} style={storeFilterChipStyle(!storeCategoryFilter)}>전체</button>
-                            {Object.keys(STORE_CATEGORY_COLORS).map((cat) => (
-                              <button key={cat} onClick={() => setStoreCategoryFilter(storeCategoryFilter === cat ? null : cat)} style={{ ...storeFilterChipStyle(storeCategoryFilter === cat), borderColor: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined, color: storeCategoryFilter === cat ? STORE_CATEGORY_COLORS[cat] : undefined }}>
-                                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat], marginRight: 4, verticalAlign: "middle" }} />{cat}
-                              </button>
-                            ))}
+                          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+                            <button onClick={() => setStoreCategoryFilter([])} style={{ ...storeFilterChipStyle(storeCategoryFilter.length === 0), gridColumn: "1 / -1", justifyContent: "center", fontSize: 13 }}>전체</button>
+                            {Object.keys(STORE_CATEGORY_COLORS).map((cat) => {
+                              const active = storeCategoryFilter.includes(cat);
+                              return (
+                                <button key={cat} onClick={() => setStoreCategoryFilter(active ? storeCategoryFilter.filter((c) => c !== cat) : [...storeCategoryFilter, cat])} style={{ ...storeFilterChipStyle(active), borderColor: active ? STORE_CATEGORY_COLORS[cat] : undefined, color: active ? STORE_CATEGORY_COLORS[cat] : undefined }}>
+                                  <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat], flexShrink: 0 }} />{cat}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
                       <button
-                        onClick={() => openAiModal({ region: selectedDong.guName, dong: selectedDong.dongName })}
+                        onClick={() => openAiDongRecommend(selectedDong.dongName, selectedDong.guName)}
                         style={{ width: "100%", marginTop: 8, padding: "9px 0", background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", color: "#93B8EE", border: "1px solid rgba(139,92,246,0.4)", borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", letterSpacing: "0.02em" }}
                       >✨ 이 지역에서 AI 추천 받기</button>
                     </>
@@ -1286,7 +1423,7 @@ export default function MapPage() {
 
       {/* ── 호버 툴팁 (사이드바 오른쪽 하단) ── */}
       {hoveredDong && (
-        <div className="anim-slide-up" style={{ ...tooltipStyle, left: 340 }}>
+        <div className="anim-slide-up" style={{ ...tooltipStyle, left: sidebarCollapsed ? 16 : 340 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hoveredDong.dongName ? 6 : 0 }}>
             <span style={tooltipLabel}>구</span>
             <span style={{ fontWeight: 700, color: "#E8E8E8", fontSize: 17 }}>{hoveredDong.guName}</span>
@@ -1464,25 +1601,27 @@ export default function MapPage() {
         );
       })()}
 
-      {/* ── AI 추천 모달 ── */}
+      {/* ── AI 추천 사이드 패널 ── */}
       {aiModalOpen && (
         <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}
-          onClick={() => setAiModalOpen(false)}
+          className="anim-panel-slide-in"
+          style={{
+            ...secondPanelStyle,
+            left: 320,
+            width: 380,
+            transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)",
+            transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)",
+            zIndex: 12,
+          }}
         >
-          <div
-            className="anim-pop-in"
-            style={{ background: "#242424", borderRadius: 20, padding: "28px", width: 520, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.07)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
             {/* 헤더 */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 22 }}>✨</span>
-                  <span style={{ fontSize: 21, fontWeight: 700, color: "#E8E8E8" }}>AI 상권 추천</span>
+                  <span style={{ fontSize: 20 }}>✨</span>
+                  <span style={{ fontSize: 19, fontWeight: 700, color: "#E8E8E8" }}>AI 상권 추천</span>
                 </div>
-                <div style={{ fontSize: 14, color: "#9E9E9E", paddingLeft: 28 }}>
+                <div style={{ fontSize: 13, color: "#9E9E9E", paddingLeft: 28 }}>
                   {aiStep === "mode" && "분석 방식을 선택하세요"}
                   {aiStep === "form" && AI_MODE_META[aiMode]?.desc}
                   {(aiStep === "loading" || aiStep === "result") && AI_MODE_META[aiMode]?.title}
@@ -1491,7 +1630,7 @@ export default function MapPage() {
               <button onClick={() => setAiModalOpen(false)} style={closeBtnStyle}>✕</button>
             </div>
 
-            <div style={{ borderTop: "1px solid #3A3A3A", paddingTop: 20 }}>
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 16, flex: 1, overflowY: "auto" }}>
 
               {/* ── 모드 선택 단계 ── */}
               {aiStep === "mode" && (
@@ -1605,10 +1744,10 @@ export default function MapPage() {
                       {aiMode === "score" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> · <span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span> 적합도</>}
                     </span>
                     <button
-                      onClick={() => { setAiStep("form"); setAiResults(null); }}
-                      style={{ fontSize: 14, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
+                      onClick={() => setShowIndustryPicker((v) => !v)}
+                      style={{ fontSize: 13, color: showIndustryPicker ? "#34D399" : "#3B82F6", background: showIndustryPicker ? "rgba(16,185,129,0.1)" : "rgba(59,130,246,0.1)", border: `1px solid ${showIndustryPicker ? "rgba(16,185,129,0.3)" : "rgba(59,130,246,0.3)"}`, borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontWeight: 600, flexShrink: 0 }}
                     >
-                      ← 다시 설정
+                      {showIndustryPicker ? "접기 ↑" : "업종 선택 »"}
                     </button>
                   </div>
 
@@ -1725,10 +1864,58 @@ export default function MapPage() {
                 </>
               )}
             </div>
-          </div>
         </div>
       )}
 
+
+      {/* ── 업종 선택 사이드 패널 ── */}
+      {aiModalOpen && showIndustryPicker && (
+        <div
+          className="anim-panel-slide-in"
+          style={{
+            ...secondPanelStyle,
+            left: 700,
+            width: 300,
+            transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)",
+            transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)",
+            zIndex: 13,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}>
+            <div>
+              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{aiDong}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8" }}>업종 선택</div>
+            </div>
+            <button onClick={() => setShowIndustryPicker(false)} style={closeBtnStyle}>✕</button>
+          </div>
+          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 12, flexShrink: 0 }}>업종을 선택하면 해당 지역의 창업 적합도를 분석합니다</div>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {Object.keys(STORE_CATEGORY_COLORS).map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setAiIndustry(cat);
+                    setAiMode("score");
+                    setShowIndustryPicker(false);
+                    setAiStep("loading");
+                    setTimeout(() => {
+                      setAiResults(MOCK_SCORE_RESULT(aiDong, cat));
+                      setAiStep("result");
+                    }, 1200);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "transform 0.28s cubic-bezier(0.34,1.56,0.64,1), background 0.15s, color 0.15s" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.15)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.35)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+                >
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
       <div style={{ position: "absolute", top: 20, right: 20, display: "flex", gap: 10, zIndex: 10 }}>
@@ -1758,44 +1945,85 @@ export default function MapPage() {
 }
 
 /* ── 상가 카테고리 색상 ── */
+const CATEGORY_EMOJI = {
+  "한식":           "🍚",
+  "중식":           "🥢",
+  "일식":           "🍱",
+  "양식/기타외식":  "🍝",
+  "분식/간식":      "🥯",
+  "패스트푸드/치킨":"🍗",
+  "카페":           "☕",
+  "주점":           "🍺",
+  "편의점":         "🏪",
+  "식품 소매":      "🛒",
+  "의료/약국":      "💊",
+  "미용실":         "✂️",
+  "뷰티/화장품":    "💄",
+  "스포츠/레저":    "⚽",
+  "스포츠 강습":    "🏋️",
+  "일반학원":       "📚",
+  "예술학원":       "🎨",
+  "의류/패션":      "👗",
+  "전자/통신":      "📱",
+  "생활용품 소매":  "🧹",
+  "수리/세탁":      "🔧",
+  "숙박":           "🛏️",
+  "오락/유흥":      "🎮",
+  "애완동물":       "🐾",
+  "B2B 서비스":     "💼",
+};
+
 const STORE_CATEGORY_COLORS = {
-  "한식":           "#FF6B6B",
-  "중식":           "#FF8C00",
-  "일식":           "#FFD700",
-  "양식/기타외식":  "#C084FC",
-  "분식/간식":      "#FB923C",
-  "패스트푸드/치킨":"#F97316",
-  "카페":           "#92400E",
-  "주점":           "#7C3AED",
-  "편의점":         "#16A34A",
-  "식품 소매":      "#65A30D",
-  "의료/약국":      "#DC2626",
-  "미용실":         "#EC4899",
-  "뷰티/화장품":    "#F472B6",
-  "스포츠/레저":    "#0EA5E9",
-  "스포츠 강습":    "#38BDF8",
-  "일반학원":       "#3B82F6",
-  "예술학원":       "#818CF8",
-  "의류/패션":      "#A78BFA",
-  "전자/통신":      "#06B6D4",
-  "생활용품 소매":  "#84CC16",
-  "수리/세탁":      "#94A3B8",
-  "숙박":           "#F59E0B",
-  "오락/유흥":      "#EF4444",
-  "애완동물":       "#34D399",
-  "B2B 서비스":     "#6B7280",
+  // 음식 — 빨강·주황 계열, 각 단계 충분히 분리
+  "한식":           "#FF2D2D",  // 순빨강
+  "중식":           "#FF6900",  // 딥오렌지
+  "일식":           "#FFB300",  // 황금오렌지
+  "양식/기타외식":  "#FFE600",  // 노랑
+  "분식/간식":      "#FF85C8",  // 핑크 (오렌지 계열과 완전 분리)
+  "패스트푸드/치킨":"#FF4500",  // 레드오렌지
+  "카페":           "#7B3F00",  // 다크브라운
+  "주점":           "#AA00FF",  // 바이올렛
+
+  // 유통/소매 — 초록·청록 계열
+  "편의점":         "#00C853",  // 에메랄드
+  "식품 소매":      "#76FF03",  // 라임 (에메랄드와 명도 차이 큼)
+  "생활용품 소매":  "#00BFA5",  // 틸그린
+  "의류/패션":      "#304FFE",  // 인디고블루
+  "전자/통신":      "#00E5FF",  // 아쿠아
+
+  // 건강/뷰티 — 핑크·레드 계열
+  "의료/약국":      "#B71C1C",  // 다크레드 (순빨강 한식과 명도 차이 큼)
+  "미용실":         "#F50057",  // 딥마젠타핑크
+  "뷰티/화장품":    "#FF80AB",  // 라이트핑크
+
+  // 스포츠/교육 — 파랑 계열, 명도 차이로 구분
+  "스포츠/레저":    "#40C4FF",  // 하늘
+  "스포츠 강습":    "#0D47A1",  // 다크네이비
+  "일반학원":       "#2979FF",  // 미디엄블루
+  "예술학원":       "#6200EA",  // 딥퍼플
+
+  // 서비스
+  "수리/세탁":      "#78909C",  // 슬레이트
+  "숙박":           "#F57F17",  // 앰버
+  "오락/유흥":      "#E040FB",  // 마젠타
+  "애완동물":       "#69F0AE",  // 민트그린
+  "B2B 서비스":     "#546E7A",  // 다크슬레이트
 };
 
 const storeFilterChipStyle = (active) => ({
-  padding: "3px 8px",
-  borderRadius: 12,
+  padding: "5px 8px",
+  borderRadius: 8,
   border: active ? "1px solid #9E9E9E" : "1px solid rgba(255,255,255,0.1)",
-  background: active ? "rgba(255,255,255,0.12)" : "transparent",
+  background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
   color: active ? "#E8E8E8" : "#9E9E9E",
-  fontSize: 12,
   fontWeight: active ? 600 : 400,
   cursor: "pointer",
-  whiteSpace: "nowrap",
+  fontSize: 13,
+  wordBreak: "keep-all",
+  lineHeight: 1.3,
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
 });
 
 /* ── 스타일 ── */
@@ -1833,15 +2061,17 @@ const tooltipStyle = {
   position: "absolute",
   bottom: 40,
   left: 20,
-  background: "rgba(28,28,28,0.96)",
+  background: "rgba(42,42,52,0.92)",
+  border: "1px solid rgba(255,255,255,0.07)",
   borderRadius: 12,
   padding: "12px 16px",
   boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-  backdropFilter: "blur(8px)",
+  backdropFilter: "blur(10px)",
   zIndex: 10,
   fontSize: 16,
   pointerEvents: "none",
   minWidth: 180,
+  transition: "left 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)",
 };
 
 const tooltipLabel = {
