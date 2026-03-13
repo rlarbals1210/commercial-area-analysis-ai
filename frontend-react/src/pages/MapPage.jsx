@@ -940,9 +940,9 @@ export default function MapPage() {
                     </button>
                     {quarterPopupOpen && (
                       <div data-popup style={quarterDropdownStyle}>
-                        <div style={{ display: "flex", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
                           {years.map((y) => (
-                            <button key={y} data-popup onClick={() => { const first = availableQuarters.find((q) => Math.floor(q / 10) === y); setSelectedQuarter(first === availableQuarters[0] ? null : first); }} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E" }}>{y}</button>
+                            <button key={y} data-popup onClick={() => { const first = availableQuarters.find((q) => Math.floor(q / 10) === y); setSelectedQuarter(first === availableQuarters[0] ? null : first); }} style={{ padding: "5px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", textAlign: "left" }}>{y}</button>
                           ))}
                         </div>
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -1077,9 +1077,9 @@ export default function MapPage() {
                     </button>
                     {guQuarterPopupOpen && (
                       <div data-popup style={quarterDropdownStyle}>
-                        <div style={{ display: "flex", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
                           {years.map((y) => (
-                            <button key={y} data-popup onClick={() => { const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y); setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first); }} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E" }}>{y}</button>
+                            <button key={y} data-popup onClick={() => { const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y); setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first); }} style={{ padding: "5px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", textAlign: "left" }}>{y}</button>
                           ))}
                         </div>
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -1894,13 +1894,13 @@ const quarterDropdownStyle = {
   position: "absolute",
   top: "calc(100% + 6px)",
   left: 0,
+  right: 0,
   zIndex: 50,
   background: "#1E1E2E",
   border: "1px solid rgba(255,255,255,0.1)",
   borderRadius: 10,
   padding: "12px 14px",
   boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-  minWidth: 200,
 };
 
 const closeBtnStyle = {
