@@ -31,7 +31,6 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -41,7 +40,6 @@ INSTALLED_APPS = [
     "accounts",
     "recommendation",
     "corsheaders"
-
 ]
 
 MIDDLEWARE = [
@@ -93,7 +91,7 @@ DATABASES = {
         'NAME': 'commercial_db',
         'USER': 'commercial_user',
         'PASSWORD': '5891',
-        'HOST': 'localhost',
+        'HOST': '127.0.0.1',
         'PORT': '5432',
     }
 }

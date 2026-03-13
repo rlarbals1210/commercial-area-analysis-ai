@@ -1,6 +1,7 @@
 Django==5.2.11
 django-cors-headers==4.9.0
-djangorestframework
+djangorestframework==3.16.1
+psycopg2-binary==2.9.11
 tensorflow==2.20.0
 keras==3.12.1
 scikit-learn==1.7.2
