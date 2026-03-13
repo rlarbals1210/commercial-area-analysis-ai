@@ -168,9 +168,13 @@ async def main():
         log.info("모든 데이터 수집 완료.")
         return
 
-    results = []
-    errors  = 0
-    total   = len(df_store)
+    results        = []
+    errors         = 0
+    total          = len(df_store)
+    total_matched  = 0
+    total_priced   = 0
+    empty_streak   = 0  # 연속으로 매칭 실패한 횟수
+    EMPTY_WARN     = 50  # 연속 실패 경고 임계값
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
@@ -183,6 +187,17 @@ async def main():
                     "avg_price": None, "price_min": None,
                     "price_max": None, "menu_count": 0, "visitor_tags": "",
                 }
+                if pid:
+                    total_matched += 1
+                    empty_streak = 0
+                else:
+                    empty_streak += 1
+                    if empty_streak == EMPTY_WARN:
+                        log.warning(f"  ⚠ 연속 {EMPTY_WARN}개 매칭 실패 — 네이버 차단 가능성, 잠시 대기 중...")
+                        await asyncio.sleep(30)
+                        empty_streak = 0
+                if info["avg_price"] is not None:
+                    total_priced += 1
                 results.append({
                     "상가업소번호":     row["상가업소번호"],
                     "상호명":          row["상호명"],
@@ -202,6 +217,7 @@ async def main():
                 })
             except Exception as e:
                 errors += 1
+                empty_streak += 1
                 results.append({
                     "상가업소번호": row["상가업소번호"],
                     "상호명":      row["상호명"],
@@ -209,13 +225,11 @@ async def main():
                     "visit_purpose": "오류",
                 })
 
-            # 10개마다 진행률 출력
+            # 10개마다 진행률 출력 (누적 기준)
             if seq % 10 == 0:
-                matched = sum(1 for r in results if r.get("place_id"))
-                priced  = sum(1 for r in results if r.get("avg_price"))
                 log.info(
                     f"[{seq:,}/{total:,}] "
-                    f"매칭:{matched/seq:.0%} 가격:{priced/seq:.0%} 오류:{errors}"
+                    f"매칭:{total_matched/seq:.0%} 가격:{total_priced/seq:.0%} 오류:{errors}"
                 )
 
             # BATCH_SIZE마다 CSV에 저장 (이어받기 가능)
