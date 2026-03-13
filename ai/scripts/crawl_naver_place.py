@@ -83,21 +83,34 @@ def classify_visit_purpose(tags_str: str) -> str:
 
 
 # ── Playwright 함수 ───────────────────────────────────────────────
-async def find_place_id(page, store_name: str, address: str) -> str | None:
-    addr_short = " ".join((address or "").split()[1:3])
-    query = f"{store_name} {addr_short}".strip()
-    enc   = urllib.parse.quote(query)
-    try:
-        await page.goto(
-            f"https://search.naver.com/search.naver?query={enc}&where=place",
-            wait_until="networkidle", timeout=15000,
-        )
-        await page.wait_for_timeout(800)
-        html = await page.content()
-        ids  = PLACE_ID_RE.findall(html)
-        return ids[0] if ids else None
-    except Exception:
-        return None
+async def find_place_id(page, store_name: str, address: str, dong: str = "") -> str | None:
+    parts     = (address or "").split()
+    addr_full = " ".join(parts[1:3])   # "양천구 신정로"
+    gu        = parts[1] if len(parts) > 1 else ""
+
+    queries = [
+        f"{store_name} {addr_full}".strip(),   # 1차: 가게명 + 구 + 로/동
+        f"{store_name} {dong}".strip(),         # 2차: 가게명 + 행정동명
+        f"{store_name} {gu}".strip(),           # 3차: 가게명 + 구
+    ]
+
+    for query in queries:
+        if not query.strip():
+            continue
+        try:
+            enc = urllib.parse.quote(query)
+            await page.goto(
+                f"https://search.naver.com/search.naver?query={enc}&where=place",
+                wait_until="domcontentloaded", timeout=15000,
+            )
+            await page.wait_for_timeout(800)
+            html = await page.content()
+            ids  = PLACE_ID_RE.findall(html)
+            if ids:
+                return ids[0]
+        except Exception:
+            continue
+    return None
 
 
 async def scrape_place(page, place_id: str) -> dict:
@@ -182,7 +195,7 @@ async def main():
 
         for seq, (_, row) in enumerate(df_store.iterrows(), 1):
             try:
-                pid  = await find_place_id(page, row["상호명"], row["도로명주소"])
+                pid  = await find_place_id(page, row["상호명"], row["도로명주소"], row["행정동명"])
                 info = await scrape_place(page, pid) if pid else {
                     "avg_price": None, "price_min": None,
                     "price_max": None, "menu_count": 0, "visitor_tags": "",
