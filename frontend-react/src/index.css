@@ -45,14 +45,15 @@ button {
   font-family: inherit;
   background-color: #363636;
   cursor: pointer;
-  transition: border-color 0.25s, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: border-color 0.25s, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s;
 }
 button:hover {
   border-color: #6B9FE4;
+  transform: scale(1.04);
 }
 button:active {
-  transform: scale(0.88);
-  transition: border-color 0.25s, transform 0.07s ease;
+  transform: scale(0.92);
+  transition: border-color 0.25s, transform 0.08s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s;
 }
 button:focus,
 button:focus-visible {
@@ -73,6 +74,96 @@ button:focus-visible {
 
 .page-enter {
   animation: pageEnter 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+/* ── 팝업·모달 등장 (통통 튀는 스프링) ── */
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.anim-pop-in {
+  animation: popIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ── 드롭다운·팝업 아래로 슬라이드 ── */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.anim-slide-down {
+  animation: slideDown 0.3s cubic-bezier(0.34, 1.5, 0.64, 1) both;
+}
+
+/* ── 하단 패널·툴팁 위로 슬라이드 ── */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.anim-slide-up {
+  animation: slideUp 0.35s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+
+/* ── 사이드바 콘텐츠 왼쪽에서 슬라이드 ── */
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.anim-slide-in-left {
+  animation: slideInLeft 0.38s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+/* ── 뱃지·칩 등장 ── */
+@keyframes badgeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.7) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.anim-badge-in {
+  animation: badgeIn 0.32s cubic-bezier(0.34, 1.6, 0.64, 1) both;
+}
+
+/* ── 두 번째 사이드 패널 슬라이드 인 ── */
+@keyframes panelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.anim-panel-slide-in {
+  animation: panelSlideIn 0.36s cubic-bezier(0.34, 1.4, 0.64, 1) both;
 }
 
 /* ── 지도 라벨 ── */

@@ -20,9 +20,9 @@ export default function LoginPage() {
     <div style={pageStyle}>
       <motion.div
         style={cardStyle}
-        initial={{ opacity: 0, y: 48, scale: 0.92 }}
+        initial={{ opacity: 0, y: 56, scale: 0.88 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ type: "spring", stiffness: 320, damping: 18 }}
+        transition={{ type: "spring", stiffness: 380, damping: 22 }}
       >
         {/* 로고 */}
         <div style={{ textAlign: "center", marginBottom: 8 }}>
