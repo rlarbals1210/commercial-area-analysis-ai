@@ -49,7 +49,7 @@ export default function SignupPage() {
         exit={{ opacity: 0, scale: 0.92, y: -32 }}
         transition={expanding
           ? { duration: 1.0, ease: [0.4, 0, 1, 1] }
-          : { type: "spring", stiffness: 320, damping: 18 }}
+          : { type: "spring", stiffness: 400, damping: 20 }}
         onAnimationComplete={() => { if (expanding) navigate("/"); }}
       >
         {/* 로고 — 페이드 아웃 제외 */}
@@ -97,7 +97,7 @@ export default function SignupPage() {
               initial={{ opacity: 0, x: 40, scale: 0.96 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: -40, scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 320, damping: 20 }}
+              transition={{ type: "spring", stiffness: 420, damping: 22 }}
             >
               <div style={fieldGroup}>
                 <label style={labelStyle}>아이디</label>
@@ -147,7 +147,7 @@ export default function SignupPage() {
               initial={{ opacity: 0, x: 40, scale: 0.96 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: -40, scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 320, damping: 20 }}
+              transition={{ type: "spring", stiffness: 420, damping: 22 }}
             >
               <div style={fieldGroup}>
                 <label style={labelStyle}>이름</label>
@@ -204,7 +204,7 @@ export default function SignupPage() {
               style={{ textAlign: "center", padding: "12px 0" }}
               initial={{ opacity: 0, scale: 0.7 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 350, damping: 16 }}
+              transition={{ type: "spring", stiffness: 450, damping: 18 }}
             >
               <div style={successIconStyle}>✓</div>
               <h2 style={{ margin: "16px 0 8px", fontSize: 20, fontWeight: 700, color: "#111827" }}>
