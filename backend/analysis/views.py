@@ -4,8 +4,14 @@ from django.db.models import Max, Sum
 from django.views.decorators.csrf import csrf_exempt
 from .models import CommercialData, StoreInfo, ScoreData
 
+
+def normalize_dong(name: str) -> str:
+    """GeoJSON의 가운뎃점(·)을 DB의 마침표(.)로 정규화"""
+    return name.replace("\u00b7", ".") if name else name
+
+
 def quarters(request):
-    dong = request.GET.get("dong")
+    dong = normalize_dong(request.GET.get("dong"))
     if not dong:
         return JsonResponse({"error": "dong 파라미터가 필요합니다."}, status=400)
 
@@ -19,7 +25,7 @@ def quarters(request):
     return JsonResponse({"quarters": qs})
 
 def analysis(request):
-    dong = request.GET.get("dong")
+    dong = normalize_dong(request.GET.get("dong"))
     quarter_param = request.GET.get("quarter")
     if not dong:
         return JsonResponse({"error": "dong 파라미터가 필요합니다."}, status=400)
@@ -99,7 +105,7 @@ def gu_quarters(request):
     dongs_param = request.GET.get("dongs", "")
     if not dongs_param:
         return JsonResponse({"error": "dongs 파라미터가 필요합니다."}, status=400)
-    dongs = [d.strip() for d in dongs_param.split(",") if d.strip()]
+    dongs = [normalize_dong(d.strip()) for d in dongs_param.split(",") if d.strip()]
     qs = list(
         CommercialData.objects
         .filter(행정동명__in=dongs)
@@ -121,8 +127,8 @@ def gu_analysis(request):
         return JsonResponse({"error": "잘못된 JSON"}, status=400)
 
     gu = body.get("gu")
-    dongs = body.get("dongs", [])
-    gu_dongs_map = body.get("gu_dongs_map", {})
+    dongs = [normalize_dong(d) for d in body.get("dongs", [])]
+    gu_dongs_map = {g: [normalize_dong(d) for d in dl] for g, dl in body.get("gu_dongs_map", {}).items()}
     quarter_param = body.get("quarter")
 
     if not gu or not dongs:
@@ -209,7 +215,7 @@ def gu_analysis(request):
 
 def score(request):
     """창업 적합도 점수 (GET, dong + category 필수)"""
-    dong = request.GET.get("dong")
+    dong = normalize_dong(request.GET.get("dong"))
     category = request.GET.get("category")
     if not dong or not category:
         return JsonResponse({"error": "dong, category 파라미터가 필요합니다."}, status=400)
@@ -232,7 +238,7 @@ def score(request):
 
 def score_all(request):
     """행정동 내 전체 업종 점수 목록 (GET, dong 필수)"""
-    dong = request.GET.get("dong")
+    dong = normalize_dong(request.GET.get("dong"))
     if not dong:
         return JsonResponse({"error": "dong 파라미터가 필요합니다."}, status=400)
 
@@ -247,7 +253,7 @@ def score_all(request):
 
 def store_list(request):
     """행정동 내 개별 상가 목록 반환 (GET, dong 필수 / category 선택)"""
-    dong = request.GET.get("dong")
+    dong = normalize_dong(request.GET.get("dong"))
     category = request.GET.get("category")
     limit = min(int(request.GET.get("limit", 500)), 1000)
 
