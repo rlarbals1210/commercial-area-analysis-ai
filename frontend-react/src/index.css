@@ -188,3 +188,8 @@ button:focus-visible {
   color: #111111;
   letter-spacing: -0.01em;
 }
+
+@keyframes myloc-pulse {
+  0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.6; }
+  100% { transform: translate(-50%, -50%) scale(2.8); opacity: 0; }
+}

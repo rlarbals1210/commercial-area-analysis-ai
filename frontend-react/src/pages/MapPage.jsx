@@ -10,6 +10,9 @@ const REGIONS = [
   "용산구", "은평구", "종로구", "중구", "중랑구",
 ];
 
+// GeoJSON은 중점(·) 사용, 데이터셋은 마침표(.) 사용 → API 호출 시 정규화
+const normalizeDongName = (name) => name.replace(/·/g, ".");
+
 const POLYGON_DEFAULT  = { fillColor: "#9EC8F0", fillOpacity: 0.15, strokeColor: "#6B9FD4", strokeOpacity: 0.8 };
 const POLYGON_HOVER    = { fillColor: "#3B82F6", fillOpacity: 0.45, strokeColor: "#1D4ED8", strokeOpacity: 1 };
 const POLYGON_SELECTED = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColor: "#1D4ED8", strokeOpacity: 1 };
@@ -33,6 +36,7 @@ export default function MapPage() {
   const storeInfoWindowRef = useRef(null);    // 현재 열린 상가 팝업
   const guBadgeOverlayRef = useRef(null);   // 구 선택 시 지도 위 매출 뱃지
   const dongBadgeOverlayRef = useRef(null); // 행정동 선택 시 지도 위 매출 뱃지
+  const myLocationOverlayRef = useRef(null); // 현재위치 마커
   const GU_MODE_LEVEL = 7;        // 이 레벨 이상이면 구 단위 표시
   const DONG_BADGE_HIDE_LEVEL = 6; // 이 레벨 미만이면 행정동 뱃지 숨김
 
@@ -212,17 +216,19 @@ export default function MapPage() {
           }
           setSelectedGu(null);
 
-          const bounds = new kakao.maps.LatLngBounds();
-          geometry.coordinates.forEach((rings) =>
-            rings[0].forEach(([lng, lat]) => bounds.extend(new kakao.maps.LatLng(lat, lng)))
-          );
-          const ne = bounds.getNorthEast();
-          const sw = bounds.getSouthWest();
-          const center = new kakao.maps.LatLng(
-            (ne.getLat() + sw.getLat()) / 2,
-            (ne.getLng() + sw.getLng()) / 2
-          );
-          map.panTo(center);
+          if (map.getLevel() > 5) {
+            const bounds = new kakao.maps.LatLngBounds();
+            geometry.coordinates.forEach((rings) =>
+              rings[0].forEach(([lng, lat]) => bounds.extend(new kakao.maps.LatLng(lat, lng)))
+            );
+            const ne = bounds.getNorthEast();
+            const sw = bounds.getSouthWest();
+            const center = new kakao.maps.LatLng(
+              (ne.getLat() + sw.getLat()) / 2,
+              (ne.getLng() + sw.getLng()) / 2
+            );
+            map.panTo(center);
+          }
           setSelectedDong({ dongName, guName });
         });
       });
@@ -519,7 +525,7 @@ export default function MapPage() {
 
     let cancelled = false;
     setStoreLoading(true);
-    const params = new URLSearchParams({ dong: selectedDong.dongName, limit: 1000 });
+    const params = new URLSearchParams({ dong: normalizeDongName(selectedDong.dongName), limit: 1000 });
 
     fetch(`http://localhost:8000/api/stores/?${params}`)
       .then((r) => r.json())
@@ -564,7 +570,7 @@ export default function MapPage() {
   // 행정동 선택 시 전체 업종 점수 fetch
   useEffect(() => {
     if (!selectedDong) return;
-    fetch(`http://localhost:8000/api/score-all/?dong=${encodeURIComponent(selectedDong.dongName)}`)
+    fetch(`http://localhost:8000/api/score-all/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
       .then((r) => r.json())
       .then((data) => setScoreData(data.scores || []))
       .catch(() => setScoreData([]));
@@ -579,7 +585,7 @@ export default function MapPage() {
     }
     setAvailableQuarters([]);
     setSelectedQuarter(null);
-    fetch(`http://localhost:8000/api/quarters/?dong=${encodeURIComponent(selectedDong.dongName)}`)
+    fetch(`http://localhost:8000/api/quarters/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
       .then((r) => r.json())
       .then((data) => setAvailableQuarters(data.quarters || []))
       .catch(() => setAvailableQuarters([]));
@@ -591,8 +597,8 @@ export default function MapPage() {
     setDongData(null);
     setDongLoading(true);
     const url = selectedQuarter
-      ? `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(selectedDong.dongName)}&quarter=${selectedQuarter}`
-      : `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(selectedDong.dongName)}`;
+      ? `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&quarter=${selectedQuarter}`
+      : `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
     fetch(url)
       .then((r) => r.json())
       .then((data) => setDongData(data))
@@ -864,10 +870,11 @@ export default function MapPage() {
       setSelectedDong(null);
       setSelectedGu(guName);
     } else {
-      // 행정동 모드로 줌인 후 선택
+      // 행정동 모드로 줌인 후 선택 (레벨 5 이하면 이미 충분히 확대 → 이동 안 함)
+      const currentLevel = map.getLevel();
       const doPan = () => map.panTo(new window.kakao.maps.LatLng(centroid.lat, centroid.lng));
-      if (map.getLevel() >= GU_MODE_LEVEL) smoothZoom(map, 5, doPan);
-      else doPan();
+      if (currentLevel >= GU_MODE_LEVEL) smoothZoom(map, 5, doPan);
+      else if (currentLevel > 5) doPan();
       const group = polygonGroupsRef.current.find((g) => g.dongName === dongName && g.guName === guName);
       if (group) {
         if (selectedGroupRef.current)
@@ -913,6 +920,35 @@ export default function MapPage() {
         zIndex: 9999,
       }} />
 
+
+      {/* ── 사이드바 접기 탭 (오른쪽 모서리, 항상 사이드바와 함께 이동) ── */}
+      <button
+        onClick={() => setSidebarCollapsed(true)}
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: 320,
+          transform: sidebarCollapsed ? "translate(-320px, -50%)" : "translateY(-50%)",
+          transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.2s",
+          opacity: sidebarCollapsed ? 0 : 1,
+          pointerEvents: sidebarCollapsed ? "none" : "auto",
+          zIndex: 15,
+          width: 24,
+          height: 56,
+          background: "rgba(42,42,52,0.92)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderLeft: "none",
+          borderRadius: "0 10px 10px 0",
+          color: "#9E9E9E",
+          fontSize: 13,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backdropFilter: "blur(10px)",
+        }}
+        title="사이드바 접기"
+      >«</button>
 
       {/* ── 사이드바 열기 탭 (접혔을 때만 표시) ── */}
       {sidebarCollapsed && (
@@ -1091,16 +1127,9 @@ export default function MapPage() {
           {/* 행정동 상세 */}
           {selectedDong && (
             <div className="anim-slide-in-left">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div>
-                  <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
-                </div>
-                <button
-                  onClick={() => setSidebarCollapsed(true)}
-                  style={closeBtnStyle}
-                  title="사이드바 접기"
-                >«</button>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
               </div>
 
               {availableQuarters.length > 0 && (() => {
@@ -1230,16 +1259,9 @@ export default function MapPage() {
           {/* 구 상세 */}
           {selectedGu && (
             <div className="anim-slide-in-left">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div>
-                  <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
-                </div>
-                <button
-                  onClick={() => setSidebarCollapsed(true)}
-                  style={closeBtnStyle}
-                  title="사이드바 접기"
-                >«</button>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
               </div>
 
               {guAvailableQuarters.length > 0 && (() => {
@@ -1397,6 +1419,75 @@ export default function MapPage() {
           >구 보기</button>
         </div>
       </div>
+
+      {/* ── 현재위치 버튼 ── */}
+      <button
+        onClick={() => {
+          if (!mapInstanceRef.current) return;
+          if (!navigator.geolocation) {
+            alert("이 브라우저는 위치 서비스를 지원하지 않습니다.");
+            return;
+          }
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude } = pos.coords;
+              const { kakao } = window;
+              const latlng = new kakao.maps.LatLng(latitude, longitude);
+              mapInstanceRef.current.setCenter(latlng);
+
+              // 기존 마커 제거 후 새로 생성
+              if (myLocationOverlayRef.current) myLocationOverlayRef.current.setMap(null);
+              const content = `<div style="
+                width:18px;height:18px;border-radius:50%;
+                background:#3B82F6;border:3px solid #fff;
+                box-shadow:0 0 0 3px rgba(59,130,246,0.4),0 2px 8px rgba(0,0,0,0.4);
+                position:relative;
+              "><div style="
+                position:absolute;top:50%;left:50%;
+                transform:translate(-50%,-50%);
+                width:32px;height:32px;border-radius:50%;
+                background:rgba(59,130,246,0.2);
+                animation:myloc-pulse 1.8s ease-out infinite;
+              "></div></div>`;
+              const overlay = new kakao.maps.CustomOverlay({
+                position: latlng,
+                content,
+                zIndex: 20,
+                yAnchor: 0.5,
+                xAnchor: 0.5,
+              });
+              overlay.setMap(mapInstanceRef.current);
+              myLocationOverlayRef.current = overlay;
+            },
+            () => alert("위치 정보를 가져올 수 없습니다.\n브라우저 위치 권한을 허용해 주세요.")
+          );
+        }}
+        title="현재위치로 이동"
+        style={{
+          position: "absolute",
+          bottom: 134,
+          right: 20,
+          zIndex: 10,
+          width: 42,
+          height: 42,
+          borderRadius: 10,
+          background: "rgba(35,35,35,0.97)",
+          border: "none",
+          color: "#7EC8E3",
+          fontSize: 18,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backdropFilter: "blur(6px)",
+          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+          transition: "background 0.2s, color 0.2s",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.25)"; e.currentTarget.style.color = "#fff"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(35,35,35,0.97)"; e.currentTarget.style.color = "#7EC8E3"; }}
+      >
+        ⊙
+      </button>
 
       {/* ── 줌 버튼 (우하단) ── */}
       <div style={zoomBtnGroupStyle}>
