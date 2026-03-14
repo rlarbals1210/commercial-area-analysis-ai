@@ -5,9 +5,16 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import CommercialData, StoreInfo, ScoreData
 
 
+DONG_REMAP = {
+    "신설동": "용신동",  # GeoJSON 경계명 → DB 행정동명
+}
+
 def normalize_dong(name: str) -> str:
-    """GeoJSON의 가운뎃점(·)을 DB의 마침표(.)로 정규화"""
-    return name.replace("\u00b7", ".") if name else name
+    """GeoJSON의 가운뎃점(·)을 DB의 마침표(.)로 정규화 + 경계 없는 행정동 재매핑"""
+    if not name:
+        return name
+    name = name.replace("\u00b7", ".")
+    return DONG_REMAP.get(name, name)
 
 
 def quarters(request):
