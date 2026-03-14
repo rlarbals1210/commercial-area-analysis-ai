@@ -220,17 +220,6 @@ async def main():
                     empty_streak = 0
                 else:
                     empty_streak += 1
-                    if empty_streak >= EMPTY_WARN:
-                        log.warning(f"  ⚠ 연속 {EMPTY_WARN}개 매칭 실패 — 차단 감지, 자동 재시작 준비...")
-                        # 버퍼 저장 후 CSV 정리하고 종료 (래퍼 스크립트가 재시작)
-                        if results:
-                            _df = pd.DataFrame(results)
-                            mode, header = ("a", False) if OUT_PATH.exists() else ("w", True)
-                            _df.to_csv(OUT_PATH, mode=mode, header=header, index=False, encoding="utf-8-sig")
-                            results = []
-                        _trim_failed_tail(OUT_PATH)
-                        await browser.close()
-                        sys.exit(BLOCK_EXIT)
                 if info["avg_price"] is not None:
                     total_priced += 1
                 results.append({
@@ -260,6 +249,11 @@ async def main():
                     "visit_purpose": "오류",
                 })
 
+            # 차단 감지: try 블록 바깥에서 처리하기 위해 break
+            if empty_streak >= EMPTY_WARN:
+                log.warning(f"  ⚠ 연속 {EMPTY_WARN}개 매칭 실패 — 차단 감지, 자동 재시작 준비...")
+                break
+
             # 10개마다 진행률 출력 (누적 기준)
             if seq % 10 == 0:
                 log.info(
@@ -284,6 +278,11 @@ async def main():
         _df = pd.DataFrame(results)
         mode, header = ("a", False) if OUT_PATH.exists() else ("w", True)
         _df.to_csv(OUT_PATH, mode=mode, header=header, index=False, encoding="utf-8-sig")
+
+    # 차단으로 중단된 경우 CSV 정리 후 exit 42 (래퍼가 재시작)
+    if empty_streak >= EMPTY_WARN:
+        _trim_failed_tail(OUT_PATH)
+        sys.exit(BLOCK_EXIT)
 
     log.info(f"\n완료! → {OUT_PATH}")
 
