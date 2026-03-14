@@ -5,6 +5,7 @@
 """
 
 import re
+import sys
 import asyncio
 import logging
 import urllib.parse
@@ -65,8 +66,23 @@ PURPOSE_MAP = {
     "친목":     ["친구", "모임", "브런치"],
 }
 
-BATCH_SIZE = 100
-DELAY_SEC  = 1.2
+BATCH_SIZE  = 100
+DELAY_SEC   = 1.2
+EMPTY_WARN  = 50   # 연속 매칭 실패 임계값
+BLOCK_EXIT  = 42   # 차단 감지 시 종료 코드 (래퍼 스크립트가 감지해 재시작)
+
+
+def _trim_failed_tail(path: Path) -> None:
+    """CSV 말미의 연속 매칭 실패 행(place_id=NaN)을 제거합니다."""
+    if not path.exists():
+        return
+    df = pd.read_csv(path, encoding="utf-8-sig")
+    last_valid = df["place_id"].last_valid_index()
+    if last_valid is None:
+        return
+    trimmed = df.iloc[: last_valid + 1]
+    trimmed.to_csv(path, index=False, encoding="utf-8-sig")
+    log.info(f"  → CSV 정리: {len(df)-len(trimmed):,}행 제거 ({len(trimmed):,}행 유지)")
 
 
 # ── 분류 함수 ─────────────────────────────────────────────────────
@@ -181,13 +197,12 @@ async def main():
         log.info("모든 데이터 수집 완료.")
         return
 
-    results        = []
-    errors         = 0
-    total          = len(df_store)
-    total_matched  = 0
-    total_priced   = 0
-    empty_streak   = 0  # 연속으로 매칭 실패한 횟수
-    EMPTY_WARN     = 50  # 연속 실패 경고 임계값
+    results       = []
+    errors        = 0
+    total         = len(df_store)
+    total_matched = 0
+    total_priced  = 0
+    empty_streak  = 0
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
@@ -205,10 +220,17 @@ async def main():
                     empty_streak = 0
                 else:
                     empty_streak += 1
-                    if empty_streak == EMPTY_WARN:
-                        log.warning(f"  ⚠ 연속 {EMPTY_WARN}개 매칭 실패 — 네이버 차단 가능성, 잠시 대기 중...")
-                        await asyncio.sleep(30)
-                        empty_streak = 0
+                    if empty_streak >= EMPTY_WARN:
+                        log.warning(f"  ⚠ 연속 {EMPTY_WARN}개 매칭 실패 — 차단 감지, 자동 재시작 준비...")
+                        # 버퍼 저장 후 CSV 정리하고 종료 (래퍼 스크립트가 재시작)
+                        if results:
+                            _df = pd.DataFrame(results)
+                            mode, header = ("a", False) if OUT_PATH.exists() else ("w", True)
+                            _df.to_csv(OUT_PATH, mode=mode, header=header, index=False, encoding="utf-8-sig")
+                            results = []
+                        _trim_failed_tail(OUT_PATH)
+                        await browser.close()
+                        sys.exit(BLOCK_EXIT)
                 if info["avg_price"] is not None:
                     total_priced += 1
                 results.append({
