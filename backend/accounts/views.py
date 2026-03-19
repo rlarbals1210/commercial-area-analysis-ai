@@ -8,4 +8,3 @@ def ping(request):
     return JsonResponse({"message": "hello world! "})
 
 # def login(request):
-#     return JsonResponse()
