@@ -87,6 +87,9 @@ export default function MapPage() {
   const [aiDong, setAiDong] = useState("");
   const [aiResults, setAiResults] = useState(null);
   const [showIndustryPicker, setShowIndustryPicker] = useState(false);
+  const [aiSubIndustry, setAiSubIndustry] = useState("");       // dong 모드: 소분류 입력값
+  const [aiSuggestions, setAiSuggestions] = useState([]);       // 자동완성 후보
+  const aiSuggestTimer = useRef(null);
 
   // ── 카카오 맵 animate:true를 220ms 간격으로 겹쳐 체이닝 → 부드러운 연속 줌 ──
   function smoothZoom(map, targetLevel, onDone) {
@@ -752,21 +755,62 @@ export default function MapPage() {
 
   // ── AI 추천 요청 ──
   function handleAiRecommend() {
-    if (aiMode === "dong" && !aiIndustry) return;
+    if (aiMode === "dong" && !aiSubIndustry.trim()) return;
     if (aiMode === "industry" && !aiDong.trim()) return;
     if (aiMode === "score" && (!aiDong.trim() || !aiIndustry)) return;
     setAiStep("loading");
+    setAiSuggestions([]);
 
-    // TODO: AI 추천 API 연결
-    // POST http://localhost:8000/api/ai/recommend/
-    // Body: { mode: aiMode, industry: aiIndustry, region: aiRegion, dong: aiDong }
-    // Response: { results: [...] }
-    setTimeout(() => {
-      if (aiMode === "dong") setAiResults(MOCK_DONG_RESULTS(aiIndustry));
-      else if (aiMode === "industry") setAiResults(MOCK_INDUSTRY_RESULTS(aiDong));
-      else if (aiMode === "score") setAiResults(MOCK_SCORE_RESULT(aiDong, aiIndustry));
-      setAiStep("result");
-    }, 1800);
+    const MIN_LOADING_MS = 1200;
+    const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+
+    if (aiMode === "dong") {
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiSubIndustry.trim())}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([data]) => {
+          if (data.error) { alert(data.error); setAiStep("form"); return; }
+          const enriched = data.results.map((r) => ({
+            ...r,
+            guName: polygonGroupsRef.current.find((g) => g.dongName === r.dongName)?.guName ?? "",
+            revenue: r.당월매출합,
+            stores: r.소분류_점포수,
+          }));
+          setAiResults(enriched);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+      return;
+    }
+
+    if (aiMode === "industry") {
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([data]) => {
+          if (data.error) { alert(data.error); setAiStep("form"); return; }
+          setAiResults(data.results);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+      return;
+    }
+
+    if (aiMode === "score") {
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([data]) => {
+          if (data.error) { alert(data.error); setAiStep("form"); return; }
+          setAiResults(data);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+      return;
+    }
   }
 
   // ── 구 패널에서 행정동 선택 → 줌인 + 선택 ──
@@ -807,6 +851,8 @@ export default function MapPage() {
     setAiRegion(region);
     setAiDong(dong);
     setAiResults(null);
+    setAiSubIndustry("");
+    setAiSuggestions([]);
     setMenuOpen(false);
     setSearchExpanded(false);
   }
@@ -822,10 +868,16 @@ export default function MapPage() {
     setMenuOpen(false);
     setSearchExpanded(false);
     setAiStep("loading");
-    setTimeout(() => {
-      setAiResults(MOCK_INDUSTRY_RESULTS(dongName));
-      setAiStep("result");
-    }, 1800);
+    Promise.all([
+      fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(dongName.trim())}`).then((r) => r.json()),
+      new Promise((res) => setTimeout(res, 1200)),
+    ])
+      .then(([data]) => {
+        if (data.error) { alert(data.error); setAiStep("form"); return; }
+        setAiResults(data.results);
+        setAiStep("result");
+      })
+      .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
   }
 
   // ── 검색어 변경 시 결과 필터링 ──
@@ -1754,7 +1806,63 @@ export default function MapPage() {
                   </button>
 
                   {/* 모드별 폼 */}
-                  {(aiMode === "dong" || aiMode === "score") && (
+                  {aiMode === "dong" && (
+                    <div style={{ marginBottom: 20, position: "relative" }}>
+                      <div style={aiSectionLabel}>
+                        <span style={aiRequiredBadge}>필수</span> 창업 업종 입력
+                      </div>
+                      <input
+                        value={aiSubIndustry}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setAiSubIndustry(v);
+                          setAiIndustry(v);
+                          clearTimeout(aiSuggestTimer.current);
+                          if (v.trim().length >= 1) {
+                            aiSuggestTimer.current = setTimeout(() => {
+                              fetch(`http://localhost:8000/api/suggest/industries/?q=${encodeURIComponent(v)}`)
+                                .then((r) => r.json())
+                                .then((d) => setAiSuggestions(d.suggestions || []))
+                                .catch(() => setAiSuggestions([]));
+                            }, 200);
+                          } else {
+                            setAiSuggestions([]);
+                          }
+                        }}
+                        placeholder="예: 세차장, 네일샵, 치킨전문점"
+                        style={{
+                          width: "100%", padding: "10px 14px", background: "#2E2E2E",
+                          border: "1.5px solid #4A4A4A", borderRadius: 10, color: "#E8E8E8",
+                          fontSize: 16, outline: "none", boxSizing: "border-box",
+                        }}
+                      />
+                      {aiSuggestions.length > 0 && (
+                        <div style={{
+                          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20,
+                          background: "#2A2A2A", border: "1px solid #444", borderRadius: 10,
+                          overflow: "hidden", marginTop: 4, boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+                        }}>
+                          {aiSuggestions.map((s) => (
+                            <button
+                              key={s}
+                              onClick={() => { setAiSubIndustry(s); setAiIndustry(s); setAiSuggestions([]); }}
+                              style={{
+                                display: "block", width: "100%", padding: "10px 14px", textAlign: "left",
+                                background: "none", border: "none", color: "#C8C8C8", fontSize: 15,
+                                cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.06)",
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.15)"; e.currentTarget.style.color = "#93B8EE"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#C8C8C8"; }}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {aiMode === "score" && (
                     <div style={{ marginBottom: 20 }}>
                       <div style={aiSectionLabel}>
                         <span style={aiRequiredBadge}>필수</span> 창업 업종 선택
@@ -1789,7 +1897,7 @@ export default function MapPage() {
 
                   {(() => {
                     const disabled =
-                      (aiMode === "dong" && !aiIndustry) ||
+                      (aiMode === "dong" && !aiSubIndustry.trim()) ||
                       (aiMode === "industry" && !aiDong.trim()) ||
                       (aiMode === "score" && (!aiDong.trim() || !aiIndustry));
                     return (
@@ -1830,7 +1938,7 @@ export default function MapPage() {
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                     <span style={{ fontSize: 15, color: "#9E9E9E" }}>
-                      {aiMode === "dong" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span>{aiRegion && <> · {aiRegion}</>} 추천 상권</>}
+                      {aiMode === "dong" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiSubIndustry}</span>{aiRegion && <> · {aiRegion}</>} 추천 상권</>}
                       {aiMode === "industry" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> 추천 업종</>}
                       {aiMode === "score" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> · <span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span> 적합도</>}
                     </span>
@@ -1990,10 +2098,16 @@ export default function MapPage() {
                     setAiMode("score");
                     setShowIndustryPicker(false);
                     setAiStep("loading");
-                    setTimeout(() => {
-                      setAiResults(MOCK_SCORE_RESULT(aiDong, cat));
-                      setAiStep("result");
-                    }, 1200);
+                    Promise.all([
+                      fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
+                      new Promise((res) => setTimeout(res, 1200)),
+                    ])
+                      .then(([data]) => {
+                        if (data.error) { alert(data.error); setAiStep("form"); return; }
+                        setAiResults(data);
+                        setAiStep("result");
+                      })
+                      .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
                   }}
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "transform 0.28s cubic-bezier(0.34,1.56,0.64,1), background 0.15s, color 0.15s" }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.15)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.35)"; }}
@@ -2512,65 +2626,6 @@ function getLargestRingCentroid(coordinates) {
   return calcCentroid(best);
 }
 
-// ── Mock AI 추천 데이터 (API 연결 전 임시 사용) ──
-// TODO: 실제 AI API 연결 시 아래 세 함수를 fetch로 교체
-
-function MOCK_DONG_RESULTS(industry) {
-  return [
-    { rank: 1, dongName: "역삼1동", guName: "강남구", score: 94,
-      reason: `${industry} 업종의 유동인구 대비 경쟁 점포 수가 적어 진입 여지가 큽니다. 30~40대 직장인 비율이 높아 안정적인 고객층이 예상됩니다.`,
-      tags: ["유동인구 多", "경쟁 낮음", "직장인 밀집"], revenue: 8_200_000_000, stores: 12, competition: "낮음" },
-    { rank: 2, dongName: "홍제3동", guName: "서대문구", score: 87,
-      reason: `${industry} 수요 대비 공급이 부족한 지역으로, 인근 대학교 유입 인구가 꾸준히 증가하는 추세입니다.`,
-      tags: ["수요 증가", "임대료 저렴", "대학가 인접"], revenue: 4_600_000_000, stores: 8, competition: "낮음" },
-    { rank: 3, dongName: "합정동", guName: "마포구", score: 81,
-      reason: `20~30대 유동인구가 많고 상권이 성장 중입니다. 다만 ${industry} 관련 기존 점포 수도 증가하는 추세라 차별화 전략이 필요합니다.`,
-      tags: ["젊은 유동인구", "상권 성장", "트렌디"], revenue: 6_100_000_000, stores: 21, competition: "중간" },
-    { rank: 4, dongName: "신림동", guName: "관악구", score: 73,
-      reason: `1~2인 가구 비율이 높고 ${industry} 수요가 꾸준합니다. 경쟁 강도가 높은 편이므로 가격 경쟁력 확보가 중요합니다.`,
-      tags: ["1인 가구 多", "수요 안정", "가격 민감"], revenue: 3_800_000_000, stores: 34, competition: "높음" },
-    { rank: 5, dongName: "상계1동", guName: "노원구", score: 68,
-      reason: `가족 단위 거주자가 많아 ${industry} 수요가 예측 가능합니다. 임대료가 상대적으로 낮아 초기 비용 부담이 적습니다.`,
-      tags: ["가족 단위", "임대료 저렴", "안정적 수요"], revenue: 2_900_000_000, stores: 19, competition: "중간" },
-  ];
-}
-
-function MOCK_INDUSTRY_RESULTS(dong) {
-  return [
-    { rank: 1, industry: "카페", category: "음료·디저트", score: 91,
-      reason: `${dong}은 유동인구 중 20~30대 비율이 높아 카페 수요가 안정적입니다. 인근 경쟁 카페 대비 공백 상권이 존재합니다.`,
-      tags: ["수요 안정", "공백 상권", "재방문율 높음"], revenue: 3_200_000_000, stores: 7, competition: "낮음" },
-    { rank: 2, industry: "음식점", category: "외식·식사", score: 85,
-      reason: `${dong} 직장인 점심 수요가 높습니다. 저녁 시간대 가족 단위 고객도 꾸준히 유입됩니다.`,
-      tags: ["점심 수요", "회전율 높음", "저녁 유동"], revenue: 5_800_000_000, stores: 18, competition: "중간" },
-    { rank: 3, industry: "미용실", category: "뷰티·미용", score: 78,
-      reason: `${dong} 반경 500m 내 미용실 수가 적어 접근성 면에서 유리합니다. 단골 고객 형성 가능성이 높습니다.`,
-      tags: ["경쟁 적음", "단골 형성", "접근성 우수"], revenue: 1_400_000_000, stores: 4, competition: "낮음" },
-    { rank: 4, industry: "편의점", category: "생활편의", score: 71,
-      reason: `${dong} 야간 유동인구가 꾸준하여 편의점 운영에 유리합니다. 단, 기존 대형 체인과의 경쟁을 고려해야 합니다.`,
-      tags: ["야간 수요", "24시간 운영", "안정 매출"], revenue: 2_100_000_000, stores: 11, competition: "중간" },
-    { rank: 5, industry: "헬스장", category: "스포츠·건강", score: 63,
-      reason: `${dong} 30~40대 직장인 거주 비율이 높아 건강 관심도가 높습니다. 초기 시설 투자 비용이 크므로 사전 검토가 필요합니다.`,
-      tags: ["건강 관심 高", "직장인 타겟", "초기 투자 필요"], revenue: 1_800_000_000, stores: 3, competition: "낮음" },
-  ];
-}
-
-function MOCK_SCORE_RESULT(dong, industry) {
-  return {
-    score: 82,
-    grade: "B+",
-    summary: `${dong}은 ${industry} 창업 시 평균 이상의 적합도를 보입니다. 유동인구와 매출 잠재력은 우수하나 경쟁 강도를 사전에 파악하고 진입하는 것을 권장합니다.`,
-    breakdown: [
-      { label: "매출 잠재력",  score: 88, max: 100 },
-      { label: "유동인구",     score: 85, max: 100 },
-      { label: "경쟁 강도",   score: 72, max: 100 },
-      { label: "임대료 수준", score: 78, max: 100 },
-      { label: "성장 추세",   score: 83, max: 100 },
-    ],
-    pros: ["유동인구 대비 동업종 점포 수 적정", "최근 3개월 매출 상승 추세", "20~40대 핵심 소비층 집중"],
-    cons: ["인근 대형 프랜차이즈 입점 예정", "임대료 전년 대비 8% 상승"],
-  };
-}
 
 function fmtRevenue(won) {
   if (!won) return "0원";

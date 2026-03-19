@@ -43,7 +43,9 @@ class CommercialData(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["행정동명"]),          # API 조회 속도
+            models.Index(fields=["행정동명"]),
+            models.Index(fields=["행정동명", "기준_년분기_코드"]),
+            models.Index(fields=["기준_년분기_코드"]),
             models.Index(fields=["행정동명", "통합카테고리"]),
         ]
 
@@ -82,4 +84,5 @@ class StoreInfo(models.Model):
         indexes = [
             models.Index(fields=["행정동명"]),
             models.Index(fields=["행정동명", "통합카테고리"]),
+            models.Index(fields=["행정동명", "기준_년분기_코드"]),
         ]

@@ -1,6 +1,6 @@
 import json
 from django.http import JsonResponse
-from django.db.models import Max, Sum
+from django.db.models import Count, Max, Sum
 from django.views.decorators.csrf import csrf_exempt
 from .models import CommercialData, StoreInfo, ScoreData
 
@@ -276,3 +276,449 @@ def store_list(request):
         qs.values("상호명", "통합카테고리", "상권업종소분류명", "도로명주소", "위도", "경도")[:limit]
     )
     return JsonResponse({"stores": stores, "total": total})
+
+
+def suggest_industries(request):
+    """소분류 업종명 자동완성 (GET, q=검색어)"""
+    q = request.GET.get("q", "").strip()
+    if not q:
+        return JsonResponse({"suggestions": []})
+
+    results = (
+        StoreInfo.objects
+        .filter(상권업종소분류명__icontains=q)
+        .values("상권업종소분류명")
+        .annotate(cnt=Count("id"))
+        .order_by("-cnt")[:10]
+    )
+    return JsonResponse({"suggestions": [r["상권업종소분류명"] for r in results]})
+
+
+def recommend_location(request):
+    """소분류 업종 입력 → 최적 창업 행정동 추천 (GET, 업종=소분류명)"""
+    소분류 = request.GET.get("업종", "").strip()
+    if not 소분류:
+        return JsonResponse({"error": "업종 파라미터가 필요합니다."}, status=400)
+
+    # 1. 소분류 → 통합카테고리 매핑 (StoreInfo 기반)
+    cat_rows = list(
+        StoreInfo.objects
+        .filter(상권업종소분류명__icontains=소분류)
+        .values("통합카테고리")
+        .annotate(cnt=Count("id"))
+        .order_by("-cnt")[:1]
+    )
+    if not cat_rows:
+        return JsonResponse({"error": f'"{소분류}"에 해당하는 업종을 찾을 수 없습니다.'}, status=404)
+    통합카테고리 = cat_rows[0]["통합카테고리"]
+
+    # 2. ScoreData: 통합카테고리 기반 AI 성장확률 (행정동별)
+    score_map = {
+        row["행정동명"]: row
+        for row in ScoreData.objects.filter(통합카테고리=통합카테고리).values(
+            "행정동명", "성장확률", "등급", "상위_퍼센트"
+        )
+    }
+
+    # 3. CommercialData: 최신 분기 지표 (행정동별)
+    latest_q = (
+        CommercialData.objects
+        .filter(통합카테고리=통합카테고리)
+        .aggregate(max=Max("기준_년분기_코드"))["max"]
+    )
+    if not latest_q:
+        return JsonResponse({"error": "분석 데이터가 없습니다."}, status=404)
+
+    commercial_map = {
+        row["행정동명"]: row
+        for row in CommercialData.objects.filter(
+            통합카테고리=통합카테고리,
+            기준_년분기_코드=latest_q,
+        ).values(
+            "행정동명", "당월매출합", "총유동인구", "업종_포화도",
+            "경쟁강도", "점포수", "행정동_전체점포수", "업종_점포당매출",
+        )
+    }
+
+    # 4. StoreInfo: 소분류 점포수 (행정동별) — 경쟁 밀도 계산용
+    subdiv_stores = {
+        row["행정동명"]: row["cnt"]
+        for row in StoreInfo.objects.filter(상권업종소분류명__icontains=소분류)
+        .values("행정동명")
+        .annotate(cnt=Count("id"))
+    }
+
+    # 5. 후보 행정동: ScoreData + CommercialData 교집합
+    candidate_dongs = set(score_map.keys()) & set(commercial_map.keys())
+    if not candidate_dongs:
+        return JsonResponse({"error": "추천할 수 있는 상권 데이터가 없습니다."}, status=404)
+
+    # 정규화 최대값
+    max_유동 = max((commercial_map[d]["총유동인구"] or 0) for d in candidate_dongs) or 1
+    max_소분류 = max(subdiv_stores.get(d, 0) for d in candidate_dongs) or 1
+    max_경쟁강도 = max((commercial_map[d]["경쟁강도"] or 0) for d in candidate_dongs) or 1
+
+    results = []
+    for dong in candidate_dongs:
+        c = commercial_map[dong]
+        s = score_map.get(dong, {})
+
+        성장확률 = s.get("성장확률") or 50.0
+        포화도 = c.get("업종_포화도") or 0.5
+        경쟁강도_raw = c.get("경쟁강도") or 0
+        경쟁강도_norm = 경쟁강도_raw / max_경쟁강도  # 0~1 정규화
+        유동인구 = c.get("총유동인구") or 0
+        소분류_점포수 = subdiv_stores.get(dong, 0)
+
+        # 소분류 경쟁 점수: 해당 소분류 점포가 적을수록 높음 (0~100)
+        소분류_경쟁점수 = max(0.0, (1 - 소분류_점포수 / max_소분류)) * 100
+        # 유동인구 점수: 많을수록 높음 (0~100)
+        유동인구_점수 = (유동인구 / max_유동) * 100
+        # 포화도 점수: 낮을수록 높음 (0~100)
+        포화도_점수 = max(0.0, 1 - 포화도) * 100
+
+        # 종합점수 = AI성장확률×40% + 소분류경쟁×30% + 유동인구×15% + 포화도×15%
+        composite = (
+            성장확률 * 0.40
+            + 소분류_경쟁점수 * 0.30
+            + 유동인구_점수 * 0.15
+            + 포화도_점수 * 0.15
+        )
+
+        results.append({
+            "dongName": dong,
+            "score": round(composite, 1),
+            "성장확률": round(성장확률, 1),
+            "등급": s.get("등급", "-"),
+            "소분류_점포수": 소분류_점포수,
+            "경쟁강도": round(경쟁강도_norm, 3),
+            "업종_포화도": round(포화도, 3),
+            "총유동인구": 유동인구,
+            "당월매출합": c.get("당월매출합") or 0,
+            "점포수": c.get("점포수") or 0,
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    top = results[:10]
+
+    for i, r in enumerate(top):
+        r["rank"] = i + 1
+        r["reason"] = _make_reason(r, 소분류)
+        r["tags"] = _make_tags(r)
+        r["competition"] = (
+            "낮음" if r["경쟁강도"] < 0.33 else
+            "중간" if r["경쟁강도"] < 0.66 else
+            "높음"
+        )
+
+    return JsonResponse({
+        "results": top,
+        "통합카테고리": 통합카테고리,
+        "소분류": 소분류,
+        "quarter": latest_q,
+    })
+
+
+def recommend_industry(request):
+    """행정동 입력 → 유망 업종 추천 (GET, dong 필수)"""
+    dong = normalize_dong(request.GET.get("dong", "").strip())
+    if not dong:
+        return JsonResponse({"error": "dong 파라미터가 필요합니다."}, status=400)
+
+    # ScoreData: 해당 행정동의 모든 업종 성장확률
+    score_map = {
+        row["통합카테고리"]: row
+        for row in ScoreData.objects.filter(행정동명=dong).values(
+            "통합카테고리", "성장확률", "등급", "상위_퍼센트"
+        )
+    }
+    if not score_map:
+        return JsonResponse({"error": "해당 행정동의 AI 점수 데이터가 없습니다."}, status=404)
+
+    # CommercialData: 최신 분기 해당 행정동 전 업종
+    latest_q = (
+        CommercialData.objects
+        .filter(행정동명=dong)
+        .aggregate(max=Max("기준_년분기_코드"))["max"]
+    )
+    if not latest_q:
+        return JsonResponse({"error": "상권 데이터가 없습니다."}, status=404)
+
+    commercial_map = {
+        row["통합카테고리"]: row
+        for row in CommercialData.objects.filter(행정동명=dong, 기준_년분기_코드=latest_q).values(
+            "통합카테고리", "당월매출합", "총유동인구", "업종_포화도", "경쟁강도", "점포수"
+        )
+    }
+
+    # 교집합 업종만 사용
+    categories = set(score_map.keys()) & set(commercial_map.keys())
+    if not categories:
+        return JsonResponse({"error": "추천할 수 있는 업종 데이터가 없습니다."}, status=404)
+
+    # 정규화 최대값
+    max_매출 = max((commercial_map[c]["당월매출합"] or 0) for c in categories) or 1
+    max_유동 = max((commercial_map[c]["총유동인구"] or 0) for c in categories) or 1
+    max_경쟁강도 = max((commercial_map[c]["경쟁강도"] or 0) for c in categories) or 1
+
+    results = []
+    for cat in categories:
+        c = commercial_map[cat]
+        s = score_map[cat]
+
+        성장확률 = s.get("성장확률") or 50.0
+        포화도 = c.get("업종_포화도") or 0.5
+        경쟁강도_raw = c.get("경쟁강도") or 0
+        경쟁강도_norm = 경쟁강도_raw / max_경쟁강도  # 0~1 정규화
+        유동인구 = c.get("총유동인구") or 0
+        매출 = c.get("당월매출합") or 0
+        점포수 = c.get("점포수") or 0
+
+        매출_점수 = (매출 / max_매출) * 100
+        유동인구_점수 = (유동인구 / max_유동) * 100
+        포화도_점수 = max(0.0, 1 - 포화도) * 100
+
+        composite = (
+            성장확률 * 0.40
+            + 매출_점수 * 0.30
+            + 유동인구_점수 * 0.15
+            + 포화도_점수 * 0.15
+        )
+
+        results.append({
+            "industry": cat,
+            "category": cat,
+            "score": round(composite, 1),
+            "성장확률": round(성장확률, 1),
+            "등급": s.get("등급", "-"),
+            "revenue": 매출,
+            "stores": 점포수,
+            "경쟁강도_norm": round(경쟁강도_norm, 3),
+            "업종_포화도": round(포화도, 3),
+            "총유동인구": 유동인구,
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    top = results[:5]
+
+    for i, r in enumerate(top):
+        r["rank"] = i + 1
+        r["reason"] = _make_industry_reason(r, dong)
+        r["tags"] = _make_industry_tags(r)
+        r["competition"] = (
+            "낮음" if r["경쟁강도_norm"] < 0.33 else
+            "중간" if r["경쟁강도_norm"] < 0.66 else
+            "높음"
+        )
+
+    return JsonResponse({"results": top, "dong": dong, "quarter": latest_q})
+
+
+def recommend_score(request):
+    """행정동+업종 적합도 점수 (GET, dong + category 필수)"""
+    dong = normalize_dong(request.GET.get("dong", "").strip())
+    category = request.GET.get("category", "").strip()
+    if not dong or not category:
+        return JsonResponse({"error": "dong, category 파라미터가 필요합니다."}, status=400)
+
+    score_obj = ScoreData.objects.filter(행정동명=dong, 통합카테고리=category).first()
+    if not score_obj:
+        return JsonResponse({"error": "AI 점수 데이터가 없습니다."}, status=404)
+
+    latest_q = (
+        CommercialData.objects
+        .filter(통합카테고리=category)
+        .aggregate(max=Max("기준_년분기_코드"))["max"]
+    )
+    c = CommercialData.objects.filter(행정동명=dong, 통합카테고리=category, 기준_년분기_코드=latest_q).first()
+    if not c:
+        return JsonResponse({"error": "상권 데이터가 없습니다."}, status=404)
+
+    # 같은 카테고리 전체 동 기준 정규화
+    all_rows = list(
+        CommercialData.objects.filter(통합카테고리=category, 기준_년분기_코드=latest_q)
+        .values("당월매출합", "총유동인구", "경쟁강도")
+    )
+    max_매출 = max((r["당월매출합"] or 0) for r in all_rows) or 1
+    max_유동 = max((r["총유동인구"] or 0) for r in all_rows) or 1
+    max_경쟁강도 = max((r["경쟁강도"] or 0) for r in all_rows) or 1
+
+    성장확률 = score_obj.성장확률 or 50.0
+    경쟁강도_norm = (c.경쟁강도 or 0) / max_경쟁강도  # 0~1 정규화
+    매출_점수 = round(((c.당월매출합 or 0) / max_매출) * 100, 1)
+    유동인구_점수 = round(((c.총유동인구 or 0) / max_유동) * 100, 1)
+    경쟁_점수 = round(max(0.0, 1 - 경쟁강도_norm) * 100, 1)
+    성장_점수 = round(성장확률, 1)
+
+    composite = round(
+        성장_점수 * 0.40
+        + 매출_점수 * 0.30
+        + 유동인구_점수 * 0.15
+        + 경쟁_점수 * 0.15,
+        1
+    )
+
+    grade = (
+        "A" if composite >= 75 else
+        "B" if composite >= 55 else
+        "C" if composite >= 35 else
+        "D"
+    )
+
+    pros, cons = _make_score_pros_cons({
+        "성장확률": 성장확률,
+        "경쟁강도_norm": 경쟁강도_norm,
+        "업종_포화도": c.업종_포화도 or 0.5,
+        "총유동인구": c.총유동인구 or 0,
+        "폐업_률_평균": c.폐업_률_평균,
+        "개업_율_평균": c.개업_율_평균,
+    })
+
+    summary = _make_score_summary(composite, dong, category, 경쟁강도_norm, 성장확률)
+
+    return JsonResponse({
+        "score": composite,
+        "grade": grade,
+        "summary": summary,
+        "breakdown": [
+            {"label": "성장 추세", "score": 성장_점수, "max": 100},
+            {"label": "매출 잠재력", "score": 매출_점수, "max": 100},
+            {"label": "유동인구", "score": 유동인구_점수, "max": 100},
+            {"label": "경쟁 강도", "score": 경쟁_점수, "max": 100},
+        ],
+        "pros": pros,
+        "cons": cons,
+        "dong": dong,
+        "category": category,
+        "quarter": latest_q,
+    })
+
+
+def _make_industry_reason(r: dict, dong: str) -> str:
+    parts = []
+    if r["성장확률"] >= 70:
+        parts.append(f"AI 성장 확률 {r['성장확률']}%로 높은 성장세가 예상됩니다")
+    elif r["성장확률"] >= 55:
+        parts.append(f"AI 성장 확률 {r['성장확률']}%로 양호한 성장세입니다")
+    if r["업종_포화도"] < 0.2:
+        parts.append("업종 포화도가 낮아 신규 진입 여지가 충분합니다")
+    elif r["업종_포화도"] < 0.4:
+        parts.append("업종 포화도가 적정 수준으로 안정적인 시장입니다")
+    if r["총유동인구"] >= 50000:
+        parts.append("유동인구가 풍부한 상권입니다")
+    elif r["총유동인구"] >= 20000:
+        parts.append("적정 수준의 유동인구가 확보된 지역입니다")
+    if r["경쟁강도_norm"] < 0.33:
+        parts.append("경쟁 강도가 낮아 안정적인 창업 환경입니다")
+    return ". ".join(parts) + "." if parts else f"{dong}에서 유망한 업종입니다."
+
+
+def _make_industry_tags(r: dict) -> list:
+    tags = []
+    if r["성장확률"] >= 70:
+        tags.append("성장 업종")
+    if r["경쟁강도_norm"] < 0.33:
+        tags.append("경쟁 낮음")
+    elif r["경쟁강도_norm"] >= 0.66:
+        tags.append("경쟁 높음")
+    if r["총유동인구"] >= 50000:
+        tags.append("유동인구 多")
+    if r["업종_포화도"] < 0.2:
+        tags.append("포화도 낮음")
+    if r["등급"] in ("A", "B"):
+        tags.append(f"AI 등급 {r['등급']}")
+    return tags[:4]
+
+
+def _make_score_summary(composite: float, dong: str, category: str, 경쟁강도: float, 성장확률: float) -> str:
+    if composite >= 75:
+        base = f"{dong}은 {category} 창업에 매우 적합한 지역입니다."
+    elif composite >= 55:
+        base = f"{dong}은 {category} 창업 시 평균 이상의 적합도를 보입니다."
+    elif composite >= 35:
+        base = f"{dong}은 {category} 창업에 보통 수준의 적합도를 보입니다."
+    else:
+        base = f"{dong}은 {category} 창업 시 신중한 검토가 필요합니다."
+
+    if 경쟁강도 >= 0.66:  # 경쟁강도_norm (0~1)
+        base += " 경쟁 강도가 높아 차별화 전략이 중요합니다."
+    elif 경쟁강도 < 0.33:
+        base += " 경쟁 강도가 낮아 안정적인 운영이 가능합니다."
+    if 성장확률 >= 65:
+        base += f" AI 성장 확률 {round(성장확률, 1)}%로 업종 전망이 밝습니다."
+    return base
+
+
+def _make_score_pros_cons(r: dict) -> tuple:
+    pros, cons = [], []
+    if r["성장확률"] >= 65:
+        pros.append(f"AI 성장 확률 {round(r['성장확률'], 1)}%로 업종 전망 우수")
+    else:
+        cons.append(f"AI 성장 확률 {round(r['성장확률'], 1)}%로 성장 가능성 주의 필요")
+    if r["경쟁강도_norm"] < 0.33:
+        pros.append("경쟁 강도 낮아 안정적 운영 가능")
+    elif r["경쟁강도_norm"] >= 0.66:
+        cons.append("경쟁 강도 높음 — 차별화 전략 필요")
+    if r["업종_포화도"] < 0.3:
+        pros.append("업종 포화도 낮아 신규 진입 적기")
+    elif r["업종_포화도"] >= 0.6:
+        cons.append("업종 포화도 높음 — 틈새 전략 필요")
+    if r["총유동인구"] >= 50000:
+        pros.append("풍부한 유동인구로 고객 확보 유리")
+    elif r["총유동인구"] < 10000:
+        cons.append("유동인구 적어 고정 고객 확보 중요")
+    # 폐업_률_평균, 개업_율_평균은 이미 % 단위 (예: 5.0 = 5%)
+    if r.get("폐업_률_평균") and r["폐업_률_평균"] >= 20:
+        cons.append(f"폐업률 {round(r['폐업_률_평균'], 1)}%로 주의 필요")
+    elif r.get("개업_율_평균") and r["개업_율_평균"] >= 15:
+        pros.append(f"개업률 {round(r['개업_율_평균'], 1)}%로 활발한 창업 시장")
+    return pros[:3], cons[:3]
+
+
+def _make_reason(r: dict, 소분류: str) -> str:
+    parts = []
+    if r["소분류_점포수"] == 0:
+        parts.append(f"현재 {소분류} 점포가 없는 블루오션 지역입니다")
+    elif r["소분류_점포수"] <= 2:
+        parts.append(f"{소분류} 경쟁 점포가 {r['소분류_점포수']}개로 매우 적습니다")
+    else:
+        parts.append(f"{소분류} 관련 점포가 {r['소분류_점포수']}개 영업 중입니다")
+
+    if r["성장확률"] >= 70:
+        parts.append(f"업종 성장 확률이 {r['성장확률']}%로 높습니다")
+    elif r["성장확률"] >= 55:
+        parts.append(f"업종 성장 확률이 {r['성장확률']}%로 양호합니다")
+
+    if r["총유동인구"] >= 50000:
+        parts.append("유동인구가 풍부한 상권입니다")
+    elif r["총유동인구"] >= 20000:
+        parts.append("적정 수준의 유동인구가 확보된 지역입니다")
+
+    if r["업종_포화도"] < 0.2:
+        parts.append("업종 포화도가 낮아 진입 여지가 충분합니다")
+
+    return ". ".join(parts) + "."
+
+
+def _make_tags(r: dict) -> list:
+    tags = []
+    if r["소분류_점포수"] == 0:
+        tags.append("블루오션")
+    elif r["경쟁강도"] < 0.33:
+        tags.append("경쟁 낮음")
+    elif r["경쟁강도"] >= 0.66:
+        tags.append("경쟁 높음")
+
+    if r["성장확률"] >= 70:
+        tags.append("성장 업종")
+
+    if r["총유동인구"] >= 50000:
+        tags.append("유동인구 多")
+
+    if r["업종_포화도"] < 0.2:
+        tags.append("포화도 낮음")
+
+    if r["등급"] in ("A", "B"):
+        tags.append(f"AI 등급 {r['등급']}")
+
+    return tags[:4]
