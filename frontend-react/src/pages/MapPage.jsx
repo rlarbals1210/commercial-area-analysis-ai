@@ -80,7 +80,7 @@ export default function MapPage() {
   // ── AI 추천 상태 ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
-  const [aiStep, setAiStep] = useState("mode"); // "mode" | "form" | "loading" | "result"
+  const [aiStep, setAiStep] = useState("mode"); // "mode" | "form" | "loading" | "result" | "spot_loading" | "spot"
   const [aiMode, setAiMode] = useState(null);   // "dong" | "industry" | "score"
   const [aiIndustry, setAiIndustry] = useState(null);
   const [aiRegion, setAiRegion] = useState(null);
@@ -90,6 +90,10 @@ export default function MapPage() {
   const [aiSubIndustry, setAiSubIndustry] = useState("");       // dong 모드: 소분류 입력값
   const [aiSuggestions, setAiSuggestions] = useState([]);       // 자동완성 후보
   const aiSuggestTimer = useRef(null);
+  const [spotDong, setSpotDong] = useState(null);               // 위치추천 선택된 행정동
+  const [spotCategory, setSpotCategory] = useState(null);       // 위치추천 통합카테고리
+  const [spotResults, setSpotResults] = useState(null);         // 위치추천 결과
+  const spotMarkersRef = useRef([]);                             // 지도 위 위치추천 마커
 
   // ── 카카오 맵 animate:true를 220ms 간격으로 겹쳐 체이닝 → 부드러운 연속 줌 ──
   function smoothZoom(map, targetLevel, onDone) {
@@ -753,6 +757,59 @@ export default function MapPage() {
   }, [selectedDong, dongData]);
 
 
+  // ── 위치추천 마커 제거 ──
+  function clearSpotMarkers() {
+    spotMarkersRef.current.forEach((m) => m.setMap(null));
+    spotMarkersRef.current = [];
+  }
+
+  // ── 행정동 클릭 → 위치 추천 요청 (dong 모드 결과에서) ──
+  function handleSpotRecommend(dongName, category) {
+    clearSpotMarkers();
+    setSpotDong(dongName);
+    setSpotCategory(category);
+    setAiStep("spot_loading");
+
+    fetch(`http://localhost:8000/api/recommend/spot/?dong=${encodeURIComponent(dongName)}&category=${encodeURIComponent(category)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) { alert(data.error); setAiStep("result"); return; }
+        setSpotResults(data.results);
+        setAiStep("spot");
+
+        const map = mapInstanceRef.current;
+        if (!map) return;
+
+        // 행정동으로 지도 이동 후 마커 표시
+        const positions = data.results.map((r) => new window.kakao.maps.LatLng(r.lat, r.lng));
+
+        data.results.forEach((r, idx) => {
+          const pos = new window.kakao.maps.LatLng(r.lat, r.lng);
+          const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+          const color = colors[idx] || "#6B7280";
+          const content = `
+            <div style="
+              background:${color};color:#fff;font-size:12px;font-weight:700;
+              border-radius:50%;width:28px;height:28px;
+              display:flex;align-items:center;justify-content:center;
+              box-shadow:0 2px 6px rgba(0,0,0,0.4);
+              border:2px solid #fff;cursor:pointer;
+            ">${idx + 1}</div>`;
+          const overlay = new window.kakao.maps.CustomOverlay({ position: pos, content, zIndex: 10 });
+          overlay.setMap(map);
+          spotMarkersRef.current.push(overlay);
+        });
+
+        // 마커들 중심으로 지도 이동
+        if (positions.length > 0) {
+          const bounds = new window.kakao.maps.LatLngBounds();
+          positions.forEach((p) => bounds.extend(p));
+          map.setBounds(bounds, 80);
+        }
+      })
+      .catch(() => { alert("위치 추천 요청에 실패했습니다."); setAiStep("result"); });
+  }
+
   // ── AI 추천 요청 ──
   function handleAiRecommend() {
     if (aiMode === "dong" && !aiSubIndustry.trim()) return;
@@ -776,6 +833,7 @@ export default function MapPage() {
             guName: polygonGroupsRef.current.find((g) => g.dongName === r.dongName)?.guName ?? "",
             revenue: r.당월매출합,
             stores: r.소분류_점포수,
+            통합카테고리: data.통합카테고리,
           }));
           setAiResults(enriched);
           setAiStep("result");
@@ -1768,9 +1826,11 @@ export default function MapPage() {
                   {aiStep === "mode" && "분석 방식을 선택하세요"}
                   {aiStep === "form" && AI_MODE_META[aiMode]?.desc}
                   {(aiStep === "loading" || aiStep === "result") && AI_MODE_META[aiMode]?.title}
+                  {aiStep === "spot_loading" && "위치 분석 중..."}
+                  {aiStep === "spot" && `${spotDong} 내 추천 위치`}
                 </div>
               </div>
-              <button onClick={() => setAiModalOpen(false)} style={closeBtnStyle}>✕</button>
+              <button onClick={() => { setAiModalOpen(false); clearSpotMarkers(); }} style={closeBtnStyle}>✕</button>
             </div>
 
             <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 16, flex: 1, overflowY: "auto" }}>
@@ -1991,7 +2051,9 @@ export default function MapPage() {
                             </div>
                             <div style={aiMiniStatStyle}>
                               <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 점포</div>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{item.stores}개</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: item.stores === 0 ? "#34D399" : "#E8E8E8" }}>
+                                {item.stores === 0 ? "블루오션" : `${item.stores}개`}
+                              </div>
                             </div>
                             <div style={aiMiniStatStyle}>
                               <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 강도</div>
@@ -2000,8 +2062,83 @@ export default function MapPage() {
                               </div>
                             </div>
                           </div>
+                          {aiMode === "dong" && (
+                            <button
+                              onClick={() => handleSpotRecommend(item.dongName, aiResults[0]?.통합카테고리 || item.통합카테고리 || item.category)}
+                              style={{ marginTop: 10, width: "100%", padding: "9px 0", borderRadius: 10, border: "none", background: "linear-gradient(90deg,#3B82F6,#6366F1)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+                            >
+                              📍 이 동네 안 위치 추천 보기
+                            </button>
+                          )}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* ── spot 로딩 ── */}
+                  {aiStep === "spot_loading" && (
+                    <div style={{ textAlign: "center", padding: "40px 0", color: "#9E9E9E" }}>
+                      <div style={{ fontSize: 32, marginBottom: 12 }}>📍</div>
+                      <div style={{ fontSize: 15 }}>{spotDong} 위치 분석 중...</div>
+                    </div>
+                  )}
+
+                  {/* ── spot 결과 ── */}
+                  {aiStep === "spot" && spotResults && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                        <button
+                          onClick={() => { setAiStep("result"); clearSpotMarkers(); }}
+                          style={{ background: "none", border: "none", color: "#9E9E9E", cursor: "pointer", fontSize: 22, lineHeight: 1 }}
+                        >←</button>
+                        <div style={{ fontSize: 13, color: "#9E9E9E" }}>
+                          {spotDong} · {spotCategory} · 추천 위치 {spotResults.length}곳
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                        지도에 번호 마커로 표시됩니다. 생존율·경쟁·보완업종 데이터 기반 점수입니다.
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {spotResults.map((r) => {
+                          const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+                          const color = colors[r.rank - 1] || "#6B7280";
+                          return (
+                            <div key={r.rank} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", border: `1.5px solid ${color}40` }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <div style={{ background: color, color: "#fff", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}>{r.rank}</div>
+                                  <div style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8" }}>추천 위치 {r.rank}순위</div>
+                                </div>
+                                <div style={{ textAlign: "right" }}>
+                                  <div style={{ fontSize: 22, fontWeight: 800, color: color }}>{r.score}</div>
+                                  <div style={{ fontSize: 11, color: "#9E9E9E" }}>입지점수</div>
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                                <div style={aiMiniStatStyle}>
+                                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 2 }}>2년 생존율</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: r.생존율 >= 60 ? "#34D399" : r.생존율 >= 40 ? "#FBBF24" : "#F87171" }}>{r.생존율}%</div>
+                                </div>
+                                <div style={aiMiniStatStyle}>
+                                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 2 }}>경쟁 수</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: r.경쟁밀도 <= 2 ? "#34D399" : r.경쟁밀도 <= 5 ? "#FBBF24" : "#F87171" }}>{r.경쟁밀도}개</div>
+                                </div>
+                                <div style={aiMiniStatStyle}>
+                                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 2 }}>시너지업종</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{r.보완밀도}개</div>
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {r.reasons.map((reason, i) => (
+                                  <div key={i} style={{ fontSize: 13, color: "#C8C8C8", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                                    <span style={{ color: color, flexShrink: 0 }}>•</span>{reason}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
