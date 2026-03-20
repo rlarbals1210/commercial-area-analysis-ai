@@ -78,7 +78,7 @@ export default function MapPage() {
   const [selectedScoreCat, setSelectedScoreCat] = useState(null); // 선택된 업종
 
   // ── AI 추천 상태 ──
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiStep, setAiStep] = useState("mode"); // "mode" | "form" | "loading" | "result" | "spot_loading" | "spot"
   const [aiMode, setAiMode] = useState(null);   // "dong" | "industry" | "score"
@@ -94,6 +94,15 @@ export default function MapPage() {
   const [spotCategory, setSpotCategory] = useState(null);       // 위치추천 통합카테고리
   const [spotResults, setSpotResults] = useState(null);         // 위치추천 결과
   const spotMarkersRef = useRef([]);                             // 지도 위 위치추천 마커
+
+  // 사이드바 안 검색 input에 포커스를 주기 위한 ref
+  const searchInputRef = useRef(null);
+
+  // ── 행정동/구 선택 시 사이드바 자동 열기 ──
+  useEffect(() => {
+    if (selectedDong || selectedGu) setSidebarCollapsed(false);
+  }, [selectedDong, selectedGu]);
+
 
   // ── 카카오 맵 animate:true를 220ms 간격으로 겹쳐 체이닝 → 부드러운 연속 줌 ──
   function smoothZoom(map, targetLevel, onDone) {
@@ -1002,18 +1011,24 @@ export default function MapPage() {
   }
 
   // ── 팝업 외부 클릭 시 닫기 ──
+  // selectedDong/Gu/Industry를 의존성에 포함해 stale closure 방지
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (!e.target.closest("[data-popup]")) {
+      // data-popup 영역과 data-sidebar 영역 밖을 클릭한 경우
+      if (!e.target.closest("[data-popup]") && !e.target.closest("[data-sidebar]")) {
         setMenuOpen(false);
         setSearchExpanded(false);
         setQuarterPopupOpen(false);
         setGuQuarterPopupOpen(false);
+        // 선택된 항목이 없으면 사이드바도 자동으로 닫기
+        if (!selectedDong && !selectedGu && !selectedIndustry) {
+          setSidebarCollapsed(true);
+        }
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [selectedDong, selectedGu, selectedIndustry]); // 선택 상태 바뀔 때마다 핸들러 갱신
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", fontFamily: "'Pretendard', sans-serif" }}>
@@ -1031,7 +1046,10 @@ export default function MapPage() {
       }} />
 
 
-      {/* ── 사이드바 접기 탭 (오른쪽 모서리, 항상 사이드바와 함께 이동) ── */}
+      {/* ── 사이드바 접기 탭 ──
+          위치는 원래대로 (top: 50%, left: 320).
+          사이드바가 열려 있고 + 선택된 항목이 있을 때만 표시
+          → 검색만 활성화된 빈 사이드바 상태에선 버튼 숨김 */}
       <button
         onClick={() => setSidebarCollapsed(true)}
         style={{
@@ -1039,9 +1057,10 @@ export default function MapPage() {
           top: "50%",
           left: 320,
           transform: sidebarCollapsed ? "translate(-320px, -50%)" : "translateY(-50%)",
-          transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.2s",
-          opacity: sidebarCollapsed ? 0 : 1,
-          pointerEvents: sidebarCollapsed ? "none" : "auto",
+          transition: "transform 0.22s ease-out, opacity 0.15s",
+          // 사이드바가 열려 있어도 선택된 항목이 없으면(검색만 활성화) 버튼 숨김
+          opacity: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry)) ? 1 : 0,
+          pointerEvents: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry)) ? "auto" : "none",
           zIndex: 15,
           width: 24,
           height: 56,
@@ -1060,8 +1079,37 @@ export default function MapPage() {
         title="사이드바 접기"
       >«</button>
 
-      {/* ── 사이드바 열기 탭 (접혔을 때만 표시) ── */}
-      {sidebarCollapsed && (
+      {/* ── 플로팅 검색창 (사이드바가 닫혀 있을 때 지도 위에 표시) ──
+          애니메이션 없이 즉시 전환 → 클릭 즉시 사라지고 사이드바 즉시 등장 */}
+      <div
+        data-sidebar
+        style={{
+          position: "absolute",
+          top: 16,
+          left: 16,
+          zIndex: 20,
+          display: "flex",
+          alignItems: "center",
+          ...searchBoxStyle,
+          width: 280,
+          cursor: "text",
+          // 애니메이션 없이 즉시 show/hide
+          opacity: sidebarCollapsed ? 1 : 0,
+          pointerEvents: sidebarCollapsed ? "auto" : "none",
+        }}
+        onClick={() => {
+          setSidebarCollapsed(false);
+          // 즉시 전환이므로 짧은 딜레이 후 포커스
+          setTimeout(() => searchInputRef.current?.focus(), 50);
+        }}
+      >
+        <span style={{ fontSize: 19, marginRight: 8, color: "#777" }}>🔍</span>
+        <span style={{ fontSize: 17, color: "#666" }}>지역명 · 업종 검색</span>
+      </div>
+
+      {/* ── 사이드바 열기 탭 (접혔을 때 + 표시할 데이터가 있을 때만 표시) ──
+          행정동/구/업종이 선택된 상태가 아니면 빈 사이드바가 열리므로 버튼을 숨김 */}
+      {sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && (
         <button
           onClick={() => setSidebarCollapsed(false)}
           style={{
@@ -1090,15 +1138,25 @@ export default function MapPage() {
       )}
 
       {/* ── 왼쪽 사이드바 ── */}
-      <div style={{
+      <div data-sidebar style={{
         ...leftSidebarStyle,
-        transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)",
-        transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)",
+        // 선택된 항목이 있을 때만 슬라이드 애니메이션 사용.
+        // 검색만 활성화된 경우(선택 없음)는 애니메이션 없이 즉시 표시/숨김.
+        transform: (sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry))
+          ? "translateX(-320px)" : "translateX(0)",
+        opacity: (sidebarCollapsed && !selectedDong && !selectedGu && !selectedIndustry) ? 0 : 1,
+        transition: (selectedDong || selectedGu || selectedIndustry)
+          ? "transform 0.22s ease-out, opacity 0.15s"
+          : "none",
         ...(!selectedDong && !selectedGu && !selectedIndustry && {
           background: "transparent",
           borderRight: "none",
           backdropFilter: "none",
           boxShadow: "none",
+          // overflow: hidden이 투명 상태에서 브라우저 합성 레이어를 만들어
+          // 지도 위에 검은 잔상이 생기는 문제 방지.
+          // 닫힐 때(sidebarCollapsed=true)는 슬라이드 애니메이션을 위해 hidden 유지.
+          overflow: sidebarCollapsed ? "hidden" : "visible",
         }),
       }}>
 
@@ -1106,17 +1164,18 @@ export default function MapPage() {
         <div data-popup style={{ position: "relative", padding: "16px 16px 10px", flexShrink: 0 }}>
           <div
             style={{ ...searchBoxStyle, width: "100%", boxSizing: "border-box", borderRadius: searchExpanded ? "12px 12px 0 0" : 12, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
-            onClick={() => setSearchExpanded(true)}
+            onClick={() => { setSearchExpanded(true); setSidebarCollapsed(false); }}
           >
             <span style={{ fontSize: 19, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSearchExpanded(true)}
+              onFocus={() => { setSearchExpanded(true); setSidebarCollapsed(false); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && searchResults.length > 0) { handleSelectResult(searchResults[0]); setSearchExpanded(false); }
                 if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }
               }}
+              ref={searchInputRef}
               placeholder="지역명 · 업종 검색"
               style={{ border: "none", outline: "none", fontSize: 17, width: "100%", background: "transparent", color: "#E8E8E8" }}
             />
@@ -1651,7 +1710,7 @@ export default function MapPage() {
         return (
           <div
             className="anim-panel-slide-in"
-            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)" }}
+            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
               <div>
@@ -1713,7 +1772,7 @@ export default function MapPage() {
         return (
           <div
             className="anim-panel-slide-in"
-            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)" }}
+            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
               <div>
@@ -1811,7 +1870,7 @@ export default function MapPage() {
             left: 320,
             width: 380,
             transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)",
-            transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)",
+            transition: "transform 0.22s ease-out",
             zIndex: 12,
           }}
         >
@@ -2213,7 +2272,7 @@ export default function MapPage() {
             left: 700,
             width: 300,
             transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)",
-            transition: "transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)",
+            transition: "transform 0.22s ease-out",
             zIndex: 13,
           }}
         >
@@ -2413,7 +2472,7 @@ const tooltipStyle = {
   fontSize: 16,
   pointerEvents: "none",
   minWidth: 180,
-  transition: "left 0.38s cubic-bezier(0.34, 1.4, 0.64, 1)",
+  transition: "left 0.22s ease-out",
 };
 
 const tooltipLabel = {
