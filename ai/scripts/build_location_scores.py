@@ -43,18 +43,26 @@ COMPLEMENT_MAP = {
     "애완동물":    ["카페", "편의점"],
 }
 
+# 소분류 레벨 오버라이드 (중분류 매핑보다 우선 적용)
+소분류_오버라이드 = {
+    "치킨":  "패스트푸드/치킨",
+    "버거":  "패스트푸드/치킨",
+}
+
 def load_quarter(quarter_name):
     path = STORE_DIR / quarter_name / "상가_서울.csv"
     if not path.exists():
         return None
     df = pd.read_csv(path, encoding="utf-8-sig", low_memory=False,
-                     usecols=["상가업소번호", "상권업종중분류명", "행정동명", "경도", "위도"])
+                     usecols=["상가업소번호", "상권업종중분류명", "상권업종소분류명", "행정동명", "경도", "위도"])
     df = df.dropna(subset=["경도", "위도", "상권업종중분류명"])
     df["경도"] = pd.to_numeric(df["경도"], errors="coerce")
     df["위도"] = pd.to_numeric(df["위도"], errors="coerce")
     df = df.dropna(subset=["경도", "위도"])
     # 서울 범위 필터
     df = df[(df["위도"].between(37.4, 37.7)) & (df["경도"].between(126.7, 127.2))]
+    # 소분류 오버라이드: 소분류명이 오버라이드 키에 해당하면 해당 통합카테고리 적용
+    df["통합카테고리"] = df["상권업종소분류명"].map(소분류_오버라이드).fillna(df["상권업종중분류명"].map(cat_dict))
     return df
 
 def snap_grid(df):
@@ -90,7 +98,6 @@ for i, q_start in enumerate(quarters):
     if df_start is None or df_end is None:
         continue
 
-    df_start["통합카테고리"] = df_start["상권업종중분류명"].map(cat_dict)
     df_start = df_start.dropna(subset=["통합카테고리"])
     df_start = snap_grid(df_start)
 
@@ -119,7 +126,6 @@ print(f"생존율 격자 수: {len(df_survival):,}")
 print("=" * 50)
 print("4. 경쟁/보완 밀도 계산 (최신 분기 기준)")
 df_latest = load_quarter(quarters[-1])
-df_latest["통합카테고리"] = df_latest["상권업종중분류명"].map(cat_dict)
 df_latest = df_latest.dropna(subset=["통합카테고리"])
 df_latest = snap_grid(df_latest)
 

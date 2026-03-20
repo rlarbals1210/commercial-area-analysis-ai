@@ -1,8 +1,29 @@
 import json
+import threading
+import pandas as pd
+from pathlib import Path
 from django.http import JsonResponse
 from django.db.models import Count, Max, Sum
 from django.views.decorators.csrf import csrf_exempt
 from .models import CommercialData, StoreInfo, ScoreData
+
+# location_scores.csv 메모리 캐시
+_location_df = None
+_location_lock = threading.Lock()
+
+def _get_location_df():
+    global _location_df
+    if _location_df is not None:
+        return _location_df
+    with _location_lock:
+        if _location_df is not None:
+            return _location_df
+        path = Path(__file__).resolve().parents[2] / "ai" / "outputs" / "location_scores.csv"
+        if path.exists():
+            _location_df = pd.read_csv(path, encoding="utf-8-sig")
+        else:
+            _location_df = pd.DataFrame()
+    return _location_df
 
 
 DONG_REMAP = {
@@ -291,7 +312,24 @@ def suggest_industries(request):
         .annotate(cnt=Count("id"))
         .order_by("-cnt")[:10]
     )
-    return JsonResponse({"suggestions": [r["상권업종소분류명"] for r in results]})
+    suggestions = [r["상권업종소분류명"] for r in results]
+
+    # 공백 없는 입력("기타한식음식점")으로 공백 있는 소분류("기타 한식 음식점") 매칭
+    if not suggestions:
+        from django.db.models.functions import Replace
+        from django.db.models import Value
+        q_no_space = q.replace(" ", "")
+        results2 = (
+            StoreInfo.objects
+            .annotate(소분류_no_space=Replace("상권업종소분류명", Value(" "), Value("")))
+            .filter(소분류_no_space__icontains=q_no_space)
+            .values("상권업종소분류명")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")[:10]
+        )
+        suggestions = [r["상권업종소분류명"] for r in results2]
+
+    return JsonResponse({"suggestions": suggestions})
 
 
 def recommend_location(request):
@@ -301,9 +339,21 @@ def recommend_location(request):
         return JsonResponse({"error": "업종 파라미터가 필요합니다."}, status=400)
 
     # 1. 소분류 → 통합카테고리 매핑 (StoreInfo 기반)
+    # 공백 없는 입력("기타한식음식점")도 공백 있는 소분류("기타 한식 음식점")와 매칭
+    from django.db.models.functions import Replace
+    from django.db.models import Value
+
+    def _store_filter(q):
+        qs = StoreInfo.objects.filter(상권업종소분류명__icontains=q)
+        if not qs.exists():
+            q_ns = q.replace(" ", "")
+            qs = (StoreInfo.objects
+                  .annotate(소분류_ns=Replace("상권업종소분류명", Value(" "), Value("")))
+                  .filter(소분류_ns__icontains=q_ns))
+        return qs
+
     cat_rows = list(
-        StoreInfo.objects
-        .filter(상권업종소분류명__icontains=소분류)
+        _store_filter(소분류)
         .values("통합카테고리")
         .annotate(cnt=Count("id"))
         .order_by("-cnt")[:1]
@@ -343,7 +393,7 @@ def recommend_location(request):
     # 4. StoreInfo: 소분류 점포수 (행정동별) — 경쟁 밀도 계산용
     subdiv_stores = {
         row["행정동명"]: row["cnt"]
-        for row in StoreInfo.objects.filter(상권업종소분류명__icontains=소분류)
+        for row in _store_filter(소분류)
         .values("행정동명")
         .annotate(cnt=Count("id"))
     }
@@ -722,3 +772,70 @@ def _make_tags(r: dict) -> list:
         tags.append(f"AI 등급 {r['등급']}")
 
     return tags[:4]
+
+
+def recommend_spot(request):
+    """행정동 + 업종 → 행정동 내 추천 위치 반환 (GET)
+    params: dong (행정동명), category (통합카테고리)
+    """
+    dong     = normalize_dong(request.GET.get("dong", "").strip())
+    category = request.GET.get("category", "").strip()
+    if not dong or not category:
+        return JsonResponse({"error": "dong, category 파라미터가 필요합니다."}, status=400)
+
+    df = _get_location_df()
+    if df.empty:
+        return JsonResponse({"error": "위치 점수 데이터가 없습니다. build_location_scores.py를 먼저 실행하세요."}, status=503)
+
+    filtered = df[(df["행정동명"] == dong) & (df["통합카테고리"] == category)]
+    if filtered.empty:
+        return JsonResponse({"error": f'"{dong}"의 "{category}" 위치 데이터가 없습니다.'}, status=404)
+
+    top = filtered.nlargest(5, "입지점수").copy()
+
+    results = []
+    for rank, (_, row) in enumerate(top.iterrows(), 1):
+        생존율  = row["생존율"]
+        경쟁밀도 = int(row["경쟁밀도"])
+        보완밀도 = int(row["보완밀도"])
+        활성도  = int(row["상권활성도"])
+        점수    = row["입지점수"]
+
+        # 추천 근거 생성
+        reasons = []
+        if 생존율 >= 60:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 높은 편")
+        elif 생존율 >= 40:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 평균 수준")
+        else:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 낮은 편")
+
+        if 경쟁밀도 <= 2:
+            reasons.append("반경 300m 내 동업종 경쟁 적음")
+        elif 경쟁밀도 <= 5:
+            reasons.append(f"반경 300m 내 동업종 {경쟁밀도}개")
+        else:
+            reasons.append(f"반경 300m 내 동업종 {경쟁밀도}개로 경쟁 많음")
+
+        if 보완밀도 >= 10:
+            reasons.append(f"시너지 업종 {보완밀도}개로 집객 유리")
+        elif 보완밀도 >= 5:
+            reasons.append(f"시너지 업종 {보완밀도}개 인근")
+
+        results.append({
+            "rank":       rank,
+            "lat":        round(row["grid_lat"], 4),
+            "lng":        round(row["grid_lng"], 4),
+            "score":      점수,
+            "생존율":     round(생존율, 1),
+            "경쟁밀도":   경쟁밀도,
+            "보완밀도":   보완밀도,
+            "상권활성도": 활성도,
+            "reasons":    reasons,
+        })
+
+    return JsonResponse({
+        "dong":     dong,
+        "category": category,
+        "results":  results,
+    })
