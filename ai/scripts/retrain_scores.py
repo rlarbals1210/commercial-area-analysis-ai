@@ -1,10 +1,9 @@
 """
-직장인구 피처 제거 후 모델 재학습 + scores.csv 재생성 스크립트
-- 10개 행정동(가양2동, 구로1동 등) 직장인구 NaN → 0 처리
-- feature_cols에서 직장인구 5개 피처 제거
+모델 재학습 + scores.csv 재생성 스크립트
+- 직장인구 5개 피처 제거
+- 저중요도 피처 제거 (41개 피처 유지)
 - LightGBM 재학습 → scores.csv 저장
 """
-import sys
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
@@ -56,9 +55,6 @@ df["유동_증감률"] = (
     df.groupby(["행정동코드", "통합카테고리"])["총유동인구"]
     .pct_change().replace([np.inf, -np.inf], 0).fillna(0)
 )
-df["유동_4분기평균"] = df.groupby(["행정동코드", "통합카테고리"])["총유동인구"].transform(
-    lambda x: x.rolling(4, min_periods=1).mean()
-)
 df["객단가_증감률"] = (
     df.groupby(["행정동코드", "통합카테고리"])["객단가"]
     .pct_change().replace([np.inf, -np.inf], 0).fillna(0)
@@ -66,9 +62,24 @@ df["객단가_증감률"] = (
 df["객단가_4분기평균"] = df.groupby(["행정동코드", "통합카테고리"])["객단가"].transform(
     lambda x: x.rolling(4, min_periods=1).mean()
 )
-df["연속_성장횟수"] = (
-    df.groupby(["행정동코드", "통합카테고리"])["매출_증감률"]
-    .transform(lambda x: (x > 0).rolling(3, min_periods=1).sum()).fillna(0)
+
+# 시간대별 유동인구 비율 피처
+총유동 = df["총유동인구"].replace(0, pd.NA)
+df["유동_아침비율"] = (df["시간대_06_11_유동"] / 총유동).fillna(0)
+df["유동_점심비율"] = (df["시간대_11_14_유동"] / 총유동).fillna(0)
+df["유동_저녁비율"] = (df["시간대_17_21_유동"] / 총유동).fillna(0)
+df["유동_심야비율"] = (df["시간대_21_24_유동"] / 총유동).fillna(0)
+
+# 매출건수 증감률
+df["매출건수_증감률"] = (
+    df.groupby(["행정동코드", "통합카테고리"])["당월매출건수"]
+    .pct_change().replace([np.inf, -np.inf], 0).fillna(0)
+)
+
+# 점포수 증감률
+df["점포수_증감률"] = (
+    df.groupby(["행정동코드", "통합카테고리"])["점포수"]
+    .pct_change().replace([np.inf, -np.inf], 0).fillna(0)
 )
 
 df["다음분기_매출"] = df.groupby(["행정동코드", "통합카테고리"])["당월매출합"].shift(-1)
@@ -81,30 +92,30 @@ labeled = df[df["다음분기_매출"].notna() & df["다음분기_증감률"].no
 print(f"학습 가능 샘플 수: {len(labeled):,}")
 
 print("\n" + "=" * 50)
-print("3. 학습 설정 (직장인구 피처 제거)")
+print("3. 학습 설정")
 le = LabelEncoder()
 labeled["업종_encoded"] = le.fit_transform(labeled["통합카테고리"])
 labeled["분기번호"] = labeled["기준_년분기_코드"] % 10
 
 feature_cols = [
-    "총유동인구", "유동_4분기평균", "유동_증감률",
+    "유동_증감률",
     "유동_20대비율", "유동_30대비율", "유동_40대비율", "유동_50대비율", "유동_여성비율",
-    "당월매출합", "매출_증감률", "매출_2분기평균", "매출_4분기평균", "매출_4분기std", "매출_모멘텀",
+    "매출_증감률", "매출_4분기std", "매출_모멘텀",
     "객단가", "객단가_4분기평균", "객단가_증감률",
     "매출_20대비율", "매출_30대비율", "매출_40대비율", "매출_50대비율", "매출_60대이상비율",
     "매출_남성비율", "매출_여성비율",
     "매출_주말비율", "매출_점심비율", "매출_저녁비율", "매출_심야비율",
     "업종_점포당매출", "업종_매출점유율", "경쟁강도", "업종_포화도",
     "MZ_차이", "유동대비매출", "점포대비유동",
-    "주거인구",  # 직장인구 5개 피처 제거
-    "개업_율_평균", "폐업_률_평균", "프랜차이즈_점포수",
+    "주거인구",
+    "유동_아침비율", "유동_점심비율", "유동_저녁비율", "유동_심야비율",
+    "매출건수_증감률", "점포수_증감률",
+    "개업_율_평균", "폐업_률_평균",
     "업종_encoded", "분기번호",
-    "연속_성장횟수",
 ]
-print(f"피처 수: {len(feature_cols)} (기존 47 → {len(feature_cols)})")
+print(f"피처 수: {len(feature_cols)}")
 
 quarters = sorted(labeled["기준_년분기_코드"].unique())
-all_quarters = sorted(df["기준_년분기_코드"].unique())
 train_mask = labeled["기준_년분기_코드"] < quarters[-1]
 test_mask  = labeled["기준_년분기_코드"] == quarters[-1]
 
@@ -163,7 +174,6 @@ print(f"저장 완료: {SCORES_PATH}")
 print(f"총 {len(scores_df):,}개 (행정동×업종)")
 print(f"포함된 행정동 수: {scores_df['행정동명'].nunique()}")
 
-# 이전에 없던 10개 행정동 확인
 missing = ['가양2동', '구로1동', '둔촌1동', '신정6동', '암사3동', '위례동', '일원본동', '잠실7동', '하계2동', '항동']
 found = [d for d in missing if d in scores_df['행정동명'].values]
 print(f"\n새로 추가된 행정동: {found}")
