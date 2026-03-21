@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from analysis.models import CommercialData
 
 # manage.py 기준 프로젝트 루트 → ai/outputs/final_dataset.csv
-CSV_PATH = Path(__file__).resolve().parents[4] / "ai" / "outputs" / "final_dataset.csv"
+CSV_PATH = Path(__file__).resolve().parents[4] / "backend" / "final_dataset.csv"
 BATCH_SIZE = 1000
 
 
@@ -50,6 +50,22 @@ class Command(BaseCommand):
                     당월매출합        = toint(row["당월매출합"]),
                     매출_20대합       = toint(row["매출_20대합"]),
                     행정동_전체매출   = toint(row["행정동_전체매출"]),
+
+                    남성매출합        = toint(row.get("남성매출합"), None),
+                    여성매출합        = toint(row.get("여성매출합"), None),
+                    매출_남성비율     = tofloat(row.get("매출_남성비율"), None),
+                    매출_여성비율     = tofloat(row.get("매출_여성비율"), None),
+
+                    주중매출합        = toint(row.get("주중매출합"), None),
+                    주말매출합        = toint(row.get("주말매출합"), None),
+                    매출_주말비율     = tofloat(row.get("매출_주말비율"), None),
+
+                    시간대_00_06_매출 = toint(row.get("시간대_00_06_매출"), None),
+                    시간대_06_11_매출 = toint(row.get("시간대_06_11_매출"), None),
+                    시간대_11_14_매출 = toint(row.get("시간대_11_14_매출"), None),
+                    시간대_14_17_매출 = toint(row.get("시간대_14_17_매출"), None),
+                    시간대_17_21_매출 = toint(row.get("시간대_17_21_매출"), None),
+                    시간대_21_24_매출 = toint(row.get("시간대_21_24_매출"), None),
 
                     총유동인구        = toint(row["총유동인구"]),
                     유동_20대         = toint(row["유동_20대"]),

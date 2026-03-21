@@ -11,6 +11,44 @@ class CommercialData(models.Model):
     매출_20대합         = models.BigIntegerField()
     행정동_전체매출     = models.BigIntegerField()
 
+    # 성별 매출
+    남성매출합          = models.BigIntegerField(null=True)
+    여성매출합          = models.BigIntegerField(null=True)
+    매출_남성비율       = models.FloatField(null=True)
+    매출_여성비율       = models.FloatField(null=True)
+
+    # 주중/주말 매출
+    주중매출합          = models.BigIntegerField(null=True)
+    주말매출합          = models.BigIntegerField(null=True)
+    매출_주말비율       = models.FloatField(null=True)
+
+    # 시간대별 매출
+    시간대_00_06_매출   = models.BigIntegerField(null=True)
+    시간대_06_11_매출   = models.BigIntegerField(null=True)
+    시간대_11_14_매출   = models.BigIntegerField(null=True)
+    시간대_14_17_매출   = models.BigIntegerField(null=True)
+    시간대_17_21_매출   = models.BigIntegerField(null=True)
+    시간대_21_24_매출   = models.BigIntegerField(null=True)
+
+    # 성별 매출
+    남성매출합          = models.BigIntegerField(null=True)
+    여성매출합          = models.BigIntegerField(null=True)
+    매출_남성비율       = models.FloatField(null=True)
+    매출_여성비율       = models.FloatField(null=True)
+
+    # 주중/주말 매출
+    주중매출합          = models.BigIntegerField(null=True)
+    주말매출합          = models.BigIntegerField(null=True)
+    매출_주말비율       = models.FloatField(null=True)
+
+    # 시간대별 매출
+    시간대_00_06_매출   = models.BigIntegerField(null=True)
+    시간대_06_11_매출   = models.BigIntegerField(null=True)
+    시간대_11_14_매출   = models.BigIntegerField(null=True)
+    시간대_14_17_매출   = models.BigIntegerField(null=True)
+    시간대_17_21_매출   = models.BigIntegerField(null=True)
+    시간대_21_24_매출   = models.BigIntegerField(null=True)
+
     # 유동인구
     총유동인구          = models.BigIntegerField()
     유동_20대           = models.BigIntegerField()
