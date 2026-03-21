@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from analysis.models import CommercialData
 
 # manage.py 기준 프로젝트 루트 → ai/outputs/final_dataset.csv
-CSV_PATH = Path(__file__).resolve().parents[4] / "backend" / "final_dataset.csv"
+CSV_PATH = Path(__file__).resolve().parents[4] / "data" / "processed_data" / "final_dataset.csv"
 BATCH_SIZE = 1000
 
 
