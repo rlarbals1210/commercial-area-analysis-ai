@@ -2290,7 +2290,7 @@ export default function MapPage() {
                             <div style={aiMiniStatStyle}>
                               <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 점포</div>
                               <div style={{ fontSize: 14, fontWeight: 600, color: item.stores === 0 ? "#34D399" : "#E8E8E8" }}>
-                                {item.stores === 0 ? "블루오션" : `${item.stores}개`}
+                                {item.stores === 0 ? "0개 (블루오션)" : `${item.stores}개`}
                               </div>
                             </div>
                             <div style={aiMiniStatStyle}>

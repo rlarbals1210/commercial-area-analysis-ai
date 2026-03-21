@@ -13,7 +13,7 @@ from pathlib import Path
 
 print("=" * 50)
 print("1. 데이터 로드")
-df = pd.read_csv("../outputs/final_dataset.csv")
+df = pd.read_csv("../../data/processed_data/final_dataset.csv")
 
 # 직장인구 NaN → 0 (10개 행정동 직장인구 데이터 미집계)
 직장인구_cols = [
