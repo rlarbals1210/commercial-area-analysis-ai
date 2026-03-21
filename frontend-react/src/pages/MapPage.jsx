@@ -13,9 +13,10 @@ const REGIONS = [
 // GeoJSON은 중점(·) 사용, 데이터셋은 마침표(.) 사용 → API 호출 시 정규화
 const normalizeDongName = (name) => name.replace(/·/g, ".");
 
-const POLYGON_DEFAULT  = { fillColor: "#9EC8F0", fillOpacity: 0.15, strokeColor: "#6B9FD4", strokeOpacity: 0.8 };
-const POLYGON_HOVER    = { fillColor: "#3B82F6", fillOpacity: 0.45, strokeColor: "#1D4ED8", strokeOpacity: 1 };
-const POLYGON_SELECTED = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColor: "#1D4ED8", strokeOpacity: 1 };
+const POLYGON_DEFAULT    = { fillColor: "#9EC8F0", fillOpacity: 0.15, strokeColor: "#6B9FD4", strokeOpacity: 0.8, strokeWeight: 1 };
+const POLYGON_HOVER      = { fillColor: "#3B82F6", fillOpacity: 0.45, strokeColor: "#1D4ED8", strokeOpacity: 1,  strokeWeight: 1 };
+const POLYGON_SELECTED   = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColor: "#1D4ED8", strokeOpacity: 1,  strokeWeight: 1 };
+const POLYGON_GU_CONTEXT = { fillColor: "#38BDF8", fillOpacity: 0.22, strokeColor: "#0EA5E9", strokeOpacity: 0.6, strokeWeight: 1.5 };
 
 
 export default function MapPage() {
@@ -27,7 +28,10 @@ export default function MapPage() {
   const dongLabelsRef = useRef([]);       // 행정동 라벨
   const guLabelsRef = useRef([]);         // 구 라벨
   const selectedGroupRef = useRef(null);
-  const selectedGuGroupRef = useRef(null); // 선택된 구 폴리곤
+  const selectedGuGroupRef = useRef(null);  // 선택된 구 폴리곤
+  const contextGuGroupRef = useRef(null);   // 동 선택 시 부모 구 컨텍스트 폴리곤
+  const hoveredDongGroupRef = useRef(null); // 현재 호버 중인 동 (mouseout 누락 방지용)
+  const hoveredGuGroupRef = useRef(null);   // 현재 호버 중인 구 (mouseout 누락 방지용)
   const guToDongsRef = useRef({});         // { 구이름: [행정동이름, ...] }
   const storeMarkersRef = useRef([]);         // 개별 상가 마커 (CustomOverlay)
   const allStoresRef = useRef([]);            // fetch된 전체 상가 (클라이언트 필터링용)
@@ -56,6 +60,7 @@ export default function MapPage() {
   const [dongData, setDongData] = useState(null);          // API 응답 전체
   const [dongLoading, setDongLoading] = useState(false);  // 로딩 상태
   const [rankModalOpen, setRankModalOpen] = useState(false); // 전체 보기 모달
+  const [dongStatsOpen, setDongStatsOpen] = useState(false); // 상세 통계 패널
   const [rankType, setRankType] = useState(null); // "revenue" | "stores"
   const [availableQuarters, setAvailableQuarters] = useState([]); // 선택 가능한 분기 목록
   const [selectedQuarter, setSelectedQuarter] = useState(null);   // 선택된 분기 코드 (null=최신)
@@ -178,9 +183,11 @@ export default function MapPage() {
     );
     guPolygonGroupsRef.current.forEach(({ guName, polygons }) => {
       const isSelected = selectedGuGroupRef.current?.guName === guName;
+      const isContext  = contextGuGroupRef.current?.guName === guName;
       polygons.forEach((p) => {
-        p.setMap(guMode || isSelected ? map : null);
+        p.setMap(guMode || isSelected || isContext ? map : null);
         if (!guMode && isSelected) p.setOptions(POLYGON_SELECTED);
+        else if (!guMode && isContext) p.setOptions(POLYGON_GU_CONTEXT);
       });
     });
     dongLabelsRef.current.forEach((label) => label.setMap(guMode ? null : map));
@@ -211,11 +218,22 @@ export default function MapPage() {
 
       polygons.forEach((polygon) => {
         kakao.maps.event.addListener(polygon, "mouseover", () => {
+          // 이전 호버 동이 mouseout 없이 남아있으면 강제 리셋
+          const prev = hoveredDongGroupRef.current;
+          if (prev && prev.dongName !== dongName) {
+            const wasSelected = selectedGroupRef.current?.dongName === prev.dongName;
+            const wasContext  = contextGuGroupRef.current?.guName === prev.guName;
+            prev.polygons.forEach((p) => p.setOptions(
+              wasSelected ? POLYGON_SELECTED : wasContext ? POLYGON_GU_CONTEXT : POLYGON_DEFAULT
+            ));
+          }
+          hoveredDongGroupRef.current = { dongName, guName, polygons };
           if (selectedGroupRef.current?.dongName !== dongName)
             polygons.forEach((p) => p.setOptions(POLYGON_HOVER));
           setHoveredDong({ dongName, guName });
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
+          hoveredDongGroupRef.current = null;
           if (selectedGroupRef.current?.dongName !== dongName)
             polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
           setHoveredDong(null);
@@ -225,10 +243,21 @@ export default function MapPage() {
             selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
           polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
           selectedGroupRef.current = { dongName, polygons };
-          // 구 패널 닫기
+          // 구 선택 해제 + 컨텍스트 구 표시
           if (selectedGuGroupRef.current) {
             selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
             selectedGuGroupRef.current = null;
+          }
+          if (contextGuGroupRef.current && contextGuGroupRef.current.guName !== guName) {
+            contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+            contextGuGroupRef.current = null;
+          }
+          if (!contextGuGroupRef.current) {
+            const guGroup = guPolygonGroupsRef.current.find((g) => g.guName === guName);
+            if (guGroup) {
+              guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_CONTEXT));
+              contextGuGroupRef.current = { guName, polygons: guGroup.polygons };
+            }
           }
           setSelectedGu(null);
 
@@ -291,19 +320,37 @@ export default function MapPage() {
 
       polygons.forEach((polygon) => {
         kakao.maps.event.addListener(polygon, "mouseover", () => {
+          // 이전 호버 구가 mouseout 없이 남아있으면 강제 리셋
+          const prev = hoveredGuGroupRef.current;
+          if (prev && prev.guName !== guName) {
+            const wasSelected = selectedGuGroupRef.current?.guName === prev.guName;
+            const wasContext  = contextGuGroupRef.current?.guName === prev.guName;
+            prev.polygons.forEach((p) => p.setOptions(
+              wasSelected ? POLYGON_SELECTED : wasContext ? POLYGON_GU_CONTEXT : POLYGON_DEFAULT
+            ));
+          }
+          hoveredGuGroupRef.current = { guName, polygons };
           polygons.forEach((p) => p.setOptions(POLYGON_HOVER));
           setHoveredDong({ dongName: null, guName });
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
-          // 선택된 구는 DEFAULT로 리셋하지 않고 SELECTED 유지
+          hoveredGuGroupRef.current = null;
           const isSelected = selectedGuGroupRef.current?.guName === guName;
-          polygons.forEach((p) => p.setOptions(isSelected ? POLYGON_SELECTED : POLYGON_DEFAULT));
+          const isContext  = contextGuGroupRef.current?.guName === guName;
+          polygons.forEach((p) => p.setOptions(
+            isSelected ? POLYGON_SELECTED : isContext ? POLYGON_GU_CONTEXT : POLYGON_DEFAULT
+          ));
           setHoveredDong(null);
         });
         kakao.maps.event.addListener(polygon, "click", () => {
           // 이전 선택 구 폴리곤 초기화
           if (selectedGuGroupRef.current)
             selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+          // 컨텍스트 구 초기화
+          if (contextGuGroupRef.current) {
+            contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+            contextGuGroupRef.current = null;
+          }
           polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
           selectedGuGroupRef.current = { guName, polygons };
           setSelectedGu(guName);
@@ -611,6 +658,7 @@ export default function MapPage() {
   useEffect(() => {
     if (!selectedDong) return;
     setDongData(null);
+    setDongStatsOpen(false);
     setDongLoading(true);
     const url = selectedQuarter
       ? `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&quarter=${selectedQuarter}`
@@ -890,10 +938,21 @@ export default function MapPage() {
     );
     if (!group) return;
 
-    // 구 폴리곤 초기화
+    // 구 폴리곤 초기화 → 컨텍스트 구로 전환
     if (selectedGuGroupRef.current) {
       selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
       selectedGuGroupRef.current = null;
+    }
+    if (contextGuGroupRef.current && contextGuGroupRef.current.guName !== group.guName) {
+      contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+      contextGuGroupRef.current = null;
+    }
+    if (!contextGuGroupRef.current) {
+      const guGroup = guPolygonGroupsRef.current.find((g) => g.guName === group.guName);
+      if (guGroup) {
+        guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_CONTEXT));
+        contextGuGroupRef.current = { guName: group.guName, polygons: guGroup.polygons };
+      }
     }
     // 이전 동 폴리곤 초기화
     if (selectedGroupRef.current) {
@@ -1005,6 +1064,17 @@ export default function MapPage() {
         selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
         selectedGuGroupRef.current = null;
       }
+      if (contextGuGroupRef.current && contextGuGroupRef.current.guName !== guName) {
+        contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+        contextGuGroupRef.current = null;
+      }
+      if (!contextGuGroupRef.current) {
+        const guGroup = guPolygonGroupsRef.current.find((g) => g.guName === guName);
+        if (guGroup) {
+          guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_CONTEXT));
+          contextGuGroupRef.current = { guName, polygons: guGroup.polygons };
+        }
+      }
       setSelectedGu(null);
       setSelectedDong({ dongName, guName });
     }
@@ -1051,13 +1121,13 @@ export default function MapPage() {
           사이드바가 열려 있고 + 선택된 항목이 있을 때만 표시
           → 검색만 활성화된 빈 사이드바 상태에선 버튼 숨김 */}
       <button
-        onClick={() => setSidebarCollapsed(true)}
+        onClick={() => { setSidebarCollapsed(true); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
         style={{
           position: "absolute",
           top: "50%",
-          left: 320,
+          left: (rankModalOpen || guRankModalOpen || dongStatsOpen) ? 660 : 320,
           transform: sidebarCollapsed ? "translate(-320px, -50%)" : "translateY(-50%)",
-          transition: "transform 0.22s ease-out, opacity 0.15s",
+          transition: "transform 0.22s ease-out, opacity 0.15s, left 0.22s ease-out",
           // 사이드바가 열려 있어도 선택된 항목이 없으면(검색만 활성화) 버튼 숨김
           opacity: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry)) ? 1 : 0,
           pointerEvents: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry)) ? "auto" : "none",
@@ -1561,6 +1631,12 @@ export default function MapPage() {
 
         {/* 하단 고정: 버튼 영역 (선택된 항목 있을 때만 표시) */}
         <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, display: (selectedDong || selectedGu) ? "flex" : "none", flexDirection: "column", gap: 8 }}>
+          {selectedDong && (
+            <button
+              style={{ width: "100%", height: 42, background: dongStatsOpen ? "rgba(56,189,248,0.2)" : "rgba(56,189,248,0.08)", color: "#38BDF8", border: `1px solid ${dongStatsOpen ? "rgba(56,189,248,0.6)" : "rgba(56,189,248,0.25)"}`, borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "background 0.2s, border-color 0.2s" }}
+              onClick={() => { setDongStatsOpen((v) => !v); setRankModalOpen(false); }}
+            >상세 통계 {dongStatsOpen ? "↑" : "→"}</button>
+          )}
           {selectedGu && (
             <button
               style={{ width: "100%", height: 42, background: "rgba(16,185,129,0.15)", color: "#34D399", border: "1px solid rgba(16,185,129,0.35)", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, border-color 0.2s, color 0.2s" }}
@@ -1635,7 +1711,7 @@ export default function MapPage() {
         style={{
           position: "absolute",
           bottom: 134,
-          right: 20,
+          right: aiModalOpen ? 400 : 20,
           zIndex: 10,
           width: 42,
           height: 42,
@@ -1650,7 +1726,7 @@ export default function MapPage() {
           justifyContent: "center",
           backdropFilter: "blur(6px)",
           boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
-          transition: "background 0.2s, color 0.2s",
+          transition: "right 0.22s ease-out, background 0.2s, color 0.2s",
         }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.25)"; e.currentTarget.style.color = "#fff"; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(35,35,35,0.97)"; e.currentTarget.style.color = "#7EC8E3"; }}
@@ -1659,7 +1735,7 @@ export default function MapPage() {
       </button>
 
       {/* ── 줌 버튼 (우하단) ── */}
-      <div style={zoomBtnGroupStyle}>
+      <div style={{ ...zoomBtnGroupStyle, right: aiModalOpen ? 400 : 20, transition: "right 0.22s ease-out" }}>
         <button
           style={zoomBtnStyle}
           onClick={() => {
@@ -1861,16 +1937,119 @@ export default function MapPage() {
         );
       })()}
 
+      {/* ── 상세 통계 패널 ── */}
+      {dongStatsOpen && dongData && (() => {
+        const 성별 = dongData.성별 || {};
+        const 주중주말 = dongData.주중주말 || {};
+        const 시간대 = dongData.시간대 || {};
+
+        const 성별합 = (성별.남성 || 0) + (성별.여성 || 0);
+        const 남성비율 = 성별합 > 0 ? Math.round((성별.남성 / 성별합) * 100) : 50;
+        const 여성비율 = 100 - 남성비율;
+
+
+        const 시간대목록 = [
+          { label: "새벽\n00~06", value: 시간대["00~06"] || 0 },
+          { label: "아침\n06~11", value: 시간대["06~11"] || 0 },
+          { label: "점심\n11~14", value: 시간대["11~14"] || 0 },
+          { label: "오후\n14~17", value: 시간대["14~17"] || 0 },
+          { label: "저녁\n17~21", value: 시간대["17~21"] || 0 },
+          { label: "심야\n21~24", value: 시간대["21~24"] || 0 },
+        ];
+        const 시간대최대 = Math.max(...시간대목록.map((t) => t.value), 1);
+        const fmtEok = (v) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : v >= 10_000 ? `${Math.round(v / 10_000)}만` : `${v}`;
+
+        return (
+          <div
+            className="anim-panel-slide-in"
+            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out", overflowY: "auto" }}
+          >
+            {/* 헤더 */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong?.guName}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong?.dongName} 상세 통계</div>
+              </div>
+              <button onClick={() => setDongStatsOpen(false)} style={closeBtnStyle}>✕</button>
+            </div>
+
+            {/* 성별 매출 */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>성별 매출 비율</div>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", height: 28 }}>
+                <div style={{ width: `${남성비율}%`, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", transition: "width 0.4s" }}>
+                  {남성비율 > 10 ? `남 ${남성비율}%` : ""}
+                </div>
+                <div style={{ width: `${여성비율}%`, background: "#EC4899", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", transition: "width 0.4s" }}>
+                  {여성비율 > 10 ? `여 ${여성비율}%` : ""}
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                <span style={{ fontSize: 12, color: "#6B9FE4" }}>남성 {fmtEok(성별.남성 || 0)}</span>
+                <span style={{ fontSize: 12, color: "#EC4899" }}>여성 {fmtEok(성별.여성 || 0)}</span>
+              </div>
+            </div>
+
+            {/* 주중/주말 매출 */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>주중 / 주말 매출</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { label: "주중 (월~금)", value: 주중주말.주중 || 0, color: "#3B82F6" },
+                  { label: "주말 (토~일)", value: 주중주말.주말 || 0, color: "#F59E0B" },
+                ].map(({ label, value, color }) => {
+                  const max = Math.max(주중주말.주중 || 0, 주중주말.주말 || 0, 1);
+                  const ratio = Math.round((value / max) * 100);
+                  return (
+                    <div key={label}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, color: "#C0C0C0" }}>{label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color }}>{fmtEok(value)}</span>
+                      </div>
+                      <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${ratio}%`, background: color, borderRadius: 4, transition: "width 0.4s" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 시간대별 매출 */}
+            <div>
+              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 12 }}>시간대별 매출</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 120 }}>
+                {시간대목록.map(({ label, value }) => {
+                  const heightPct = Math.round((value / 시간대최대) * 100);
+                  const isTop = value === 시간대최대;
+                  return (
+                    <div key={label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <div style={{ fontSize: 10, color: isTop ? "#38BDF8" : "#9E9E9E", fontWeight: isTop ? 700 : 400 }}>{fmtEok(value)}</div>
+                      <div style={{ width: "100%", height: 80, display: "flex", alignItems: "flex-end" }}>
+                        <div style={{ width: "100%", height: `${heightPct}%`, background: isTop ? "#38BDF8" : "rgba(59,130,246,0.45)", borderRadius: "4px 4px 0 0", transition: "height 0.4s" }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: "#9E9E9E", textAlign: "center", whiteSpace: "pre-line", lineHeight: 1.3 }}>{label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── AI 추천 사이드 패널 ── */}
+      {/* 사이드바 상태와 무관하게 항상 오른쪽에 고정 */}
       {aiModalOpen && (
         <div
-          className="anim-panel-slide-in"
+          className="anim-panel-slide-in-right"
           style={{
             ...secondPanelStyle,
-            left: 320,
+            left: "auto",   // secondPanelStyle의 left: 320 덮어쓰기
+            right: 0,       // 화면 오른쪽에 고정
             width: 380,
-            transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)",
-            transition: "transform 0.22s ease-out",
+            borderRight: "none",
+            borderLeft: "1px solid rgba(255,255,255,0.07)",
             zIndex: 12,
           }}
         >
@@ -2264,15 +2443,16 @@ export default function MapPage() {
 
 
       {/* ── 업종 선택 사이드 패널 ── */}
+      {/* AI 패널(380px) 바로 왼쪽에 붙도록 right: 380 */}
       {aiModalOpen && showIndustryPicker && (
         <div
-          className="anim-panel-slide-in"
+          className="anim-panel-slide-in-right"
           style={{
             ...secondPanelStyle,
-            left: 700,
+            left: "auto",
+            right: 380,     // AI 패널 왼쪽에 붙음
             width: 300,
-            transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)",
-            transition: "transform 0.22s ease-out",
+            borderLeft: "1px solid rgba(255,255,255,0.07)",
             zIndex: 13,
           }}
         >
@@ -2319,7 +2499,8 @@ export default function MapPage() {
       )}
 
       {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
-      <div style={{ position: "absolute", top: 20, right: 20, display: "flex", gap: 10, zIndex: 10 }}>
+      {/* AI 패널(380px)이 열리면 버튼들을 왼쪽으로 밀어서 가려지지 않게 함 */}
+      <div style={{ position: "absolute", top: 20, right: aiModalOpen ? 400 : 20, display: "flex", gap: 10, zIndex: 10, transition: "right 0.22s ease-out" }}>
 
         {/* AI 추천 버튼 */}
         <button onClick={openAiModal} style={aiBtnStyle}>
