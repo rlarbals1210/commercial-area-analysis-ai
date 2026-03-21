@@ -1431,7 +1431,7 @@ export default function MapPage() {
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
                         <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 매출 TOP 6</div>
-                        <button onClick={() => { if (rankModalOpen && rankType === "revenue") { setRankModalOpen(false); } else { setRankType("revenue"); setRankModalOpen(true); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "revenue" ? "접기 ↑" : "전체 보기 →"}</button>
+                        <button onClick={() => { if (rankModalOpen && rankType === "revenue") { setRankModalOpen(false); } else { setRankType("revenue"); setRankModalOpen(true); setDongStatsOpen(false); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "revenue" ? "접기 ↑" : "전체 보기 →"}</button>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
                         {top6Rev.map((item) => (
@@ -1448,7 +1448,7 @@ export default function MapPage() {
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
                         <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 상가 수 TOP 6</div>
-                        <button onClick={() => { if (rankModalOpen && rankType === "stores") { setRankModalOpen(false); } else { setRankType("stores"); setRankModalOpen(true); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "stores" ? "접기 ↑" : "전체 보기 →"}</button>
+                        <button onClick={() => { if (rankModalOpen && rankType === "stores") { setRankModalOpen(false); } else { setRankType("stores"); setRankModalOpen(true); setDongStatsOpen(false); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "stores" ? "접기 ↑" : "전체 보기 →"}</button>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
                         {top6Store.map((item) => (
