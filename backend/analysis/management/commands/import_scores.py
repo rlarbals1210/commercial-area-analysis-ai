@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 
 from analysis.models import ScoreData
 
-CSV_PATH = Path(__file__).resolve().parents[4] / "ai" / "outputs" / "scores.csv"
+CSV_PATH = Path(__file__).resolve().parents[4] / "data" / "processed_data" / "scores.csv"
 BATCH_SIZE = 1000
 
 

@@ -425,10 +425,10 @@ def recommend_location(request):
         )
     }
 
-    # 4. StoreInfo: 소분류 점포수 (행정동별) — 경쟁 밀도 계산용
+    # 4. StoreInfo: 통합카테고리 기반 점포수 (행정동별) — 경쟁 밀도 계산용
     subdiv_stores = {
         row["행정동명"]: row["cnt"]
-        for row in _store_filter(소분류)
+        for row in StoreInfo.objects.filter(통합카테고리=통합카테고리)
         .values("행정동명")
         .annotate(cnt=Count("id"))
     }

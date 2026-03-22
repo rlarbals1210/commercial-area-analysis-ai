@@ -13,7 +13,7 @@ from pathlib import Path
 
 print("=" * 50)
 print("1. 데이터 로드")
-df = pd.read_csv("../outputs/final_dataset.csv")
+df = pd.read_csv("../../data/processed_data/final_dataset.csv")
 
 # 직장인구 NaN → 0 (10개 행정동 직장인구 데이터 미집계)
 직장인구_cols = [
@@ -168,7 +168,7 @@ scores_df = all_latest[[
     "성장확률_pct", "업종내_순위", "업종내_전체동수", "상위_퍼센트", "등급"
 ]].copy()
 
-SCORES_PATH = Path("../outputs/scores.csv")
+SCORES_PATH = Path("../../data/processed_data/scores.csv")
 scores_df.to_csv(SCORES_PATH, index=False, encoding="utf-8-sig")
 print(f"저장 완료: {SCORES_PATH}")
 print(f"총 {len(scores_df):,}개 (행정동×업종)")

@@ -223,3 +223,4 @@ print(f"업종 수: {df_final['통합카테고리'].nunique()}")
 print("\n[입지점수 분포]")
 print(df_final["입지점수"].describe().round(1))
 print("완료!")
+
