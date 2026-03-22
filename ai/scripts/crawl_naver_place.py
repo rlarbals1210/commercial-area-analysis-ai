@@ -207,6 +207,7 @@ async def main():
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
         page    = await browser.new_page(user_agent=UA)
+        page.set_default_timeout(15000)
 
         for seq, (_, row) in enumerate(df_store.iterrows(), 1):
             try:
