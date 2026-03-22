@@ -10,6 +10,33 @@ const REGIONS = [
   "용산구", "은평구", "종로구", "중구", "중랑구",
 ];
 
+const STARTUP_COSTS = {
+  "한식":          { "인테리어_만원per평": 80,  "설비_집기_만원": 1500, "초기재고_만원": 300,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 30, "원가율_%": 38, "특이사항": "주방 설비 비중 높음" },
+  "분식/간식":     { "인테리어_만원per평": 60,  "설비_집기_만원": 800,  "초기재고_만원": 150,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 35, "특이사항": "" },
+  "중식":          { "인테리어_만원per평": 80,  "설비_집기_만원": 1800, "초기재고_만원": 300,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 30, "원가율_%": 38, "특이사항": "대형 화구 등 주방 설비 비중 높음" },
+  "일식":          { "인테리어_만원per평": 100, "설비_집기_만원": 2000, "초기재고_만원": 500,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 30, "원가율_%": 40, "특이사항": "식재료 단가 높음" },
+  "양식/기타외식": { "인테리어_만원per평": 100, "설비_집기_만원": 2000, "초기재고_만원": 400,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 30, "원가율_%": 38, "특이사항": "" },
+  "패스트푸드/치킨":{ "인테리어_만원per평": 70, "설비_집기_만원": 1500, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 40, "특이사항": "프랜차이즈 가맹비 별도 (1000~3000만원)" },
+  "카페":          { "인테리어_만원per평": 120, "설비_집기_만원": 2500, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 30, "특이사항": "에스프레소 머신 등 고가 설비 포함" },
+  "주점":          { "인테리어_만원per평": 90,  "설비_집기_만원": 1200, "초기재고_만원": 400,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 35, "특이사항": "주류 면허 비용 별도" },
+  "편의점":        { "인테리어_만원per평": 50,  "설비_집기_만원": 3000, "초기재고_만원": 2000, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 50, "원가율_%": 72, "특이사항": "가맹비·냉장설비 비중 높음, 원가율 높음" },
+  "식품 소매":     { "인테리어_만원per평": 40,  "설비_집기_만원": 800,  "초기재고_만원": 1000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 65, "특이사항": "" },
+  "의류/패션":     { "인테리어_만원per평": 80,  "설비_집기_만원": 500,  "초기재고_만원": 1500, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 20, "원가율_%": 45, "특이사항": "초기재고 비중 높음" },
+  "뷰티/화장품":   { "인테리어_만원per평": 80,  "설비_집기_만원": 500,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 40, "특이사항": "" },
+  "미용실":        { "인테리어_만원per평": 90,  "설비_집기_만원": 2000, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 20, "특이사항": "미용 기구·의자 등 설비 비중 높음" },
+  "의료/약국":     { "인테리어_만원per평": 100, "설비_집기_만원": 3000, "초기재고_만원": 1000, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 30, "원가율_%": 30, "특이사항": "의료기기·약품재고 비중 높음, 면허 필요" },
+  "전자/통신":     { "인테리어_만원per평": 60,  "설비_집기_만원": 500,  "초기재고_만원": 2000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 55, "특이사항": "" },
+  "생활용품 소매": { "인테리어_만원per평": 40,  "설비_집기_만원": 400,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 50, "특이사항": "" },
+  "스포츠/레저":   { "인테리어_만원per평": 70,  "설비_집기_만원": 1500, "초기재고_만원": 500,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 35, "특이사항": "운동기구 등 설비 비중 높음" },
+  "일반학원":      { "인테리어_만원per평": 50,  "설비_집기_만원": 800,  "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "강사 인건비 비중 높음" },
+  "예술학원":      { "인테리어_만원per평": 60,  "설비_집기_만원": 1200, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "악기·미술 도구 등 설비 비중 높음" },
+  "애완동물":      { "인테리어_만원per평": 80,  "설비_집기_만원": 1500, "초기재고_만원": 500,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 35, "특이사항": "동물 관련 위생 설비 포함" },
+  "숙박":          { "인테리어_만원per평": 100, "설비_집기_만원": 3000, "초기재고_만원": 200,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 60, "원가율_%": 25, "특이사항": "초기 투자 규모 매우 큼" },
+  "수리/세탁":     { "인테리어_만원per평": 40,  "설비_집기_만원": 1200, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 20, "특이사항": "" },
+  "오락/유흥":     { "인테리어_만원per평": 100, "설비_집기_만원": 3000, "초기재고_만원": 200,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 40, "원가율_%": 30, "특이사항": "노래방·PC방 등 설비 비중 매우 높음" },
+  "B2B 서비스":    { "인테리어_만원per평": 30,  "설비_집기_만원": 300,  "초기재고_만원": 0,    "보증금_임대료배수": 10, "관리비_공과금_만원per월": 10, "원가율_%": 10, "특이사항": "재고 없음, 인건비 비중 높음" },
+};
+
 // GeoJSON은 중점(·) 사용, 데이터셋은 마침표(.) 사용 → API 호출 시 정규화
 const normalizeDongName = (name) => name.replace(/·/g, ".");
 
@@ -95,10 +122,19 @@ export default function MapPage() {
   const [aiSubIndustry, setAiSubIndustry] = useState("");       // dong 모드: 소분류 입력값
   const [aiSuggestions, setAiSuggestions] = useState([]);       // 자동완성 후보
   const aiSuggestTimer = useRef(null);
+  const [startupCalcOpen, setStartupCalcOpen] = useState(false); // 창업 비용 계산기
+  const [calcIndustry, setCalcIndustry] = useState(null);       // 계산기 선택 업종
+  const [calcArea, setCalcArea] = useState(33);                  // 면적(㎡)
+  const [calcFloor, setCalcFloor] = useState("1층");             // 층수
+  const [calcWorkers, setCalcWorkers] = useState(1);             // 직원수
+  const [calcResult, setCalcResult] = useState(null);            // 계산 결과
+  const [calcSelectedGu, setCalcSelectedGu] = useState("");     // 구 선택 (지도 선택 없을 때)
+  const [calcGuRental, setCalcGuRental] = useState(null);        // 구별 임대료 캐시
   const [spotDong, setSpotDong] = useState(null);               // 위치추천 선택된 행정동
   const [spotCategory, setSpotCategory] = useState(null);       // 위치추천 통합카테고리
   const [spotResults, setSpotResults] = useState(null);         // 위치추천 결과
   const spotMarkersRef = useRef([]);                             // 지도 위 위치추천 마커
+
 
   // 사이드바 안 검색 input에 포커스를 주기 위한 ref
   const searchInputRef = useRef(null);
@@ -107,6 +143,17 @@ export default function MapPage() {
   useEffect(() => {
     if (selectedDong || selectedGu) setSidebarCollapsed(false);
   }, [selectedDong, selectedGu]);
+
+  // ── 창업비용 계산기 열릴 때 임대료 데이터 로드 ──
+  useEffect(() => {
+    if (startupCalcOpen && !calcGuRental) {
+      fetch("/api/rental/regions/")
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data) setCalcGuRental(data); })
+        .catch(() => {});
+    }
+  }, [startupCalcOpen]);
+
 
 
   // ── 카카오 맵 animate:true를 220ms 간격으로 겹쳐 체이닝 → 부드러운 연속 줌 ──
@@ -1371,6 +1418,7 @@ export default function MapPage() {
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
               </div>
 
+
               {availableQuarters.length > 0 && (() => {
                 const years = [...new Set(availableQuarters.map((q) => Math.floor(q / 10)))];
                 const activeQ = selectedQuarter || availableQuarters[0];
@@ -2442,6 +2490,7 @@ export default function MapPage() {
       )}
 
 
+
       {/* ── 업종 선택 사이드 패널 ── */}
       {/* AI 패널(380px) 바로 왼쪽에 붙도록 right: 380 */}
       {aiModalOpen && showIndustryPicker && (
@@ -2498,9 +2547,221 @@ export default function MapPage() {
         </div>
       )}
 
+      {/* ── 창업비용 계산기 오버레이 ── */}
+      {startupCalcOpen && (
+        <div style={startupCalcOverlayStyle} onClick={() => setStartupCalcOpen(false)}>
+          <div style={startupCalcPanelStyle} onClick={(e) => e.stopPropagation()}>
+
+            {/* 헤더 */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 22 }}>💰</span>
+                <span style={{ fontSize: 19, fontWeight: 700, color: "#E8E8E8" }}>창업비용 계산기</span>
+              </div>
+              <button onClick={() => setStartupCalcOpen(false)} style={closeBtnStyle}>✕</button>
+            </div>
+
+            {/* 스크롤 영역 */}
+            <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 18 }}>
+
+              {/* ① 업종 선택 */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 10, letterSpacing: "0.05em" }}>① 업종 선택</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {Object.keys(STARTUP_COSTS).map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => { setCalcIndustry(cat); setCalcResult(null); }}
+                      style={{
+                        padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13,
+                        border: calcIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
+                        background: calcIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
+                        color: calcIndustry === cat ? "#93B8EE" : "#C8C8C8",
+                        fontWeight: calcIndustry === cat ? 700 : 400,
+                        display: "flex", alignItems: "center", gap: 4,
+                      }}
+                    >
+                      <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ② 기본 정보 (업종 선택 후) */}
+              {calcIndustry && (
+                <>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 10, letterSpacing: "0.05em" }}>② 기본 정보</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+                      {/* 면적 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>면적</span>
+                        <input
+                          type="number" min={10} max={300} value={calcArea}
+                          onChange={(e) => { setCalcArea(Number(e.target.value)); setCalcResult(null); }}
+                          style={calcInputStyle}
+                        />
+                        <span style={{ color: "#9E9E9E", fontSize: 13 }}>㎡ &nbsp;({(calcArea / 3.3).toFixed(1)}평)</span>
+                      </div>
+
+                      {/* 층수 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>층수</span>
+                        {["지하1층", "1층", "2층"].map((f) => (
+                          <button key={f} onClick={() => { setCalcFloor(f); setCalcResult(null); }} style={{
+                            padding: "4px 12px", borderRadius: 8, cursor: "pointer", fontSize: 13,
+                            border: calcFloor === f ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
+                            background: calcFloor === f ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
+                            color: calcFloor === f ? "#93B8EE" : "#C8C8C8",
+                          }}>{f}</button>
+                        ))}
+                      </div>
+
+                      {/* 직원수 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>직원수</span>
+                        <input
+                          type="number" min={0} max={10} value={calcWorkers}
+                          onChange={(e) => { setCalcWorkers(Number(e.target.value)); setCalcResult(null); }}
+                          style={calcInputStyle}
+                        />
+                        <span style={{ color: "#9E9E9E", fontSize: 13 }}>명 (사장 포함)</span>
+                      </div>
+
+                      {/* 지역 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>지역</span>
+                        {selectedDong?.guName ? (
+                          <span style={{ fontSize: 13, color: "#93B8EE", fontWeight: 600 }}>
+                            {selectedDong.guName} <span style={{ color: "#6B7280", fontWeight: 400 }}>(지도 선택)</span>
+                          </span>
+                        ) : (
+                          <select
+                            value={calcSelectedGu}
+                            onChange={(e) => { setCalcSelectedGu(e.target.value); setCalcResult(null); }}
+                            style={{ ...calcInputStyle, width: 140, cursor: "pointer" }}
+                          >
+                            <option value="">구 선택...</option>
+                            {REGIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 계산 버튼 */}
+                  <button
+                    onClick={() => {
+                      const gu = selectedDong?.guName || calcSelectedGu;
+                      if (!gu) { alert("지역(구)을 선택해주세요."); return; }
+                      const cat = STARTUP_COSTS[calcIndustry];
+                      const pyeong = calcArea / 3.3;
+                      const guData = calcGuRental?.[gu];
+                      const floorData = guData?.[calcFloor] || guData?.["1층"];
+                      const rentPerSqm = floorData?.["임대료_만원per㎡"] ?? 4.0;
+                      const 월임대료 = Math.round(rentPerSqm * calcArea);
+                      const 보증금 = 월임대료 * cat["보증금_임대료배수"];
+                      const 인테리어 = Math.round(cat["인테리어_만원per평"] * pyeong);
+                      const 설비집기 = cat["설비_집기_만원"];
+                      const 초기재고 = cat["초기재고_만원"];
+                      const 초기합계 = 보증금 + 인테리어 + 설비집기 + 초기재고;
+                      const 월최저임금 = Math.round(10030 * 209 / 10000);
+                      const 월인건비 = calcWorkers * 월최저임금;
+                      const 월관리비 = cat["관리비_공과금_만원per월"];
+                      const 월고정비합계 = 월임대료 + 월관리비 + 월인건비;
+                      const 원가율 = cat["원가율_%"];
+                      const 손익분기_월매출 = Math.round(월고정비합계 / (1 - 원가율 / 100));
+                      setCalcResult({
+                        구: gu, 층: calcFloor, rentPerSqm,
+                        월임대료, 보증금, 인테리어, 설비집기, 초기재고, 초기합계,
+                        월인건비, 월관리비, 월고정비합계,
+                        원가율, 손익분기_월매출,
+                        특이사항: cat["특이사항"],
+                        rentFallback: !guData?.[calcFloor],
+                      });
+                    }}
+                    style={{
+                      padding: "11px 0", borderRadius: 10, border: "none", flexShrink: 0,
+                      background: "linear-gradient(135deg, #3B82F6, #8B5CF6)",
+                      color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
+                    }}
+                  >
+                    계산하기
+                  </button>
+
+                  {/* 결과 */}
+                  {calcResult && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+                      {/* 초기 창업비용 */}
+                      <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                          📦 초기 창업비용 <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>(일회성)</span>
+                        </div>
+                        {[["보증금", calcResult.보증금], ["인테리어", calcResult.인테리어], ["설비·집기", calcResult.설비집기], ["초기재고", calcResult.초기재고]].map(([label, val]) => (
+                          <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
+                            <span style={{ color: "#9E9E9E" }}>{label}</span>
+                            <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
+                          </div>
+                        ))}
+                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
+                          <span style={{ fontSize: 18, fontWeight: 700, color: "#60A5FA" }}>{calcResult.초기합계.toLocaleString()}만원</span>
+                        </div>
+                      </div>
+
+                      {/* 월 고정비 */}
+                      <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                          📅 월 고정비
+                        </div>
+                        {[["임대료", calcResult.월임대료], ["관리비·공과금", calcResult.월관리비], ["인건비", calcResult.월인건비]].map(([label, val]) => (
+                          <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
+                            <span style={{ color: "#9E9E9E" }}>{label}</span>
+                            <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
+                          </div>
+                        ))}
+                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
+                          <span style={{ fontSize: 18, fontWeight: 700, color: "#34D399" }}>{calcResult.월고정비합계.toLocaleString()}만원</span>
+                        </div>
+                      </div>
+
+                      {/* 손익분기 */}
+                      <div style={{ background: "rgba(245,158,11,0.08)", borderRadius: 12, padding: "12px 16px", border: "1px solid rgba(245,158,11,0.2)" }}>
+                        <div style={{ color: "#FCD34D", fontWeight: 700, fontSize: 14, marginBottom: 6 }}>💡 손익분기 기준</div>
+                        <div style={{ color: "#D1D5DB", fontSize: 13, lineHeight: 1.6 }}>
+                          원가율 {calcResult.원가율}% 기준, 월{" "}
+                          <span style={{ color: "#FCD34D", fontWeight: 700 }}>{calcResult.손익분기_월매출.toLocaleString()}만원</span> 이상 매출 필요
+                        </div>
+                        {calcResult.특이사항 && (
+                          <div style={{ color: "#9CA3AF", marginTop: 6, fontSize: 12 }}>⚠️ {calcResult.특이사항}</div>
+                        )}
+                      </div>
+
+                      {/* 주석 */}
+                      <div style={{ fontSize: 11, color: "#6B7280", textAlign: "center", lineHeight: 1.6 }}>
+                        ※ {calcResult.구} 평균 임대료 기준 ({calcResult.층}{calcResult.rentFallback ? " 데이터 없어 1층 기준" : ""}, {calcResult.rentPerSqm}만원/㎡)<br />
+                        ※ 실제 비용은 점포별로 크게 다를 수 있으며, 참고용으로만 활용하세요.
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
       {/* AI 패널(380px)이 열리면 버튼들을 왼쪽으로 밀어서 가려지지 않게 함 */}
       <div style={{ position: "absolute", top: 20, right: aiModalOpen ? 400 : 20, display: "flex", gap: 10, zIndex: 10, transition: "right 0.22s ease-out" }}>
+
+        {/* 창업 비용 계산기 버튼 */}
+        <button onClick={() => setStartupCalcOpen((v) => !v)} style={startupCalcBtnStyle}>
+          💰 창업비용 계산기
+        </button>
 
         {/* AI 추천 버튼 */}
         <button onClick={openAiModal} style={aiBtnStyle}>
@@ -2887,6 +3148,59 @@ const statCardStyle = {
   border: "1px solid rgba(255,255,255,0.07)",
 };
 
+/* ── 창업비용 계산기 스타일 ── */
+
+const startupCalcBtnStyle = {
+  height: 44,
+  padding: "0 18px",
+  background: "rgba(45,45,45,0.97)",
+  color: "#E8E8E8",
+  border: "none",
+  borderRadius: 12,
+  boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+  fontSize: 16,
+  fontWeight: 600,
+  cursor: "pointer",
+  backdropFilter: "blur(6px)",
+  transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s",
+};
+
+const startupCalcOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.55)",
+  backdropFilter: "blur(2px)",
+  zIndex: 200,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const startupCalcPanelStyle = {
+  background: "rgba(24,24,34,0.99)",
+  borderRadius: 20,
+  boxShadow: "0 20px 70px rgba(0,0,0,0.7)",
+  border: "1px solid rgba(255,255,255,0.09)",
+  width: 500,
+  maxHeight: "88vh",
+  display: "flex",
+  flexDirection: "column",
+  padding: "22px 24px",
+  boxSizing: "border-box",
+};
+
+const calcInputStyle = {
+  width: 80,
+  padding: "5px 10px",
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.15)",
+  background: "rgba(255,255,255,0.07)",
+  color: "#E8E8E8",
+  fontSize: 14,
+  outline: "none",
+  boxSizing: "border-box",
+};
+
 /* ── AI 추천 스타일 ── */
 
 const aiBtnStyle = {
@@ -3010,3 +3324,4 @@ function fmtRevenue(won) {
   if (eok >= 1) return `${eok.toFixed(1)}억원`;
   return `${Math.round(won / 10_000).toLocaleString()}만원`;
 }
+
