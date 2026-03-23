@@ -11,6 +11,38 @@ from .models import CommercialData, StoreInfo, ScoreData
 _location_df = None
 _location_lock = threading.Lock()
 
+# gu_rental.json 메모리 캐시
+_gu_rental = None
+_gu_rental_lock = threading.Lock()
+
+def _get_gu_rental():
+    global _gu_rental
+    if _gu_rental is not None:
+        return _gu_rental
+    with _gu_rental_lock:
+        if _gu_rental is not None:
+            return _gu_rental
+        path = Path(__file__).resolve().parents[2] / "ai" / "outputs" / "gu_rental.json"
+        if path.exists():
+            with open(path, encoding="utf-8") as f:
+                _gu_rental = json.load(f)
+        else:
+            _gu_rental = {}
+    return _gu_rental
+
+# 행정동코드 앞 5자리 → 구명
+_GU_CODE_MAP = {
+    "11110": "종로구", "11140": "중구",    "11170": "용산구",
+    "11200": "성동구", "11215": "광진구",  "11230": "동대문구",
+    "11260": "중랑구", "11290": "성북구",  "11305": "강북구",
+    "11350": "도봉구", "11380": "노원구",  "11410": "은평구",
+    "11440": "서대문구","11470": "마포구", "11500": "양천구",
+    "11530": "강서구", "11545": "구로구",  "11560": "금천구",
+    "11590": "영등포구","11620": "동작구", "11650": "관악구",
+    "11680": "서초구", "11710": "강남구",  "11740": "송파구",
+    "11770": "강동구",
+}
+
 def _get_location_df():
     global _location_df
     if _location_df is not None:
@@ -873,4 +905,49 @@ def recommend_spot(request):
         "dong":     dong,
         "category": category,
         "results":  results,
+    })
+
+
+def rental_regions(request):
+    """
+    GET /api/rental/regions/
+    구별 임대료 데이터 전체 반환 (프론트 캐시용)
+    """
+    return JsonResponse(_get_gu_rental())
+
+
+def rental_calculate(request):
+    """
+    GET /api/rental/calculate/?dong=역삼1동&dong_code=11710670&floor=1층
+    행정동코드 → 구명 → 구 평균 임대료 반환
+    """
+    dong      = request.GET.get("dong", "").strip()
+    dong_code = request.GET.get("dong_code", "").strip()
+    floor     = request.GET.get("floor", "1층").strip()
+
+    # 행정동코드 앞 5자리로 구명 조회
+    gu명 = None
+    if dong_code:
+        gu명 = _GU_CODE_MAP.get(str(dong_code)[:5])
+
+    if not gu명:
+        return JsonResponse({"error": f"'{dong}'의 구 정보를 찾을 수 없습니다."}, status=404)
+
+    data = _get_gu_rental()
+    gu_data = data.get(gu명)
+    if not gu_data:
+        return JsonResponse({"error": f"'{gu명}' 임대료 데이터가 없습니다."}, status=404)
+
+    floor_data = gu_data.get(floor)
+    if not floor_data:
+        available = list(gu_data.keys())
+        return JsonResponse({"error": f"'{floor}' 데이터 없음", "가능한_층": available}, status=400)
+
+    return JsonResponse({
+        "행정동": dong,
+        "구":     gu명,
+        "층":     floor,
+        "임대료_만원per㎡": floor_data.get("임대료_만원per㎡"),
+        "효용비율_%":       floor_data.get("효용비율_%"),
+        "1층_임대료_만원per㎡": gu_data.get("1층", {}).get("임대료_만원per㎡"),
     })
