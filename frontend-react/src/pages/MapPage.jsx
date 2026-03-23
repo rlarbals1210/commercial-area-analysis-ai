@@ -37,6 +37,13 @@ const STARTUP_COSTS = {
   "B2B 서비스":    { "인테리어_만원per평": 30,  "설비_집기_만원": 300,  "초기재고_만원": 0,    "보증금_임대료배수": 10, "관리비_공과금_만원per월": 10, "원가율_%": 10, "특이사항": "재고 없음, 인건비 비중 높음" },
 };
 
+const CATEGORY_GROUPS = {
+  "전체": Object.keys(STARTUP_COSTS),
+  "음식": ["한식", "분식/간식", "중식", "일식", "양식/기타외식", "패스트푸드/치킨", "카페", "주점"],
+  "소매": ["편의점", "식품 소매", "의류/패션", "뷰티/화장품", "전자/통신", "생활용품 소매"],
+  "서비스": ["미용실", "의료/약국", "스포츠/레저", "일반학원", "예술학원", "애완동물", "숙박", "수리/세탁", "오락/유흥", "B2B 서비스"],
+};
+
 // GeoJSON은 중점(·) 사용, 데이터셋은 마침표(.) 사용 → API 호출 시 정규화
 const normalizeDongName = (name) => name.replace(/·/g, ".");
 
@@ -130,6 +137,11 @@ export default function MapPage() {
   const [calcResult, setCalcResult] = useState(null);            // 계산 결과
   const [calcSelectedGu, setCalcSelectedGu] = useState("");     // 구 선택 (지도 선택 없을 때)
   const [calcGuRental, setCalcGuRental] = useState(null);        // 구별 임대료 캐시
+  const [calcSearchQuery, setCalcSearchQuery] = useState("");         // 업종 검색어 (입력창 표시용)
+  const [calcActiveTab, setCalcActiveTab] = useState("전체");         // 업종 탭
+  const [calcSuggestions, setCalcSuggestions] = useState([]);         // API 자동완성 결과 목록
+  const [calcSuggestOpen, setCalcSuggestOpen] = useState(false);      // 자동완성 드롭다운 표시 여부
+  const calcSuggestTimer = useRef(null);                              // 디바운스용 타이머 ref
   const [spotDong, setSpotDong] = useState(null);               // 위치추천 선택된 행정동
   const [spotCategory, setSpotCategory] = useState(null);       // 위치추천 통합카테고리
   const [spotResults, setSpotResults] = useState(null);         // 위치추천 결과
@@ -2124,18 +2136,28 @@ export default function MapPage() {
               {/* ── 모드 선택 단계 ── */}
               {aiStep === "mode" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {Object.entries(AI_MODE_META).map(([mode, { icon, title, desc }]) => (
+                  {Object.entries(AI_MODE_META).map(([mode, { icon, title, desc, color, rgb }]) => (
                     <button
                       key={mode}
                       onClick={() => { setAiMode(mode); setAiStep("form"); }}
-                      style={aiModeCardStyle}
+                      style={{
+                        ...aiModeCardStyle,
+                        borderLeft: `3px solid ${color}`,
+                        background: `rgba(${rgb},0.06)`,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = `rgba(${rgb},0.14)`; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = `rgba(${rgb},0.06)`; }}
                     >
-                      <span style={{ fontSize: 28, flexShrink: 0 }}>{icon}</span>
+                      <div style={{
+                        fontSize: 22, flexShrink: 0, width: 44, height: 44,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        borderRadius: 10, background: `rgba(${rgb},0.15)`,
+                      }}>{icon}</div>
                       <div style={{ textAlign: "left", flex: 1 }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8", marginBottom: 3 }}>{title}</div>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>{desc}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8", marginBottom: 3 }}>{title}</div>
+                        <div style={{ fontSize: 13, color: "#9E9E9E" }}>{desc}</div>
                       </div>
-                      <span style={{ color: "#555", fontSize: 20, flexShrink: 0 }}>›</span>
+                      <span style={{ color: color, fontSize: 18, flexShrink: 0 }}>›</span>
                     </button>
                   ))}
                 </div>
@@ -2549,7 +2571,7 @@ export default function MapPage() {
 
       {/* ── 창업비용 계산기 오버레이 ── */}
       {startupCalcOpen && (
-        <div style={startupCalcOverlayStyle} onClick={() => setStartupCalcOpen(false)}>
+        <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcActiveTab("전체"); }}>
           <div style={startupCalcPanelStyle} onClick={(e) => e.stopPropagation()}>
 
             {/* 헤더 */}
@@ -2558,33 +2580,189 @@ export default function MapPage() {
                 <span style={{ fontSize: 22 }}>💰</span>
                 <span style={{ fontSize: 19, fontWeight: 700, color: "#E8E8E8" }}>창업비용 계산기</span>
               </div>
-              <button onClick={() => setStartupCalcOpen(false)} style={closeBtnStyle}>✕</button>
+              <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcActiveTab("전체"); }} style={closeBtnStyle}>✕</button>
             </div>
 
-            {/* 스크롤 영역 */}
-            <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
+            {/* 결과 뷰 / 입력 뷰 전환 — calcResult가 있으면 결과만 표시, 없으면 입력 폼 표시 */}
+            {calcResult ? (
+              /* 결과 섹션 — gap을 10으로 줄여 카드 간격 최소화, 스크롤 없이 한 화면에 맞춤 */
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+                {/* 헤더: 선택 업종·구 + 다시 계산하기 버튼 */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, color: "#93B8EE", fontWeight: 700 }}>{calcIndustry} · {calcResult.구}</span>
+                  <button
+                    onClick={() => setCalcResult(null)} // 결과 초기화 → 입력 폼으로 복귀
+                    style={{
+                      padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12,
+                      border: "1.5px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)",
+                      color: "#C8C8C8",
+                    }}
+                  >← 다시 계산하기</button>
+                </div>
+
+                {/* 초기 창업비용 */}
+                <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                    📦 초기 창업비용 <span style={{ fontSize: 11, color: "#6B7280", fontWeight: 400 }}>(일회성)</span>
+                  </div>
+                  {[["보증금", calcResult.보증금], ["인테리어", calcResult.인테리어], ["설비·집기", calcResult.설비집기], ["초기재고", calcResult.초기재고]].map(([label, val]) => (
+                    <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
+                      <span style={{ color: "#9E9E9E" }}>{label}</span>
+                      <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: "#60A5FA" }}>{calcResult.초기합계.toLocaleString()}만원</span>
+                  </div>
+                </div>
+
+                {/* 월 고정비 */}
+                <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8", marginBottom: 8 }}>📅 월 고정비</div>
+                  {[["임대료", calcResult.월임대료], ["관리비·공과금", calcResult.월관리비], ["인건비", calcResult.월인건비]].map(([label, val]) => (
+                    <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
+                      <span style={{ color: "#9E9E9E" }}>{label}</span>
+                      <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: "#34D399" }}>{calcResult.월고정비합계.toLocaleString()}만원</span>
+                  </div>
+                </div>
+
+                {/* 손익분기 */}
+                <div style={{ background: "rgba(245,158,11,0.08)", borderRadius: 12, padding: "10px 14px", border: "1px solid rgba(245,158,11,0.2)" }}>
+                  <div style={{ color: "#FCD34D", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>💡 손익분기 기준</div>
+                  <div style={{ color: "#D1D5DB", fontSize: 13, lineHeight: 1.5 }}>
+                    원가율 {calcResult.원가율}% 기준, 월{" "}
+                    <span style={{ color: "#FCD34D", fontWeight: 700 }}>{calcResult.손익분기_월매출.toLocaleString()}만원</span> 이상 매출 필요
+                  </div>
+                  {calcResult.특이사항 && (
+                    <div style={{ color: "#9CA3AF", marginTop: 4, fontSize: 11 }}>⚠️ {calcResult.특이사항}</div>
+                  )}
+                </div>
+
+                {/* 주석 */}
+                <div style={{ fontSize: 11, color: "#6B7280", textAlign: "center", lineHeight: 1.5 }}>
+                  ※ {calcResult.구} 평균 임대료 기준 ({calcResult.층}{calcResult.rentFallback ? " 데이터 없어 1층 기준" : ""}, {calcResult.rentPerSqm}만원/㎡)<br />
+                  ※ 실제 비용은 참고용으로만 활용하세요.
+                </div>
+              </div>
+            ) : (
+              <>
               {/* ① 업종 선택 */}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 10, letterSpacing: "0.05em" }}>① 업종 선택</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {Object.keys(STARTUP_COSTS).map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => { setCalcIndustry(cat); setCalcResult(null); }}
+                {/* 카테고리 탭 */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  {Object.keys(CATEGORY_GROUPS).map((tab) => (
+                    <button key={tab} onClick={() => { setCalcActiveTab(tab); setCalcSearchQuery(""); }}
                       style={{
-                        padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13,
-                        border: calcIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
-                        background: calcIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
-                        color: calcIndustry === cat ? "#93B8EE" : "#C8C8C8",
-                        fontWeight: calcIndustry === cat ? 700 : 400,
-                        display: "flex", alignItems: "center", gap: 4,
+                        padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12,
+                        border: calcActiveTab === tab ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
+                        background: calcActiveTab === tab ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
+                        color: calcActiveTab === tab ? "#93B8EE" : "#9E9E9E",
+                        fontWeight: calcActiveTab === tab ? 700 : 400,
                       }}
-                    >
-                      <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
-                    </button>
+                    >{tab}</button>
                   ))}
                 </div>
+                {/* 업종 검색창 */}
+                <div style={{ marginBottom: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="업종 직접 검색... (예: 피자, 세차장)"
+                    value={calcSearchQuery}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCalcSearchQuery(v);
+                      setCalcActiveTab("전체");
+                      // 200ms 디바운스 — 타이핑마다 API 호출 방지
+                      clearTimeout(calcSuggestTimer.current);
+                      if (v.trim().length >= 1) {
+                        calcSuggestTimer.current = setTimeout(() => {
+                          fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                            .then((r) => r.json())
+                            .then((d) => { setCalcSuggestions(d.suggestions || []); setCalcSuggestOpen(true); })
+                            .catch(() => setCalcSuggestions([]));
+                        }, 200);
+                      } else {
+                        setCalcSuggestions([]);
+                        setCalcSuggestOpen(false);
+                      }
+                    }}
+                    // onBlur 150ms 지연 — onMouseDown 클릭이 먼저 처리된 뒤 목록 닫힘
+                    onBlur={() => setTimeout(() => setCalcSuggestOpen(false), 150)}
+                    style={{
+                      width: "100%", padding: "6px 10px", fontSize: 13,
+                      borderRadius: calcSuggestOpen && calcSuggestions.length > 0 ? "8px 8px 0 0" : 8,
+                      background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)",
+                      color: "#E8E8E8", outline: "none", boxSizing: "border-box",
+                    }}
+                  />
+                  {/* 자동완성 목록 — maxHeight/opacity 트랜지션으로 부드럽게 펼쳐짐
+                      항상 DOM에 존재하되 숨겨두는 방식 (조건부 렌더링은 애니메이션 불가) */}
+                  <div style={{
+                    overflow: "hidden",
+                    maxHeight: calcSuggestOpen && calcSuggestions.length > 0 ? 320 : 0,
+                    opacity: calcSuggestOpen && calcSuggestions.length > 0 ? 1 : 0,
+                    transition: "max-height 0.22s ease, opacity 0.18s ease",
+                    background: "#1E2330", border: "1.5px solid rgba(255,255,255,0.12)",
+                    borderTop: "none", borderRadius: "0 0 8px 8px",
+                  }}>
+                    {calcSuggestions.map((s, i) => (
+                      <div
+                        key={i}
+                        onMouseDown={() => { // onMouseDown — onBlur보다 먼저 발생해서 선택이 안전하게 처리됨
+                          setCalcIndustry(s.통합카테고리);
+                          setCalcResult(null);
+                          setCalcSearchQuery("");
+                          setCalcSuggestOpen(false);
+                        }}
+                        style={{
+                          padding: "7px 12px", cursor: "pointer", fontSize: 13,
+                          borderBottom: i < calcSuggestions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.15)"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                      >
+                        <span style={{ color: "#E8E8E8" }}>{s.소분류명}</span>
+                        {/* 통합카테고리 뱃지 — STARTUP_COSTS 키와 매핑되는 실제 선택값 */}
+                        <span style={{
+                          fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)",
+                          padding: "2px 7px", borderRadius: 10,
+                        }}>{s.통합카테고리}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 업종 pill 목록 — 검색 중에는 숨겨서 자동완성 목록만 표시 */}
+                {!calcSearchQuery && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {CATEGORY_GROUPS[calcActiveTab]
+                      .map((cat) => (
+                        <button key={cat} onClick={() => { setCalcIndustry(cat); setCalcResult(null); }}
+                          style={{
+                            padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13,
+                            border: calcIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
+                            background: calcIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
+                            color: calcIndustry === cat ? "#93B8EE" : "#C8C8C8",
+                            fontWeight: calcIndustry === cat ? 700 : 400,
+                            display: "flex", alignItems: "center", gap: 4,
+                          }}
+                        >
+                          <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
+                        </button>
+                      ))}
+                  </div>
+                )}
               </div>
 
               {/* ② 기본 정보 (업종 선택 후) */}
@@ -2640,10 +2818,15 @@ export default function MapPage() {
                           <select
                             value={calcSelectedGu}
                             onChange={(e) => { setCalcSelectedGu(e.target.value); setCalcResult(null); }}
-                            style={{ ...calcInputStyle, width: 140, cursor: "pointer" }}
+                            style={{
+                              ...calcInputStyle,
+                              width: 140, cursor: "pointer",
+                              background: "#1E2330",          // 반투명 대신 solid — 브라우저 네이티브 select는 반투명이 흰색으로 렌더링됨
+                              color: "#E8E8E8",
+                            }}
                           >
-                            <option value="">구 선택...</option>
-                            {REGIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                            <option value="" style={{ background: "#1E2330", color: "#9E9E9E" }}>구 선택...</option>
+                            {REGIONS.map((g) => <option key={g} value={g} style={{ background: "#1E2330", color: "#E8E8E8" }}>{g}</option>)}
                           </select>
                         )}
                       </div>
@@ -2690,65 +2873,10 @@ export default function MapPage() {
                     계산하기
                   </button>
 
-                  {/* 결과 */}
-                  {calcResult && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-                      {/* 초기 창업비용 */}
-                      <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                          📦 초기 창업비용 <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 400 }}>(일회성)</span>
-                        </div>
-                        {[["보증금", calcResult.보증금], ["인테리어", calcResult.인테리어], ["설비·집기", calcResult.설비집기], ["초기재고", calcResult.초기재고]].map(([label, val]) => (
-                          <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
-                            <span style={{ color: "#9E9E9E" }}>{label}</span>
-                            <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
-                          </div>
-                        ))}
-                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
-                          <span style={{ fontSize: 18, fontWeight: 700, color: "#60A5FA" }}>{calcResult.초기합계.toLocaleString()}만원</span>
-                        </div>
-                      </div>
-
-                      {/* 월 고정비 */}
-                      <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                          📅 월 고정비
-                        </div>
-                        {[["임대료", calcResult.월임대료], ["관리비·공과금", calcResult.월관리비], ["인건비", calcResult.월인건비]].map(([label, val]) => (
-                          <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
-                            <span style={{ color: "#9E9E9E" }}>{label}</span>
-                            <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
-                          </div>
-                        ))}
-                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
-                          <span style={{ fontSize: 18, fontWeight: 700, color: "#34D399" }}>{calcResult.월고정비합계.toLocaleString()}만원</span>
-                        </div>
-                      </div>
-
-                      {/* 손익분기 */}
-                      <div style={{ background: "rgba(245,158,11,0.08)", borderRadius: 12, padding: "12px 16px", border: "1px solid rgba(245,158,11,0.2)" }}>
-                        <div style={{ color: "#FCD34D", fontWeight: 700, fontSize: 14, marginBottom: 6 }}>💡 손익분기 기준</div>
-                        <div style={{ color: "#D1D5DB", fontSize: 13, lineHeight: 1.6 }}>
-                          원가율 {calcResult.원가율}% 기준, 월{" "}
-                          <span style={{ color: "#FCD34D", fontWeight: 700 }}>{calcResult.손익분기_월매출.toLocaleString()}만원</span> 이상 매출 필요
-                        </div>
-                        {calcResult.특이사항 && (
-                          <div style={{ color: "#9CA3AF", marginTop: 6, fontSize: 12 }}>⚠️ {calcResult.특이사항}</div>
-                        )}
-                      </div>
-
-                      {/* 주석 */}
-                      <div style={{ fontSize: 11, color: "#6B7280", textAlign: "center", lineHeight: 1.6 }}>
-                        ※ {calcResult.구} 평균 임대료 기준 ({calcResult.층}{calcResult.rentFallback ? " 데이터 없어 1층 기준" : ""}, {calcResult.rentPerSqm}만원/㎡)<br />
-                        ※ 실제 비용은 점포별로 크게 다를 수 있으며, 참고용으로만 활용하세요.
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
+              </>
+            )}
             </div>
           </div>
         </div>
@@ -3182,9 +3310,8 @@ const startupCalcPanelStyle = {
   boxShadow: "0 20px 70px rgba(0,0,0,0.7)",
   border: "1px solid rgba(255,255,255,0.09)",
   width: 500,
-  maxHeight: "88vh",
-  display: "flex",
-  flexDirection: "column",
+  maxHeight: "85vh",
+  overflowY: "auto",   // 패널 자체가 스크롤 — flex:1 자식이 패널을 maxHeight까지 늘리는 문제 방지
   padding: "22px 24px",
   boxSizing: "border-box",
 };
@@ -3277,9 +3404,11 @@ const aiModeCardStyle = {
 };
 
 const AI_MODE_META = {
-  dong:     { icon: "📍", title: "업종 선택 → 행정동 추천",     desc: "창업할 업종을 선택하면 최적의 상권을 추천합니다" },
-  industry: { icon: "🏪", title: "행정동 선택 → 업종 추천",     desc: "관심 지역을 입력하면 유망 업종을 추천합니다" },
-  score:    { icon: "📊", title: "행정동 · 업종 적합도 점수",   desc: "특정 지역과 업종 조합의 상세 점수를 분석합니다" },
+  // color: 카드 왼쪽 border + 아이콘 배경 틴트에 사용
+  // 다크 배경에서 잘 보이는 밝은 블루 계열 3색 — 스카이/블루/시안으로 구분
+  dong:     { icon: "📍", title: "업종 선택 → 행정동 추천",   desc: "창업할 업종을 선택하면 최적의 상권을 추천합니다", color: "#93C5FD", rgb: "147,197,253"  },
+  industry: { icon: "🏪", title: "행정동 선택 → 업종 추천",   desc: "관심 지역을 입력하면 유망 업종을 추천합니다",   color: "#3B82F6", rgb: "59,130,246"   },
+  score:    { icon: "📊", title: "행정동 · 업종 적합도 점수", desc: "특정 지역과 업종 조합의 상세 점수를 분석합니다", color: "#38BDF8", rgb: "56,189,248"   },
 };
 
 // 폴리곤 무게중심(centroid) 계산 — [[lng, lat], ...] 형식
