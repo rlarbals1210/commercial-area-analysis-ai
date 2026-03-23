@@ -399,6 +399,48 @@ def suggest_industries(request):
     return JsonResponse({"suggestions": suggestions})
 
 
+def suggest_industries_with_category(request):
+    """창업비용 계산기용 업종 자동완성 (GET, q=검색어)
+    기존 suggest_industries와 달리 통합카테고리도 함께 반환하여
+    프론트엔드에서 STARTUP_COSTS 카테고리로 바로 매핑할 수 있게 함"""
+    q = request.GET.get("q", "").strip()
+    if not q:
+        return JsonResponse({"suggestions": []})
+
+    # 소분류명 + 통합카테고리를 함께 조회, 출현 빈도 순 정렬
+    results = (
+        StoreInfo.objects
+        .filter(상권업종소분류명__icontains=q)
+        .values("상권업종소분류명", "통합카테고리")  # 통합카테고리 추가 조회
+        .annotate(cnt=Count("id"))
+        .order_by("-cnt")[:10]
+    )
+    suggestions = [
+        {"소분류명": r["상권업종소분류명"], "통합카테고리": r["통합카테고리"]}
+        for r in results
+    ]
+
+    # 공백 없는 입력으로도 매칭 시도 (예: "피자전문점" → "피자 전문점")
+    if not suggestions:
+        from django.db.models.functions import Replace
+        from django.db.models import Value
+        q_no_space = q.replace(" ", "")
+        results2 = (
+            StoreInfo.objects
+            .annotate(소분류_no_space=Replace("상권업종소분류명", Value(" "), Value("")))
+            .filter(소분류_no_space__icontains=q_no_space)
+            .values("상권업종소분류명", "통합카테고리")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")[:10]
+        )
+        suggestions = [
+            {"소분류명": r["상권업종소분류명"], "통합카테고리": r["통합카테고리"]}
+            for r in results2
+        ]
+
+    return JsonResponse({"suggestions": suggestions})
+
+
 def recommend_location(request):
     """소분류 업종 입력 → 최적 창업 행정동 추천 (GET, 업종=소분류명)"""
     소분류 = request.GET.get("업종", "").strip()
