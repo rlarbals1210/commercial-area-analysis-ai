@@ -90,7 +90,6 @@ export default function MapPage() {
   const [hoveredDong, setHoveredDong] = useState(null);   // { dongName, guName }
   const [selectedDong, setSelectedDong] = useState(null); // { dongName, guName } — 팝업용
   const [selectedGu, setSelectedGu] = useState(null);     // guName — 구 팝업용
-  const [isGuMode, setIsGuMode] = useState(true);         // 구 모드 여부
   const [dongData, setDongData] = useState(null);          // API 응답 전체
   const [dongLoading, setDongLoading] = useState(false);  // 로딩 상태
   const [rankModalOpen, setRankModalOpen] = useState(false); // 전체 보기 모달
@@ -150,6 +149,7 @@ export default function MapPage() {
 
   // 사이드바 안 검색 input에 포커스를 주기 위한 ref
   const searchInputRef = useRef(null);
+  const searchDropdownRef = useRef(null); // 검색 드롭다운 스크롤용
 
   // ── 행정동/구 선택 시 사이드바 자동 열기 ──
   useEffect(() => {
@@ -256,7 +256,6 @@ export default function MapPage() {
       guBadgeOverlayRef.current.setMap(guMode ? map : null);
     if (dongBadgeOverlayRef.current)
       dongBadgeOverlayRef.current.setMap(guMode || level < DONG_BADGE_HIDE_LEVEL ? null : map);
-    setIsGuMode(guMode);
     setHoveredDong(null);
   }
 
@@ -1188,8 +1187,8 @@ export default function MapPage() {
           transform: sidebarCollapsed ? "translate(-320px, -50%)" : "translateY(-50%)",
           transition: "transform 0.22s ease-out, opacity 0.15s, left 0.22s ease-out",
           // 사이드바가 열려 있어도 선택된 항목이 없으면(검색만 활성화) 버튼 숨김
-          opacity: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry)) ? 1 : 0,
-          pointerEvents: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry)) ? "auto" : "none",
+          opacity: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && !searchExpanded) ? 1 : 0,
+          pointerEvents: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && !searchExpanded) ? "auto" : "none",
           zIndex: 15,
           width: 24,
           height: 56,
@@ -1238,7 +1237,7 @@ export default function MapPage() {
 
       {/* ── 사이드바 열기 탭 (접혔을 때 + 표시할 데이터가 있을 때만 표시) ──
           행정동/구/업종이 선택된 상태가 아니면 빈 사이드바가 열리므로 버튼을 숨김 */}
-      {sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && (
+      {sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && !searchExpanded && (
         <button
           onClick={() => setSidebarCollapsed(false)}
           style={{
@@ -1277,14 +1276,11 @@ export default function MapPage() {
         transition: (selectedDong || selectedGu || selectedIndustry)
           ? "transform 0.22s ease-out, opacity 0.15s"
           : "none",
-        ...(!selectedDong && !selectedGu && !selectedIndustry && {
+        ...((searchExpanded || (!selectedDong && !selectedGu && !selectedIndustry)) && {
           background: "transparent",
           borderRight: "none",
           backdropFilter: "none",
           boxShadow: "none",
-          // overflow: hidden이 투명 상태에서 브라우저 합성 레이어를 만들어
-          // 지도 위에 검은 잔상이 생기는 문제 방지.
-          // 닫힐 때(sidebarCollapsed=true)는 슬라이드 애니메이션을 위해 hidden 유지.
           overflow: sidebarCollapsed ? "hidden" : "visible",
         }),
       }}>
@@ -1308,9 +1304,9 @@ export default function MapPage() {
               placeholder="지역명 · 업종 검색"
               style={{ border: "none", outline: "none", fontSize: 17, width: "100%", background: "transparent", color: "#E8E8E8" }}
             />
-            {searchQuery && (
+            {searchExpanded && (
               <button
-                onClick={(e) => { e.stopPropagation(); setSearchQuery(""); setSearchResults([]); }}
+                onClick={(e) => { e.stopPropagation(); setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }}
                 style={{ border: "none", background: "none", cursor: "pointer", color: "#777", fontSize: 18, padding: 0, flexShrink: 0 }}
               >✕</button>
             )}
@@ -1323,7 +1319,7 @@ export default function MapPage() {
               boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
               border: "1px solid rgba(255,255,255,0.08)", borderTop: "none",
               maxHeight: 420, overflowY: "auto",
-            }}>
+            }} ref={searchDropdownRef}>
               {searchResults.length > 0 && (
                 <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   <div style={{ padding: "8px 14px 4px", fontSize: 13, fontWeight: 700, color: "#6B7280", letterSpacing: "0.06em" }}>지역 검색 결과</div>
@@ -1374,6 +1370,14 @@ export default function MapPage() {
                         const group = guPolygonGroupsRef.current.find((g) => g.guName === item);
                         if (group) handleSelectResult({ type: "gu", guName: item, dongName: null, centroid: group.centroid });
                         setSelectedRegion(selectedRegion === item ? null : item);
+                        // 구 선택 시 드롭다운을 행정동 목록 위치로 자동 스크롤
+                        if (selectedRegion !== item) {
+                          setTimeout(() => {
+                            if (searchDropdownRef.current) {
+                              searchDropdownRef.current.scrollTo({ top: searchDropdownRef.current.scrollHeight, behavior: "smooth" });
+                            }
+                          }, 50);
+                        }
                       }}
                       style={chipStyle(selectedRegion === item)}
                     >{item}</button>
@@ -1420,7 +1424,7 @@ export default function MapPage() {
         )}
 
         {/* ── 스크롤 콘텐츠 영역 (선택된 항목 있을 때만 표시) ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", display: (selectedDong || selectedGu) ? "block" : "none" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", display: (selectedDong || selectedGu) && !searchExpanded ? "block" : "none" }}>
 
           {/* 행정동 상세 */}
           {selectedDong && (
@@ -1690,16 +1694,16 @@ export default function MapPage() {
         </div>
 
         {/* 하단 고정: 버튼 영역 (선택된 항목 있을 때만 표시) */}
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, display: (selectedDong || selectedGu) ? "flex" : "none", flexDirection: "column", gap: 8 }}>
-          {selectedDong && (
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, display: (selectedDong || selectedGu) && !searchExpanded ? "flex" : "none", flexDirection: "column", gap: 8 }}>
+          {selectedDong && !selectedGu && (
             <button
-              style={{ width: "100%", height: 42, background: dongStatsOpen ? "rgba(56,189,248,0.2)" : "rgba(56,189,248,0.08)", color: "#38BDF8", border: `1px solid ${dongStatsOpen ? "rgba(56,189,248,0.6)" : "rgba(56,189,248,0.25)"}`, borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "background 0.2s, border-color 0.2s" }}
+              style={{ width: "100%", height: 42, background: dongStatsOpen ? "rgba(59,130,246,0.5)" : "rgba(59,130,246,0.35)", color: "#fff", border: "1.5px solid rgba(59,130,246,0.7)", borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: "pointer", transition: "background 0.2s" }}
               onClick={() => { setDongStatsOpen((v) => !v); setRankModalOpen(false); }}
-            >상세 통계 {dongStatsOpen ? "↑" : "→"}</button>
+            >상세 통계</button>
           )}
           {selectedGu && (
             <button
-              style={{ width: "100%", height: 42, background: "rgba(16,185,129,0.15)", color: "#34D399", border: "1px solid rgba(16,185,129,0.35)", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, border-color 0.2s, color 0.2s" }}
+              style={{ width: "100%", height: 42, background: "rgba(59,130,246,0.35)", color: "#fff", border: "1.5px solid rgba(59,130,246,0.7)", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, border-color 0.2s, color 0.2s" }}
               onClick={() => {
                 const map = mapInstanceRef.current;
                 if (!map) return;
@@ -1713,10 +1717,13 @@ export default function MapPage() {
             >행정동 보기</button>
           )}
           <button
-            style={{ width: "100%", height: 42, background: isGuMode ? "#3B82F6" : "rgba(255,255,255,0.07)", color: isGuMode ? "#fff" : "#E8E8E8", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, border-color 0.2s, color 0.2s" }}
+            style={{ width: "100%", height: 42, background: "#3B82F6", color: "#fff", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s" }}
             onClick={() => {
               const map = mapInstanceRef.current;
               if (!map) return;
+              setDongStatsOpen(false);
+              // 현재 선택된 행정동의 구를 selectedGu로 설정 → 행정동 보기 버튼 표시
+              if (selectedDong) setSelectedGu(selectedDong.guName);
               const panSeoul = () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
               if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, panSeoul);
               else panSeoul();
@@ -2128,7 +2135,15 @@ export default function MapPage() {
                   {aiStep === "spot" && `${spotDong} 내 추천 위치`}
                 </div>
               </div>
-              <button onClick={() => { setAiModalOpen(false); clearSpotMarkers(); }} style={closeBtnStyle}>✕</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {(aiStep === "result" || aiStep === "spot") && (
+                  <button
+                    onClick={() => { setAiStep("mode"); setAiResults(null); clearSpotMarkers(); }}
+                    style={{ fontSize: 12, color: "#3B82F6", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap", fontWeight: 600 }}
+                  >방식 다시 선택</button>
+                )}
+                <button onClick={() => { setAiModalOpen(false); clearSpotMarkers(); }} style={closeBtnStyle}>✕</button>
+              </div>
             </div>
 
             <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 16, flex: 1, overflowY: "auto" }}>
@@ -2195,6 +2210,12 @@ export default function MapPage() {
                             }, 200);
                           } else {
                             setAiSuggestions([]);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            setAiSuggestions([]);
+                            handleAiRecommend();
                           }
                         }}
                         placeholder="예: 세차장, 네일샵, 치킨전문점"
@@ -2314,7 +2335,7 @@ export default function MapPage() {
                       onClick={() => setShowIndustryPicker((v) => !v)}
                       style={{ fontSize: 13, color: showIndustryPicker ? "#34D399" : "#3B82F6", background: showIndustryPicker ? "rgba(16,185,129,0.1)" : "rgba(59,130,246,0.1)", border: `1px solid ${showIndustryPicker ? "rgba(16,185,129,0.3)" : "rgba(59,130,246,0.3)"}`, borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontWeight: 600, flexShrink: 0 }}
                     >
-                      {showIndustryPicker ? "접기 ↑" : "업종 선택 »"}
+                      {showIndustryPicker ? "접기 ↑" : "업종 선택"}
                     </button>
                   </div>
 
