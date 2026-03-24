@@ -9,10 +9,10 @@ import pandas as pd
 from pathlib import Path
 from scipy.spatial import cKDTree
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STORE_DIR    = PROJECT_ROOT / "data" / "raw_data" / "store_info"
 CAT_MAP_PATH = PROJECT_ROOT / "data" / "category_maps" / "store_category_map.csv"
-OUT_PATH     = PROJECT_ROOT / "ai" / "outputs" / "location_scores.csv"
+OUT_PATH     = PROJECT_ROOT / "data" / "processed_data" / "location_scores.csv"
 
 # 격자 해상도: 0.001도 ≈ 100m
 GRID_RES = 0.001

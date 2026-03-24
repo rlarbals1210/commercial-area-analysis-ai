@@ -15,13 +15,13 @@ import pandas as pd
 from playwright.async_api import async_playwright
 
 # ── 경로 설정 ──────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STORE_DIR    = PROJECT_ROOT / "data" / "raw_data" / "store_info"
-OUT_DIR      = PROJECT_ROOT / "ai" / "outputs"
-OUT_PATH     = OUT_DIR / "naver_place_info.csv"
-LOG_PATH     = OUT_DIR / "crawl_naver_place.log"
+OUT_PATH     = PROJECT_ROOT / "data" / "processed_data" / "naver_place_info.csv"
+LOG_PATH     = PROJECT_ROOT / "data" / "logs" / "crawl_naver_place.log"
 
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # ── 로깅 ──────────────────────────────────────────────────────────
 logging.basicConfig(

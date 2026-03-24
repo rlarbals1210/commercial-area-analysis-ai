@@ -1,14 +1,14 @@
 """
 층별임대료 및 층별효용비율 데이터 전처리 스크립트
-소규모/중대형 상가 CSV → 정제된 JSON (ai/outputs/rental_data.json)
+소규모/중대형 상가 CSV → 정제된 JSON (data/processed_data/rental_data.json)
 """
 import pandas as pd
 import json
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data", "raw_data", "rental_fee_info")
-OUTPUT_PATH = os.path.join(BASE_DIR, "ai", "outputs", "rental_data.json")
+OUTPUT_PATH = os.path.join(BASE_DIR, "data", "processed_data", "rental_data.json")
 
 FILES = {
     "소규모": "임대동향 층별임대료 및 층별효용비율(2024년3분기~)_소규모 상가.csv",

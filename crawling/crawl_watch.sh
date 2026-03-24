@@ -1,14 +1,14 @@
 #!/bin/bash
 # 크롤러 감시 래퍼 — 차단 감지 시 자동 재시작
-# 실행: bash ai/scripts/crawl_watch.sh
+# 실행: bash crawling/crawl_watch.sh
 
 PYTHON=".venv/bin/python3.10"
-SCRIPT="ai/scripts/crawl_naver_place.py"
-LOG="ai/outputs/crawl_naver_place.log"
+SCRIPT="crawling/crawl_naver_place.py"
+LOG="data/logs/crawl_naver_place.log"
 BLOCK_EXIT=42
 WAIT_SEC=300  # 차단 시 5분 대기 후 재시작
 
-cd "$(dirname "$0")/../.." || exit 1
+cd "$(dirname "$0")/.." || exit 1
 
 while true; do
     $PYTHON $SCRIPT >> /dev/null 2>> $LOG

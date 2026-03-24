@@ -7,9 +7,9 @@
 """
 import json, os
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-INPUT_PATH  = os.path.join(BASE_DIR, "ai", "outputs", "rental_data.json")
-OUTPUT_PATH = os.path.join(BASE_DIR, "ai", "outputs", "gu_rental.json")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+INPUT_PATH  = os.path.join(BASE_DIR, "data", "processed_data", "rental_data.json")
+OUTPUT_PATH = os.path.join(BASE_DIR, "data", "processed_data", "gu_rental.json")
 
 # 서울 행정동코드 앞 5자리 → 구명
 GU_CODE_MAP = {
