@@ -13,8 +13,11 @@ venv/
 # Django
 db.sqlite3
 
-#  데이터 전체 제외
-data/
+# 데이터 파일 제외 (폴더 구조는 유지)
+data/**
+!data/**/
+!data/**/.gitkeep
+
 
 # Env
 .env
