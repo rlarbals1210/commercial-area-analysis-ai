@@ -47,10 +47,16 @@ const CATEGORY_GROUPS = {
 // GeoJSON은 중점(·) 사용, 데이터셋은 마침표(.) 사용 → API 호출 시 정규화
 const normalizeDongName = (name) => name.replace(/·/g, ".");
 
-const POLYGON_DEFAULT    = { fillColor: "#9EC8F0", fillOpacity: 0.15, strokeColor: "#6B9FD4", strokeOpacity: 0.8, strokeWeight: 1 };
+const POLYGON_DEFAULT    = { fillColor: "#9EC8F0", fillOpacity: 0.01, strokeColor: "#6B9FD4", strokeOpacity: 0.8, strokeWeight: 1 };
 const POLYGON_HOVER      = { fillColor: "#3B82F6", fillOpacity: 0.45, strokeColor: "#1D4ED8", strokeOpacity: 1,  strokeWeight: 1 };
 const POLYGON_SELECTED   = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColor: "#1D4ED8", strokeOpacity: 1,  strokeWeight: 1 };
 const POLYGON_GU_CONTEXT = { fillColor: "#38BDF8", fillOpacity: 0.22, strokeColor: "#0EA5E9", strokeOpacity: 0.6, strokeWeight: 1.5 };
+// 선택 시 나머지 폴리곤에 적용할 회색 딤처리
+const POLYGON_DIMMED     = { fillColor: "#808080", fillOpacity: 0.45, strokeColor: "#666666", strokeOpacity: 0.5, strokeWeight: 1 };
+// 선택된 구/행정동의 구 경계: 투명(원래 지도 색) + 파란 테두리
+const POLYGON_GU_SELECTED = { fillColor: "#000000", fillOpacity: 0, strokeColor: "#60A5FA", strokeOpacity: 1, strokeWeight: 2.5 };
+// 선택된 구 내 행정동: 투명 fill + 얇은 경계선만
+const POLYGON_DONG_IN_GU  = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#6B9FD4", strokeOpacity: 0.5, strokeWeight: 1 };
 
 
 export default function MapPage() {
@@ -105,6 +111,8 @@ export default function MapPage() {
   const [guSelectedQuarter, setGuSelectedQuarter] = useState(null);
   const [quarterPopupOpen, setQuarterPopupOpen] = useState(false);
   const [guQuarterPopupOpen, setGuQuarterPopupOpen] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(8);
+  const [guAllRanking, setGuAllRanking] = useState([]);
 
   // ── 상가 마커 상태 ──
   const [showStoreMarkers, setShowStoreMarkers] = useState(false);
@@ -155,6 +163,22 @@ export default function MapPage() {
   useEffect(() => {
     if (selectedDong || selectedGu) setSidebarCollapsed(false);
   }, [selectedDong, selectedGu]);
+
+  // ── 줌 레벨 또는 구 선택 변경 시 구 딤처리 재적용 ──
+  // applyMode의 폴리곤 옵션이 호버 등으로 덮어써질 수 있으므로 React effect에서 확실히 유지
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !guPolygonGroupsRef.current.length) return;
+    if (zoomLevel < GU_MODE_LEVEL) return; // gu 모드에서만 재적용
+    const selGuName = selectedGuGroupRef.current?.guName;
+    if (!selGuName) return;
+    guPolygonGroupsRef.current.forEach(({ guName: gn, polygons }) => {
+      polygons.forEach(p => {
+        p.setMap(map);
+        p.setOptions(gn === selGuName ? POLYGON_GU_SELECTED : POLYGON_DIMMED);
+      });
+    });
+  }, [selectedGu, zoomLevel]);
 
   // ── 창업비용 계산기 열릴 때 임대료 데이터 로드 ──
   useEffect(() => {
@@ -230,23 +254,51 @@ export default function MapPage() {
 
     // 줌 변경 시 모드 전환
     kakao.maps.event.addListener(map, "zoom_changed", () => {
-      applyMode(map, map.getLevel());
+      const lv = map.getLevel();
+      applyMode(map, lv);
+      setZoomLevel(lv);
     });
   }, [mapLoaded]);
 
   // ── 줌 레벨에 따라 구/행정동 표시 전환 ──
   function applyMode(map, level) {
     const guMode = level >= GU_MODE_LEVEL;
-    polygonGroupsRef.current.forEach(({ polygons }) =>
-      polygons.forEach((p) => p.setMap(guMode ? null : map))
-    );
+    const selDongName = selectedGroupRef.current?.dongName;
+    const selGuName   = selectedGuGroupRef.current?.guName;
+    // 행정동 폴리곤: show/hide + 딤처리 적용
+    polygonGroupsRef.current.forEach(({ dongName: dn, polygons }) => {
+      polygons.forEach((p) => p.setMap(guMode ? null : map));
+    });
+    if (!guMode) {
+      polygonGroupsRef.current.forEach(({ dongName: dn, guName: dnGu, polygons }) => {
+        let style;
+        if (selDongName) {
+          style = dn === selDongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED;
+        } else if (selGuName) {
+          // 선택된 구 내 행정동은 투명(원래 지도 색), 나머지는 딤처리
+          style = dnGu === selGuName ? POLYGON_DONG_IN_GU : POLYGON_DIMMED;
+        } else {
+          style = POLYGON_DEFAULT;
+        }
+        polygons.forEach(p => p.setOptions(style));
+      });
+    }
+    // 구 폴리곤: show/hide + 딤처리 적용
     guPolygonGroupsRef.current.forEach(({ guName, polygons }) => {
-      const isSelected = selectedGuGroupRef.current?.guName === guName;
+      const isSelected = selGuName === guName;
       const isContext  = contextGuGroupRef.current?.guName === guName;
       polygons.forEach((p) => {
-        p.setMap(guMode || isSelected || isContext ? map : null);
-        if (!guMode && isSelected) p.setOptions(POLYGON_SELECTED);
-        else if (!guMode && isContext) p.setOptions(POLYGON_GU_CONTEXT);
+        // dong 모드에서는 선택된 구 또는 context 구만 표시
+        const showInDongMode = isSelected || isContext;
+        p.setMap(guMode || showInDongMode ? map : null);
+        if (guMode) {
+          if (isSelected) p.setOptions(POLYGON_GU_SELECTED);
+          else if (selGuName) p.setOptions(POLYGON_DIMMED);
+          else p.setOptions(POLYGON_DEFAULT);
+        } else {
+          if (isSelected) p.setOptions(POLYGON_GU_SELECTED);
+          else if (isContext) p.setOptions(POLYGON_GU_CONTEXT);
+        }
       });
     });
     dongLabelsRef.current.forEach((label) => label.setMap(guMode ? null : map));
@@ -280,9 +332,8 @@ export default function MapPage() {
           const prev = hoveredDongGroupRef.current;
           if (prev && prev.dongName !== dongName) {
             const wasSelected = selectedGroupRef.current?.dongName === prev.dongName;
-            const wasContext  = contextGuGroupRef.current?.guName === prev.guName;
             prev.polygons.forEach((p) => p.setOptions(
-              wasSelected ? POLYGON_SELECTED : wasContext ? POLYGON_GU_CONTEXT : POLYGON_DEFAULT
+              wasSelected ? POLYGON_GU_SELECTED : selectedGroupRef.current ? POLYGON_DIMMED : POLYGON_DEFAULT
             ));
           }
           hoveredDongGroupRef.current = { dongName, guName, polygons };
@@ -292,16 +343,19 @@ export default function MapPage() {
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
           hoveredDongGroupRef.current = null;
-          if (selectedGroupRef.current?.dongName !== dongName)
-            polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+          if (selectedGroupRef.current?.dongName !== dongName) {
+            const style = selectedGroupRef.current ? POLYGON_DIMMED : POLYGON_DEFAULT;
+            polygons.forEach((p) => p.setOptions(style));
+          }
           setHoveredDong(null);
         });
         kakao.maps.event.addListener(polygon, "click", () => {
-          if (selectedGroupRef.current)
-            selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
-          polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+          // 모든 행정동 딤처리, 선택된 것만 강조
+          polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
+            ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+          });
           selectedGroupRef.current = { dongName, polygons };
-          // 구 선택 해제 + 컨텍스트 구 표시
+          // 구 선택 해제 + 컨텍스트 구 표시 (투명)
           if (selectedGuGroupRef.current) {
             selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
             selectedGuGroupRef.current = null;
@@ -313,12 +367,12 @@ export default function MapPage() {
           if (!contextGuGroupRef.current) {
             const guGroup = guPolygonGroupsRef.current.find((g) => g.guName === guName);
             if (guGroup) {
-              guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_CONTEXT));
+              guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_SELECTED));
               contextGuGroupRef.current = { guName, polygons: guGroup.polygons };
             }
+          } else {
+            contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_GU_SELECTED));
           }
-          setSelectedGu(null);
-
           if (map.getLevel() > 5) {
             const bounds = new kakao.maps.LatLngBounds();
             geometry.coordinates.forEach((rings) =>
@@ -332,6 +386,8 @@ export default function MapPage() {
             );
             map.panTo(center);
           }
+          setSelectedGu(null);
+          setSidebarCollapsed(false);
           setSelectedDong({ dongName, guName });
         });
       });
@@ -384,7 +440,7 @@ export default function MapPage() {
             const wasSelected = selectedGuGroupRef.current?.guName === prev.guName;
             const wasContext  = contextGuGroupRef.current?.guName === prev.guName;
             prev.polygons.forEach((p) => p.setOptions(
-              wasSelected ? POLYGON_SELECTED : wasContext ? POLYGON_GU_CONTEXT : POLYGON_DEFAULT
+              wasSelected ? POLYGON_GU_SELECTED : selectedGuGroupRef.current ? POLYGON_DIMMED : wasContext ? POLYGON_GU_CONTEXT : POLYGON_DEFAULT
             ));
           }
           hoveredGuGroupRef.current = { guName, polygons };
@@ -395,22 +451,26 @@ export default function MapPage() {
           hoveredGuGroupRef.current = null;
           const isSelected = selectedGuGroupRef.current?.guName === guName;
           const isContext  = contextGuGroupRef.current?.guName === guName;
-          polygons.forEach((p) => p.setOptions(
-            isSelected ? POLYGON_SELECTED : isContext ? POLYGON_GU_CONTEXT : POLYGON_DEFAULT
-          ));
+          let style;
+          if (isSelected) style = POLYGON_GU_SELECTED;
+          else if (selectedGuGroupRef.current) style = POLYGON_DIMMED;
+          else if (isContext) style = POLYGON_GU_CONTEXT;
+          else style = POLYGON_DEFAULT;
+          polygons.forEach((p) => p.setOptions(style));
           setHoveredDong(null);
         });
         kakao.maps.event.addListener(polygon, "click", () => {
-          // 이전 선택 구 폴리곤 초기화
-          if (selectedGuGroupRef.current)
-            selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
           // 컨텍스트 구 초기화
           if (contextGuGroupRef.current) {
             contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
             contextGuGroupRef.current = null;
           }
-          polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+          // 모든 구 딤처리, 선택된 구만 투명(원래 지도 색)
+          guPolygonGroupsRef.current.forEach(({ guName: gn, polygons: ps }) => {
+            ps.forEach(p => p.setOptions(gn === guName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+          });
           selectedGuGroupRef.current = { guName, polygons };
+          setSidebarCollapsed(false);
           setSelectedGu(guName);
           setSelectedDong(null); // 행정동 패널 닫기
           // 선택한 구 중심으로 이동
@@ -986,6 +1046,21 @@ export default function MapPage() {
     }
   }
 
+  // ── 줌 >= 7 시 전체 구 매출 순위 fetch ──
+  useEffect(() => {
+    if (zoomLevel < GU_MODE_LEVEL) { setGuAllRanking([]); return; }
+    const guDongsMap = guToDongsRef.current;
+    if (!guDongsMap || Object.keys(guDongsMap).length === 0) return;
+    fetch("http://localhost:8000/api/gu-all-ranking/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gu_dongs_map: guDongsMap }),
+    })
+      .then((r) => r.json())
+      .then((d) => setGuAllRanking(d.rankings || []))
+      .catch(() => {});
+  }, [zoomLevel]);
+
   // ── 구 패널에서 행정동 선택 → 줌인 + 선택 ──
   function handleSelectDongFromGu(dongName) {
     const map = mapInstanceRef.current;
@@ -996,7 +1071,7 @@ export default function MapPage() {
     );
     if (!group) return;
 
-    // 구 폴리곤 초기화 → 컨텍스트 구로 전환
+    // 구 폴리곤 초기화 → 컨텍스트 구로 전환 (투명)
     if (selectedGuGroupRef.current) {
       selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
       selectedGuGroupRef.current = null;
@@ -1008,15 +1083,16 @@ export default function MapPage() {
     if (!contextGuGroupRef.current) {
       const guGroup = guPolygonGroupsRef.current.find((g) => g.guName === group.guName);
       if (guGroup) {
-        guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_CONTEXT));
+        guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_SELECTED));
         contextGuGroupRef.current = { guName: group.guName, polygons: guGroup.polygons };
       }
+    } else {
+      contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_GU_SELECTED));
     }
-    // 이전 동 폴리곤 초기화
-    if (selectedGroupRef.current) {
-      selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
-    }
-    group.polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+    // 모든 행정동 딤처리, 선택된 것만 강조
+    polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
+      ps.forEach(p => p.setOptions(dn === group.dongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+    });
     selectedGroupRef.current = group;
 
     smoothZoom(map, 4, () => {
@@ -1094,9 +1170,13 @@ export default function MapPage() {
       else doPan();
       const group = guPolygonGroupsRef.current.find((g) => g.guName === guName);
       if (group) {
-        if (selectedGuGroupRef.current)
-          selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
-        group.polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+        if (contextGuGroupRef.current) {
+          contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+          contextGuGroupRef.current = null;
+        }
+        guPolygonGroupsRef.current.forEach(({ guName: gn, polygons: ps }) => {
+          ps.forEach(p => p.setOptions(gn === guName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+        });
         selectedGuGroupRef.current = group;
       }
       if (selectedGroupRef.current) {
@@ -1113,9 +1193,9 @@ export default function MapPage() {
       else if (currentLevel > 5) doPan();
       const group = polygonGroupsRef.current.find((g) => g.dongName === dongName && g.guName === guName);
       if (group) {
-        if (selectedGroupRef.current)
-          selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
-        group.polygons.forEach((p) => p.setOptions(POLYGON_SELECTED));
+        polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
+          ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+        });
         selectedGroupRef.current = group;
       }
       if (selectedGuGroupRef.current) {
@@ -1129,9 +1209,11 @@ export default function MapPage() {
       if (!contextGuGroupRef.current) {
         const guGroup = guPolygonGroupsRef.current.find((g) => g.guName === guName);
         if (guGroup) {
-          guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_CONTEXT));
+          guGroup.polygons.forEach((p) => p.setOptions(POLYGON_GU_SELECTED));
           contextGuGroupRef.current = { guName, polygons: guGroup.polygons };
         }
+      } else {
+        contextGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_GU_SELECTED));
       }
       setSelectedGu(null);
       setSelectedDong({ dongName, guName });
@@ -1235,35 +1317,6 @@ export default function MapPage() {
         <span style={{ fontSize: 17, color: "#666" }}>지역명 · 업종 검색</span>
       </div>
 
-      {/* ── 사이드바 열기 탭 (접혔을 때 + 표시할 데이터가 있을 때만 표시) ──
-          행정동/구/업종이 선택된 상태가 아니면 빈 사이드바가 열리므로 버튼을 숨김 */}
-      {sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && !searchExpanded && (
-        <button
-          onClick={() => setSidebarCollapsed(false)}
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: 0,
-            transform: "translateY(-50%)",
-            zIndex: 15,
-            width: 28,
-            height: 64,
-            background: "rgba(42,42,52,0.92)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            borderLeft: "none",
-            borderRadius: "0 10px 10px 0",
-            color: "#9E9E9E",
-            fontSize: 14,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backdropFilter: "blur(10px)",
-            transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s",
-          }}
-          title="사이드바 열기"
-        >»</button>
-      )}
 
       {/* ── 왼쪽 사이드바 ── */}
       <div data-sidebar style={{
@@ -1289,13 +1342,13 @@ export default function MapPage() {
         <div data-popup style={{ position: "relative", padding: "16px 16px 10px", flexShrink: 0 }}>
           <div
             style={{ ...searchBoxStyle, width: "100%", boxSizing: "border-box", borderRadius: searchExpanded ? "12px 12px 0 0" : 12, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
-            onClick={() => { setSearchExpanded(true); setSidebarCollapsed(false); }}
+            onClick={() => { setSearchExpanded(true); setSidebarCollapsed(false); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
           >
             <span style={{ fontSize: 19, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => { setSearchExpanded(true); setSidebarCollapsed(false); }}
+              onFocus={() => { setSearchExpanded(true); setSidebarCollapsed(false); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && searchResults.length > 0) { handleSelectResult(searchResults[0]); setSearchExpanded(false); }
                 if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }
@@ -1475,8 +1528,8 @@ export default function MapPage() {
                 {!dongLoading && !dongData && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>}
                 {!dongLoading && dongData && (() => {
                   const industries = dongData.industries || [];
-                  const top6Rev   = industries.slice(0, 6);
-                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 6);
+                  const top6Rev   = industries.slice(0, 5);
+                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 5);
                   const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
                   const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
                   return (
@@ -1494,38 +1547,60 @@ export default function MapPage() {
                         </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 매출 TOP 6</div>
+                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 매출 TOP 5</div>
                         <button onClick={() => { if (rankModalOpen && rankType === "revenue") { setRankModalOpen(false); } else { setRankType("revenue"); setRankModalOpen(true); setDongStatsOpen(false); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "revenue" ? "접기 ↑" : "전체 보기 →"}</button>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                        {top6Rev.map((item) => (
-                          <div key={item["통합카테고리"]}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                      <div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
+                          {top6Rev.map((item) => {
+                            const pct = (item["당월매출합"] / maxRevenue) * 100;
+                            return (
+                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
+                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
+                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
+                              >
+                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{fmtRevenue(item["당월매출합"])}</div>
+                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #60A5FA, #3B82F6)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
+                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+                          {top6Rev.map((item) => (
+                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
                             </div>
-                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                              <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 상가 수 TOP 6</div>
+                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 상가 수 TOP 5</div>
                         <button onClick={() => { if (rankModalOpen && rankType === "stores") { setRankModalOpen(false); } else { setRankType("stores"); setRankModalOpen(true); setDongStatsOpen(false); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "stores" ? "접기 ↑" : "전체 보기 →"}</button>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                        {top6Store.map((item) => (
-                          <div key={item["통합카테고리"]}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                      <div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
+                          {top6Store.map((item) => {
+                            const pct = (item["점포수"] / maxStores) * 100;
+                            return (
+                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
+                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
+                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
+                              >
+                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{item["점포수"]}개</div>
+                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #34D399, #10B981)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
+                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+                          {top6Store.map((item) => (
+                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
                             </div>
-                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                              <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                       <div style={{ marginTop: 8 }}>
                         <button
@@ -1607,87 +1682,96 @@ export default function MapPage() {
                 {!guLoading && !guData && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>}
                 {!guLoading && guData && (() => {
                   const industries = guData.industries || [];
-                  const top6Rev   = industries.slice(0, 6);
-                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 6);
+                  const top6Rev   = industries.slice(0, 5);
+                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 5);
                   const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
                   const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
                   return (
                     <>
-                      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                        <div style={statCardStyle}>
-                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>총 매출</div>
-                          <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>{fmtRevenue(guData.총매출)}</div>
-                        </div>
-                        <div style={statCardStyle}>
-                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>전체 순위</div>
-                          <div style={{ fontSize: 17, fontWeight: 700, color: "#93B8EE" }}>
-                            {guData.순위}위<span style={{ fontSize: 13, color: "#9E9E9E", fontWeight: 400, marginLeft: 4 }}>/ {guData.전체구수}구</span>
-                          </div>
-                        </div>
-                      </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 매출 TOP 6</div>
+                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 매출 TOP 5</div>
                         <button onClick={() => { if (guRankModalOpen && guRankType === "revenue") { setGuRankModalOpen(false); } else { setGuRankType("revenue"); setGuRankModalOpen(true); } }} style={inlineViewAllBtnStyle}>{guRankModalOpen && guRankType === "revenue" ? "접기 ↑" : "전체 보기 →"}</button>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                        {top6Rev.map((item) => (
-                          <div key={item["통합카테고리"]}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                      <div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
+                          {top6Rev.map((item) => {
+                            const pct = (item["당월매출합"] / maxRevenue) * 100;
+                            return (
+                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
+                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
+                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
+                              >
+                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{fmtRevenue(item["당월매출합"])}</div>
+                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #60A5FA, #3B82F6)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
+                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+                          {top6Rev.map((item) => (
+                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
                             </div>
-                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                              <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 상가 수 TOP 6</div>
+                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 상가 수 TOP 5</div>
                         <button onClick={() => { if (guRankModalOpen && guRankType === "stores") { setGuRankModalOpen(false); } else { setGuRankType("stores"); setGuRankModalOpen(true); } }} style={inlineViewAllBtnStyle}>{guRankModalOpen && guRankType === "stores" ? "접기 ↑" : "전체 보기 →"}</button>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
-                        {top6Store.map((item) => (
-                          <div key={item["통합카테고리"]}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                              <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                              <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                      <div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
+                          {top6Store.map((item) => {
+                            const pct = (item["점포수"] / maxStores) * 100;
+                            return (
+                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
+                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
+                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
+                              >
+                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{item["점포수"]}개</div>
+                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #34D399, #10B981)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
+                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+                          {top6Store.map((item) => (
+                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
                             </div>
-                            <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                              <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                     </>
                   );
                 })()}
               </div>
 
-              {/* 행정동 목록 */}
-              {(() => {
-                const dongs = guToDongsRef.current[selectedGu] || [];
-                return dongs.length > 0 ? (
-                  <div style={{ marginTop: 14, padding: "14px", background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={{ fontSize: 13, color: "#FBBF24", fontWeight: 700, background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 7px" }}>구</span>
-                      <span style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} 행정동</span>
-                      <span style={{ fontSize: 14, color: "#9E9E9E" }}>({dongs.length}개)</span>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {dongs.map((dong) => (
-                        <button
-                          key={dong}
-                          onClick={() => handleSelectDongFromGu(dong)}
-                          style={dongChipStyle}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.25)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.7)"; e.currentTarget.style.color = "#93B8EE"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "#C8C8C8"; }}
-                        >{dong}</button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null;
-              })()}
+            </div>
+          )}
+
+          {/* 구별 매출 순위 - 사이드바 활성화 시 내부에 표시 */}
+          {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && guAllRanking.length > 0 && (
+            <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 8 }}>구별 매출 순위</div>
+              {guAllRanking.slice(0, 10).map((item, i) => (
+                <div
+                  key={item.gu}
+                  onClick={() => {
+                    const group = guPolygonGroupsRef.current.find((g) => g.guName === item.gu);
+                    if (group) handleSelectResult({ type: "gu", guName: item.gu, dongName: null, centroid: group.centroid });
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px", cursor: "pointer", borderBottom: i < 9 ? "1px solid rgba(255,255,255,0.05)" : "none", borderRadius: 6, transition: "background 0.15s" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.1)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 700, color: i < 3 ? ["#FBBF24","#9CA3AF","#CD7C54"][i] : "#6B7280", width: 18, textAlign: "center" }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 13, color: "#E8E8E8", fontWeight: 500 }}>{item.gu}</span>
+                  <span style={{ fontSize: 12, color: "#9E9E9E" }}>{(item.총매출 / 100_000_000).toFixed(0)}억</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -1731,6 +1815,38 @@ export default function MapPage() {
           >구 보기</button>
         </div>
       </div>
+
+      {/* ── 구 매출 순위 패널 (사이드바 비활성 시 플로팅) ── */}
+      {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && sidebarCollapsed && guAllRanking.length > 0 && (
+        <div style={{
+          position: "absolute", top: 70, left: 24,
+          width: 280,
+          background: "rgba(18,18,22,0.92)", backdropFilter: "blur(12px)",
+          borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+          zIndex: 200,
+        }}>
+          <div style={{ padding: "10px 14px 8px", fontSize: 13, fontWeight: 700, color: "#9E9E9E", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            구별 매출 순위
+          </div>
+          {guAllRanking.slice(0, 10).map((item, i) => (
+            <div
+              key={item.gu}
+              onClick={() => {
+                const group = guPolygonGroupsRef.current.find((g) => g.guName === item.gu);
+                if (group) handleSelectResult({ type: "gu", guName: item.gu, dongName: null, centroid: group.centroid });
+              }}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px", cursor: "pointer", borderBottom: i < 9 ? "1px solid rgba(255,255,255,0.05)" : "none", transition: "background 0.15s" }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.1)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
+              <span style={{ fontSize: 12, fontWeight: 700, color: i < 3 ? ["#FBBF24","#9CA3AF","#CD7C54"][i] : "#6B7280", width: 18, textAlign: "center" }}>{i + 1}</span>
+              <span style={{ flex: 1, fontSize: 13, color: "#E8E8E8", fontWeight: 500 }}>{item.gu}</span>
+              <span style={{ fontSize: 12, color: "#9E9E9E" }}>{(item.총매출 / 100_000_000).toFixed(0)}억</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── 현재위치 버튼 ── */}
       <button

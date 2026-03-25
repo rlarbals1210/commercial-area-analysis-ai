@@ -310,6 +310,59 @@ def gu_analysis(request):
     })
 
 
+@csrf_exempt
+def gu_all_ranking(request):
+    """전체 구 매출 순위 반환 (POST, body: { gu_dongs_map })"""
+    if request.method != "POST":
+        return JsonResponse({"error": "POST만 지원합니다."}, status=405)
+    try:
+        body = json.loads(request.body)
+    except Exception:
+        return JsonResponse({"error": "잘못된 JSON"}, status=400)
+
+    gu_dongs_map = {g: [normalize_dong(d) for d in dl] for g, dl in body.get("gu_dongs_map", {}).items()}
+    if not gu_dongs_map:
+        return JsonResponse({"rankings": []})
+
+    all_dong_to_gu = {}
+    for gu_name, dong_list in gu_dongs_map.items():
+        for dong in dong_list:
+            all_dong_to_gu[dong] = gu_name
+    all_dongs = list(all_dong_to_gu.keys())
+
+    latest_quarter = (
+        CommercialData.objects
+        .filter(행정동명__in=all_dongs)
+        .order_by("-기준_년분기_코드")
+        .values_list("기준_년분기_코드", flat=True)
+        .first()
+    )
+    if not latest_quarter:
+        return JsonResponse({"rankings": []})
+
+    dong_totals = (
+        CommercialData.objects
+        .filter(행정동명__in=all_dongs, 기준_년분기_코드=latest_quarter)
+        .values("행정동명")
+        .annotate(total=Sum("당월매출합"))
+    )
+    gu_totals = {}
+    for row in dong_totals:
+        gn = all_dong_to_gu.get(row["행정동명"])
+        if gn:
+            gu_totals[gn] = gu_totals.get(gn, 0) + row["total"]
+
+    rankings = sorted(
+        [{"gu": gu, "총매출": total} for gu, total in gu_totals.items()],
+        key=lambda x: x["총매출"],
+        reverse=True
+    )
+    for i, item in enumerate(rankings):
+        item["순위"] = i + 1
+
+    return JsonResponse({"rankings": rankings, "quarter": latest_quarter})
+
+
 def score(request):
     """창업 적합도 점수 (GET, dong + category 필수)"""
     dong = normalize_dong(request.GET.get("dong"))
