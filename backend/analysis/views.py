@@ -670,45 +670,57 @@ def recommend_industry(request):
     if not categories:
         return JsonResponse({"error": "추천할 수 있는 업종 데이터가 없습니다."}, status=404)
 
-    # 정규화 최대값
-    max_매출 = max((commercial_map[c]["당월매출합"] or 0) for c in categories) or 1
-    max_유동 = max((commercial_map[c]["총유동인구"] or 0) for c in categories) or 1
-    max_경쟁강도 = max((commercial_map[c]["경쟁강도"] or 0) for c in categories) or 1
+    # 전국 기준 정규화 최대값 (recommend_score와 동일한 방식)
+    global_max_cache = {}
+    for cat in categories:
+        all_rows = list(
+            CommercialData.objects.filter(통합카테고리=cat, 기준_년분기_코드=latest_q)
+            .values("당월매출합", "총유동인구", "경쟁강도")
+        )
+        global_max_cache[cat] = {
+            "max_매출": max((r["당월매출합"] or 0) for r in all_rows) or 1,
+            "max_유동": max((r["총유동인구"] or 0) for r in all_rows) or 1,
+            "max_경쟁강도": max((r["경쟁강도"] or 0) for r in all_rows) or 1,
+        }
 
     results = []
     for cat in categories:
         c = commercial_map[cat]
         s = score_map[cat]
 
+        max_매출 = global_max_cache[cat]["max_매출"]
+        max_유동 = global_max_cache[cat]["max_유동"]
+        max_경쟁강도 = global_max_cache[cat]["max_경쟁강도"]
+
         성장확률 = s.get("성장확률") or 50.0
-        포화도 = c.get("업종_포화도") or 0.5
         경쟁강도_raw = c.get("경쟁강도") or 0
-        경쟁강도_norm = 경쟁강도_raw / max_경쟁강도  # 0~1 정규화
+        경쟁강도_norm = 경쟁강도_raw / max_경쟁강도  # 전국 기준 0~1 정규화
         유동인구 = c.get("총유동인구") or 0
         매출 = c.get("당월매출합") or 0
         점포수 = c.get("점포수") or 0
 
-        매출_점수 = (매출 / max_매출) * 100
-        유동인구_점수 = (유동인구 / max_유동) * 100
-        포화도_점수 = max(0.0, 1 - 포화도) * 100
+        매출_점수 = round((매출 / max_매출) * 100, 1)
+        유동인구_점수 = round((유동인구 / max_유동) * 100, 1)
+        경쟁_점수 = round(max(0.0, 1 - 경쟁강도_norm) * 100, 1)
 
-        composite = (
+        composite = round(
             성장확률 * 0.40
             + 매출_점수 * 0.30
             + 유동인구_점수 * 0.15
-            + 포화도_점수 * 0.15
+            + 경쟁_점수 * 0.15,
+            1
         )
 
         results.append({
             "industry": cat,
             "category": cat,
-            "score": round(composite, 1),
+            "score": composite,
             "성장확률": round(성장확률, 1),
             "등급": s.get("등급", "-"),
             "revenue": 매출,
             "stores": 점포수,
             "경쟁강도_norm": round(경쟁강도_norm, 3),
-            "업종_포화도": round(포화도, 3),
+            "업종_포화도": round(c.get("업종_포화도") or 0.5, 3),
             "총유동인구": 유동인구,
         })
 

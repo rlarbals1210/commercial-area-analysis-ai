@@ -17,6 +17,7 @@ db.sqlite3
 data/**
 !data/**/
 !data/**/.gitkeep
+!data/category_maps/*.csv
 
 
 # Env
