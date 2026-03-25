@@ -59,7 +59,9 @@ def _get_location_df():
 
 
 DONG_REMAP = {
-    "신설동": "용신동",  # GeoJSON 경계명 → DB 행정동명
+    "신설동": "용신동",    # GeoJSON 경계명 → DB 행정동명
+    "상일제1동": "상일동", # 분동 전 통합 데이터로 매핑
+    "상일제2동": "상일동",
 }
 
 def normalize_dong(name: str) -> str:
