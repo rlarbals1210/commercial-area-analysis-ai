@@ -82,12 +82,14 @@ const CATEGORY_GROUPS = {
 const normalizeDongName = (name) => name.replace(/·/g, ".");
 
 const POLYGON_DEFAULT    = { fillColor: "#9EC8F0", fillOpacity: 0.01, strokeColor: "#6B9FD4", strokeOpacity: 0.8, strokeWeight: 1 };
-const POLYGON_HOVER      = { fillColor: "#3B82F6", fillOpacity: 0.45, strokeColor: "#1D4ED8", strokeOpacity: 1,  strokeWeight: 1 };
+const POLYGON_HOVER      = { fillColor: "#60A5FA", fillOpacity: 0.35, strokeColor: "#3B82F6", strokeOpacity: 1,  strokeWeight: 1 };
 const POLYGON_SELECTED   = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColor: "#1D4ED8", strokeOpacity: 1,  strokeWeight: 1 };
 // 선택 시 나머지 폴리곤에 적용할 회색 딤처리
-const POLYGON_DIMMED     = { fillColor: "#808080", fillOpacity: 0.45, strokeColor: "#666666", strokeOpacity: 0.5, strokeWeight: 1 };
-// 선택된 구/행정동의 구 경계: 투명(원래 지도 색) + 파란 테두리
-const POLYGON_GU_SELECTED = { fillColor: "#000000", fillOpacity: 0, strokeColor: "#60A5FA", strokeOpacity: 1, strokeWeight: 2.5 };
+const POLYGON_DIMMED     = { fillColor: "#1E3A8A", fillOpacity: 0.18, strokeColor: "#3B82F6", strokeOpacity: 0.2, strokeWeight: 1 };
+// 선택된 구 경계: 투명(원래 지도 색) + 스카이블루 테두리
+const POLYGON_GU_SELECTED  = { fillColor: "#000000", fillOpacity: 0, strokeColor: "#38BDF8", strokeOpacity: 1, strokeWeight: 3 };
+// 선택된 행정동 경계: 투명(원래 지도 색) + 에메랄드 테두리
+const POLYGON_DONG_SELECTED = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#7DD3FC", strokeOpacity: 0.8, strokeWeight: 2 };
 // 선택된 구 내 행정동: 투명 fill + 얇은 경계선만
 const POLYGON_DONG_IN_GU  = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#6B9FD4", strokeOpacity: 0.5, strokeWeight: 1 };
 
@@ -285,13 +287,15 @@ export default function MapPage() {
     });
     mapInstanceRef.current = map;
 
-    // 두 GeoJSON 동시 로드
+    // 세 GeoJSON 동시 로드
     Promise.all([
       fetch("/seoul_hangjeongdong.geojson").then((r) => r.json()),
       fetch("/seoul_gu.geojson").then((r) => r.json()),
-    ]).then(([dongGeoJson, guGeoJson]) => {
+      fetch("/seoul_boundary.geojson").then((r) => r.json()),
+    ]).then(([dongGeoJson, guGeoJson, boundaryGeoJson]) => {
       drawDongPolygons(map, dongGeoJson, kakao);
       drawGuPolygons(map, guGeoJson, kakao);
+      drawSeoulBoundary(map, boundaryGeoJson, kakao);
       // 초기 레벨 8 → 구 모드 적용
       applyMode(map, map.getLevel());
     });
@@ -317,7 +321,7 @@ export default function MapPage() {
       polygonGroupsRef.current.forEach(({ dongName: dn, guName: dnGu, polygons }) => {
         let style;
         if (selDongName) {
-          style = dn === selDongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED;
+          style = dn === selDongName ? POLYGON_DONG_SELECTED : POLYGON_DIMMED;
         } else if (selGuName) {
           // 선택된 구 내 행정동은 투명(원래 지도 색), 나머지는 딤처리
           style = dnGu === selGuName ? POLYGON_DONG_IN_GU : POLYGON_DIMMED;
@@ -328,16 +332,18 @@ export default function MapPage() {
       });
     }
     // 구 폴리곤: show/hide + 딤처리 적용
+    const selDongGuName = selectedGroupRef.current?.guName; // 선택된 행정동의 구
     guPolygonGroupsRef.current.forEach(({ guName, polygons }) => {
       const isSelected = selGuName === guName;
+      const isDongGu   = selDongGuName === guName; // 행정동 선택 시 해당 구
       polygons.forEach((p) => {
-        p.setMap(guMode || isSelected ? map : null);
+        p.setMap(guMode || isSelected || isDongGu ? map : null);
         if (guMode) {
-          if (isSelected) p.setOptions(POLYGON_GU_SELECTED);
-          else if (selGuName) p.setOptions(POLYGON_DIMMED);
+          if (isSelected || isDongGu) p.setOptions(POLYGON_GU_SELECTED);
+          else if (selGuName || selDongGuName) p.setOptions(POLYGON_DIMMED);
           else p.setOptions(POLYGON_DEFAULT);
         } else {
-          if (isSelected) p.setOptions(POLYGON_GU_SELECTED);
+          if (isSelected || isDongGu) p.setOptions(POLYGON_GU_SELECTED);
         }
       });
     });
@@ -372,19 +378,27 @@ export default function MapPage() {
           const prev = hoveredDongGroupRef.current;
           if (prev && prev.dongName !== dongName) {
             const wasSelected = selectedGroupRef.current?.dongName === prev.dongName;
+            const selGuNm = selectedGuGroupRef.current?.guName;
+            const prevOutsideGu = selGuNm && prev.guName !== selGuNm;
             prev.polygons.forEach((p) => p.setOptions(
-              wasSelected ? POLYGON_GU_SELECTED : selectedGroupRef.current ? POLYGON_DIMMED : POLYGON_DEFAULT
+              wasSelected ? POLYGON_GU_SELECTED
+                : (selectedGroupRef.current || prevOutsideGu) ? POLYGON_DIMMED
+                : POLYGON_DEFAULT
             ));
           }
           hoveredDongGroupRef.current = { dongName, guName, polygons };
-          if (selectedGroupRef.current?.dongName !== dongName)
+          const selGuName = selectedGuGroupRef.current?.guName;
+          const canHover = !selGuName || guName === selGuName;
+          if (selectedGroupRef.current?.dongName !== dongName && canHover)
             polygons.forEach((p) => p.setOptions(POLYGON_HOVER));
           setHoveredDong({ dongName, guName });
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
           hoveredDongGroupRef.current = null;
           if (selectedGroupRef.current?.dongName !== dongName) {
-            const style = selectedGroupRef.current ? POLYGON_DIMMED : POLYGON_DEFAULT;
+            const selGuNm = selectedGuGroupRef.current?.guName;
+            const outsideGu = selGuNm && guName !== selGuNm;
+            const style = (selectedGroupRef.current || outsideGu) ? POLYGON_DIMMED : POLYGON_DEFAULT;
             polygons.forEach((p) => p.setOptions(style));
           }
           setHoveredDong(null);
@@ -392,14 +406,19 @@ export default function MapPage() {
         kakao.maps.event.addListener(polygon, "click", () => {
           // 모든 행정동 딤처리, 선택된 것만 강조
           polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
-            ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+            ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_DONG_SELECTED : POLYGON_DIMMED));
           });
-          selectedGroupRef.current = { dongName, polygons };
-          // 구 선택 해제
+          selectedGroupRef.current = { dongName, guName, polygons };
+          // 구 선택 해제 후 해당 동의 구 테두리 표시
           if (selectedGuGroupRef.current) {
             selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
             selectedGuGroupRef.current = null;
           }
+          const dongGuGroup = guPolygonGroupsRef.current.find((g) => g.guName === guName);
+          if (dongGuGroup) dongGuGroup.polygons.forEach((p) => {
+            p.setMap(map);
+            p.setOptions(POLYGON_GU_SELECTED);
+          });
           if (map.getLevel() > 5) {
             const bounds = new kakao.maps.LatLngBounds();
             geometry.coordinates.forEach((rings) =>
@@ -465,20 +484,26 @@ export default function MapPage() {
           const prev = hoveredGuGroupRef.current;
           if (prev && prev.guName !== guName) {
             const wasSelected = selectedGuGroupRef.current?.guName === prev.guName;
+            const prevIsDongGu = selectedGroupRef.current?.guName === prev.guName;
+            const hasSel = selectedGuGroupRef.current || selectedGroupRef.current;
             prev.polygons.forEach((p) => p.setOptions(
-              wasSelected ? POLYGON_GU_SELECTED : selectedGuGroupRef.current ? POLYGON_DIMMED : POLYGON_DEFAULT
+              (wasSelected || prevIsDongGu) ? POLYGON_GU_SELECTED : hasSel ? POLYGON_DIMMED : POLYGON_DEFAULT
             ));
           }
           hoveredGuGroupRef.current = { guName, polygons };
-          polygons.forEach((p) => p.setOptions(POLYGON_HOVER));
+          const isSelectedGu = selectedGuGroupRef.current?.guName === guName;
+          const isDongGu = selectedGroupRef.current?.guName === guName;
+          if (!isSelectedGu && !isDongGu) polygons.forEach((p) => p.setOptions(POLYGON_HOVER));
           setHoveredDong({ dongName: null, guName });
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
           hoveredGuGroupRef.current = null;
           const isSelected = selectedGuGroupRef.current?.guName === guName;
+          const isDongGu   = selectedGroupRef.current?.guName === guName;
+          const hasSel     = selectedGuGroupRef.current || selectedGroupRef.current;
           let style;
-          if (isSelected) style = POLYGON_GU_SELECTED;
-          else if (selectedGuGroupRef.current) style = POLYGON_DIMMED;
+          if (isSelected || isDongGu) style = POLYGON_GU_SELECTED;
+          else if (hasSel) style = POLYGON_DIMMED;
           else style = POLYGON_DEFAULT;
           polygons.forEach((p) => p.setOptions(style));
           setHoveredDong(null);
@@ -489,6 +514,7 @@ export default function MapPage() {
             ps.forEach(p => p.setOptions(gn === guName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
           });
           selectedGuGroupRef.current = { guName, polygons };
+          selectedGroupRef.current = null; // 이전 행정동 선택 초기화
           setSidebarCollapsed(false);
           setSelectedGu(guName);
           setSelectedDong(null); // 행정동 패널 닫기
@@ -517,6 +543,29 @@ export default function MapPage() {
       guLabelsRef.current.push(guLabel);
 
       guPolygonGroupsRef.current.push({ guName, polygons, centroid: { lat: guCLat, lng: guCLng } });
+    });
+  }
+
+  // ── 서울 외곽 경계선 ──
+  function drawSeoulBoundary(map, geojson, kakao) {
+    geojson.features.forEach((feature) => {
+      const { geometry } = feature;
+      const coords = geometry.type === "Polygon"
+        ? [geometry.coordinates]
+        : geometry.coordinates; // MultiPolygon
+      coords.forEach((rings) => {
+        const path = rings[0].map(([lng, lat]) => new kakao.maps.LatLng(lat, lng));
+        const polygon = new kakao.maps.Polygon({
+          path,
+          strokeWeight: 4,
+          strokeColor: "#94A3B8",
+          strokeOpacity: 0.7,
+          fillColor: "#000000",
+          fillOpacity: 0,
+          zIndex: 0,
+        });
+        polygon.setMap(map);
+      });
     });
   }
 
@@ -1200,7 +1249,7 @@ export default function MapPage() {
       const group = polygonGroupsRef.current.find((g) => g.dongName === dongName && g.guName === guName);
       if (group) {
         polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
-          ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+          ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_DONG_SELECTED : POLYGON_DIMMED));
         });
         selectedGroupRef.current = group;
       }
@@ -2025,7 +2074,7 @@ export default function MapPage() {
 
       {/* ── 호버 툴팁 (사이드바 오른쪽 하단) ── */}
       {hoveredDong && (
-        <div className="anim-slide-up" style={{ ...tooltipStyle, left: sidebarCollapsed ? 16 : 340 }}>
+        <div className="anim-slide-up" style={{ ...tooltipStyle, left: (sidebarCollapsed || searchExpanded) ? 16 : 340 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hoveredDong.dongName ? 6 : 0 }}>
             <span style={tooltipLabel}>구</span>
             <span style={{ fontWeight: 700, color: "#E8E8E8", fontSize: 17 }}>{hoveredDong.guName}</span>
