@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const INDUSTRIES = ["음식점", "카페", "편의점", "병원", "학원", "미용실", "헬스장", "약국"];
+const DRILL_GROUPS = ["음식", "소매", "서비스"];
+const DRILL_GROUP_META = {
+  "음식":   { emoji: "🍽️" },
+  "소매":   { emoji: "🛍️" },
+  "서비스": { emoji: "⚙️" },
+};
 const REGIONS = [
   "강남구", "강동구", "강북구", "강서구", "관악구",
   "광진구", "구로구", "금천구", "노원구", "도봉구",
@@ -21,29 +26,56 @@ const STARTUP_COSTS = {
   "패스트푸드":    { "인테리어_만원per평": 70,  "설비_집기_만원": 1500, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 40, "특이사항": "프랜차이즈 가맹비 별도 (1000~3000만원)" },
   "카페":          { "인테리어_만원per평": 120, "설비_집기_만원": 2500, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 30, "특이사항": "에스프레소 머신 등 고가 설비 포함" },
   "주점":          { "인테리어_만원per평": 90,  "설비_집기_만원": 1200, "초기재고_만원": 400,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 35, "특이사항": "주류 면허 비용 별도" },
-  "편의점":        { "인테리어_만원per평": 50,  "설비_집기_만원": 3000, "초기재고_만원": 2000, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 50, "원가율_%": 72, "특이사항": "가맹비·냉장설비 비중 높음, 원가율 높음" },
-  "식품 소매":     { "인테리어_만원per평": 40,  "설비_집기_만원": 800,  "초기재고_만원": 1000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 65, "특이사항": "" },
-  "의류/패션":     { "인테리어_만원per평": 80,  "설비_집기_만원": 500,  "초기재고_만원": 1500, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 20, "원가율_%": 45, "특이사항": "초기재고 비중 높음" },
-  "뷰티/화장품":   { "인테리어_만원per평": 80,  "설비_집기_만원": 500,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 40, "특이사항": "" },
-  "미용실":        { "인테리어_만원per평": 90,  "설비_집기_만원": 2000, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 20, "특이사항": "미용 기구·의자 등 설비 비중 높음" },
-  "의료/약국":     { "인테리어_만원per평": 100, "설비_집기_만원": 3000, "초기재고_만원": 1000, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 30, "원가율_%": 30, "특이사항": "의료기기·약품재고 비중 높음, 면허 필요" },
-  "전자/통신":     { "인테리어_만원per평": 60,  "설비_집기_만원": 500,  "초기재고_만원": 2000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 55, "특이사항": "" },
+  "편의점":                 { "인테리어_만원per평": 50,  "설비_집기_만원": 3000, "초기재고_만원": 2000, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 50, "원가율_%": 72, "특이사항": "가맹비·냉장설비 비중 높음, 원가율 높음" },
+  "슈퍼마켓":               { "인테리어_만원per평": 40,  "설비_집기_만원": 1000, "초기재고_만원": 1500, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 65, "특이사항": "냉장·진열 설비 필요" },
+  "미곡판매":               { "인테리어_만원per평": 30,  "설비_집기_만원": 400,  "초기재고_만원": 500,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 60, "특이사항": "쌀·곡물 전문 소매" },
+  "수산물판매":             { "인테리어_만원per평": 30,  "설비_집기_만원": 600,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 65, "특이사항": "냉장·냉동 설비 필요" },
+  "육류판매":               { "인테리어_만원per평": 30,  "설비_집기_만원": 600,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 65, "특이사항": "냉장·냉동 설비 필요" },
+  "청과상":                 { "인테리어_만원per평": 30,  "설비_집기_만원": 300,  "초기재고_만원": 600,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 10, "원가율_%": 60, "특이사항": "신선도 관리 중요" },
+  "반찬가게":               { "인테리어_만원per평": 40,  "설비_집기_만원": 500,  "초기재고_만원": 300,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 50, "특이사항": "조리 설비 필요" },
+  "일반의류":               { "인테리어_만원per평": 80,  "설비_집기_만원": 500,  "초기재고_만원": 1500, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 20, "원가율_%": 45, "특이사항": "초기재고 비중 높음" },
+  "신발":                   { "인테리어_만원per평": 70,  "설비_집기_만원": 400,  "초기재고_만원": 1200, "보증금_임대료배수": 12, "관리비_공과금_만원per월": 15, "원가율_%": 48, "특이사항": "초기재고 비중 높음" },
+  "가방":                   { "인테리어_만원per평": 70,  "설비_집기_만원": 300,  "초기재고_만원": 1000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 45, "특이사항": "초기재고 비중 높음" },
+  "섬유제품":               { "인테리어_만원per평": 60,  "설비_집기_만원": 400,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 50, "특이사항": "" },
+  "화장품":                 { "인테리어_만원per평": 80,  "설비_집기_만원": 500,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 40, "특이사항": "" },
+  "네일숍":                 { "인테리어_만원per평": 90,  "설비_집기_만원": 1500, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 20, "특이사항": "네일 장비·재료 비중 높음" },
+  "피부관리실":             { "인테리어_만원per평": 100, "설비_집기_만원": 2000, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 20, "특이사항": "피부 관리 기기 비중 높음" },
+  "미용실":                 { "인테리어_만원per평": 90,  "설비_집기_만원": 2000, "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 20, "특이사항": "미용 기구·의자 등 설비 비중 높음" },
+  "일반의원":               { "인테리어_만원per평": 150, "설비_집기_만원": 5000, "초기재고_만원": 500,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 50, "원가율_%": 25, "특이사항": "의료기기·인테리어 비중 매우 높음, 의사면허 필요" },
+  "치과의원":               { "인테리어_만원per평": 150, "설비_집기_만원": 8000, "초기재고_만원": 300,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 50, "원가율_%": 20, "특이사항": "치과 장비 비중 매우 높음, 면허 필요" },
+  "한의원":                 { "인테리어_만원per평": 120, "설비_집기_만원": 3000, "초기재고_만원": 300,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 40, "원가율_%": 20, "특이사항": "한방 설비, 면허 필요" },
+  "의료기기":               { "인테리어_만원per평": 60,  "설비_집기_만원": 500,  "초기재고_만원": 1500, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 45, "특이사항": "전문 재고 비중 높음" },
+  "의약품":                 { "인테리어_만원per평": 50,  "설비_집기_만원": 500,  "초기재고_만원": 2000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 50, "특이사항": "약사 면허 필요, 초기재고 비중 높음" },
+  "안경":                   { "인테리어_만원per평": 80,  "설비_집기_만원": 1000, "초기재고_만원": 1000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 40, "특이사항": "검안 장비·재고 비중 높음" },
+  "외국어학원":             { "인테리어_만원per평": 50,  "설비_집기_만원": 600,  "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "강사 인건비 비중 높음" },
+  "일반교습학원":           { "인테리어_만원per평": 50,  "설비_집기_만원": 800,  "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "강사 인건비 비중 높음" },
+  "가전제품":               { "인테리어_만원per평": 60,  "설비_집기_만원": 500,  "초기재고_만원": 2000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 55, "특이사항": "초기재고 비중 높음" },
+  "핸드폰":                 { "인테리어_만원per평": 70,  "설비_집기_만원": 500,  "초기재고_만원": 3000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 50, "특이사항": "재고·통신사 수수료 비중 높음" },
+  "컴퓨터및주변장치판매":   { "인테리어_만원per평": 50,  "설비_집기_만원": 400,  "초기재고_만원": 2000, "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 55, "특이사항": "" },
+  "전자상거래업":           { "인테리어_만원per평": 20,  "설비_집기_만원": 200,  "초기재고_만원": 500,  "보증금_임대료배수": 6,  "관리비_공과금_만원per월": 10, "원가율_%": 40, "특이사항": "오프라인 매장 없거나 소규모" },
   "생활용품 소매": { "인테리어_만원per평": 40,  "설비_집기_만원": 400,  "초기재고_만원": 800,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 50, "특이사항": "" },
-  "스포츠/레저":   { "인테리어_만원per평": 70,  "설비_집기_만원": 1500, "초기재고_만원": 500,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 35, "특이사항": "운동기구 등 설비 비중 높음" },
+  "스포츠 강습":            { "인테리어_만원per평": 60,  "설비_집기_만원": 1500, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 20, "특이사항": "강사 인건비·운동기구 비중 높음" },
+  "골프연습장":             { "인테리어_만원per평": 80,  "설비_집기_만원": 5000, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 50, "원가율_%": 15, "특이사항": "타석·시뮬레이터 등 설비 매우 큼" },
+  "스포츠클럽":             { "인테리어_만원per평": 80,  "설비_집기_만원": 3000, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 40, "원가율_%": 20, "특이사항": "운동기구·샤워시설 비중 높음" },
   "일반학원":      { "인테리어_만원per평": 50,  "설비_집기_만원": 800,  "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "강사 인건비 비중 높음" },
   "예술학원":      { "인테리어_만원per평": 60,  "설비_집기_만원": 1200, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "악기·미술 도구 등 설비 비중 높음" },
   "애완동물":      { "인테리어_만원per평": 80,  "설비_집기_만원": 1500, "초기재고_만원": 500,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 35, "특이사항": "동물 관련 위생 설비 포함" },
   "숙박":          { "인테리어_만원per평": 100, "설비_집기_만원": 3000, "초기재고_만원": 200,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 60, "원가율_%": 25, "특이사항": "초기 투자 규모 매우 큼" },
-  "수리/세탁":     { "인테리어_만원per평": 40,  "설비_집기_만원": 1200, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 20, "특이사항": "" },
-  "오락/유흥":     { "인테리어_만원per평": 100, "설비_집기_만원": 3000, "초기재고_만원": 200,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 40, "원가율_%": 30, "특이사항": "노래방·PC방 등 설비 비중 매우 높음" },
-  "B2B 서비스":    { "인테리어_만원per평": 30,  "설비_집기_만원": 300,  "초기재고_만원": 0,    "보증금_임대료배수": 10, "관리비_공과금_만원per월": 10, "원가율_%": 10, "특이사항": "재고 없음, 인건비 비중 높음" },
+  "PC방":                   { "인테리어_만원per평": 100, "설비_집기_만원": 5000, "초기재고_만원": 100,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 60, "원가율_%": 20, "특이사항": "PC·모니터 등 설비 비중 매우 높음, 전기료 높음" },
+  "노래방":                 { "인테리어_만원per평": 120, "설비_집기_만원": 3000, "초기재고_만원": 100,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 30, "원가율_%": 25, "특이사항": "방음·음향 설비 비중 높음" },
+  "당구장":                 { "인테리어_만원per평": 80,  "설비_집기_만원": 3000, "초기재고_만원": 50,   "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 10, "특이사항": "당구대 비용 높음 (대당 200~500만원)" },
+  "가전제품수리":           { "인테리어_만원per평": 30,  "설비_집기_만원": 800,  "초기재고_만원": 200,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 15, "원가율_%": 25, "특이사항": "기술 인건비 비중 높음" },
+  "세탁소":                 { "인테리어_만원per평": 50,  "설비_집기_만원": 2000, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 30, "원가율_%": 20, "특이사항": "세탁기·드라이클리닝 설비 비중 높음" },
+  "인테리어":               { "인테리어_만원per평": 30,  "설비_집기_만원": 500,  "초기재고_만원": 300,  "보증금_임대료배수": 8,  "관리비_공과금_만원per월": 15, "원가율_%": 35, "특이사항": "시공 외주 비중 높음, 영업용 차량 필요" },
+  "자동차수리/미용":         { "인테리어_만원per평": 40,  "설비_집기_만원": 2000, "초기재고_만원": 300,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 30, "특이사항": "리프트·도장부스 등 설비 비중 높음" },
+  "기타 B2B서비스":         { "인테리어_만원per평": 30,  "설비_집기_만원": 300,  "초기재고_만원": 0,    "보증금_임대료배수": 10, "관리비_공과금_만원per월": 10, "원가율_%": 10, "특이사항": "재고 없음, 인건비 비중 높음" },
 };
 
 const CATEGORY_GROUPS = {
   "전체": Object.keys(STARTUP_COSTS),
   "음식": ["한식", "분식/간식", "베이커리/디저트", "중식", "일식", "양식/기타외식", "치킨전문점", "패스트푸드", "카페", "주점"],
-  "소매": ["편의점", "식품 소매", "의류/패션", "뷰티/화장품", "전자/통신", "생활용품 소매"],
-  "서비스": ["미용실", "의료/약국", "스포츠/레저", "일반학원", "예술학원", "애완동물", "숙박", "수리/세탁", "오락/유흥", "B2B 서비스"],
+  "소매": ["편의점", "슈퍼마켓", "미곡판매", "수산물판매", "육류판매", "청과상", "반찬가게", "일반의류", "신발", "가방", "섬유제품", "화장품", "네일숍", "피부관리실", "가전제품", "핸드폰", "컴퓨터및주변장치판매", "전자상거래업", "생활용품 소매"],
+  "서비스": ["미용실", "일반의원", "치과의원", "한의원", "의료기기", "의약품", "안경", "스포츠 강습", "골프연습장", "스포츠클럽", "외국어학원", "일반교습학원", "예술학원", "애완동물", "숙박", "PC방", "노래방", "당구장", "가전제품수리", "세탁소", "인테리어", "자동차수리/미용", "기타 B2B서비스"],
 };
 
 // GeoJSON은 중점(·) 사용, 데이터셋은 마침표(.) 사용 → API 호출 시 정규화
@@ -134,8 +166,21 @@ export default function MapPage() {
   const [aiResults, setAiResults] = useState(null);
   const [showIndustryPicker, setShowIndustryPicker] = useState(false);
   const [aiSubIndustry, setAiSubIndustry] = useState("");       // dong 모드: 소분류 입력값
-  const [aiSuggestions, setAiSuggestions] = useState([]);       // 자동완성 후보
-  const aiSuggestTimer = useRef(null);
+  const [aiIndustrySearchQuery, setAiIndustrySearchQuery] = useState("");    // AI 업종 선택 검색어
+  const [aiIndustryDrillGroup, setAiIndustryDrillGroup] = useState(null);   // AI 드릴다운 선택 그룹 (null=top)
+  const [aiIndustrySuggestions, setAiIndustrySuggestions] = useState([]);    // AI 업종 자동완성
+  const [aiIndustrySuggestOpen, setAiIndustrySuggestOpen] = useState(false); // 드롭다운 표시 여부
+  const aiIndustrySuggestTimer = useRef(null);                               // 디바운스 타이머
+  // 검색바 업종 필터 드릴다운
+  const [searchIndustryDrillGroup, setSearchIndustryDrillGroup] = useState(null);
+  const [searchIndustrySearchQuery, setSearchIndustrySearchQuery] = useState("");
+  const searchIndustrySuggestTimer = useRef(null);
+  // 지도 상가 필터 드릴다운
+  const [storeDrillGroup, setStoreDrillGroup] = useState(null);
+  // AI 결과 패널 드릴다운
+  const [pickerDrillGroup, setPickerDrillGroup] = useState(null);
+  // 창업비용 계산기 드릴다운 (calcActiveTab → drillGroup으로 전환)
+  const [calcDrillGroup, setCalcDrillGroup] = useState(null);
   const [startupCalcOpen, setStartupCalcOpen] = useState(false); // 창업 비용 계산기
   const [calcIndustry, setCalcIndustry] = useState(null);       // 계산기 선택 업종
   const [calcArea, setCalcArea] = useState(33);                  // 면적(㎡)
@@ -145,7 +190,6 @@ export default function MapPage() {
   const [calcSelectedGu, setCalcSelectedGu] = useState("");     // 구 선택 (지도 선택 없을 때)
   const [calcGuRental, setCalcGuRental] = useState(null);        // 구별 임대료 캐시
   const [calcSearchQuery, setCalcSearchQuery] = useState("");         // 업종 검색어 (입력창 표시용)
-  const [calcActiveTab, setCalcActiveTab] = useState("전체");         // 업종 탭
   const [calcSuggestions, setCalcSuggestions] = useState([]);         // API 자동완성 결과 목록
   const [calcSuggestOpen, setCalcSuggestOpen] = useState(false);      // 자동완성 드롭다운 표시 여부
   const calcSuggestTimer = useRef(null);                              // 디바운스용 타이머 ref
@@ -966,7 +1010,7 @@ export default function MapPage() {
     if (aiMode === "industry" && !aiDong.trim()) return;
     if (aiMode === "score" && (!aiDong.trim() || !aiIndustry)) return;
     setAiStep("loading");
-    setAiSuggestions([]);
+    setAiIndustrySuggestions([]);
 
     const MIN_LOADING_MS = 1200;
     const delay = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -1074,7 +1118,11 @@ export default function MapPage() {
     setAiDong(dong);
     setAiResults(null);
     setAiSubIndustry("");
-    setAiSuggestions([]);
+    setAiIndustrySuggestions([]);
+    setAiIndustrySearchQuery("");
+    setAiIndustryDrillGroup(null);
+    setAiIndustrySuggestions([]);
+    setAiIndustrySuggestOpen(false);
     setMenuOpen(false);
     setSearchExpanded(false);
   }
@@ -1352,11 +1400,63 @@ export default function MapPage() {
               )}
               <div style={{ padding: "12px 14px" }}>
                 <p style={{ ...popupSectionLabel, marginBottom: 8, fontSize: 14 }}>업종 필터</p>
-                <div style={chipGrid}>
-                  {INDUSTRIES.map((item) => (
-                    <button key={item} onClick={() => setSelectedIndustry(selectedIndustry === item ? null : item)} style={chipStyle(selectedIndustry === item)}>{item}</button>
-                  ))}
-                </div>
+                {/* 검색창 */}
+                <input
+                  type="text" placeholder="업종 검색..."
+                  value={searchIndustrySearchQuery}
+                  onChange={(e) => {
+                    setSearchIndustrySearchQuery(e.target.value);
+                    if (e.target.value) setSearchIndustryDrillGroup("__search__");
+                    else setSearchIndustryDrillGroup(null);
+                  }}
+                  style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)", color: "#E8E8E8", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+                />
+                {/* 검색 결과 */}
+                {searchIndustrySearchQuery ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {Object.keys(STARTUP_COSTS).filter(c => c.includes(searchIndustrySearchQuery)).map(cat => (
+                      <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustrySearchQuery(""); setSearchIndustryDrillGroup(null); }}
+                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
+                        {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
+                      </button>
+                    ))}
+                  </div>
+                ) : searchIndustryDrillGroup ? (
+                  /* 대분류 선택 후 세부 목록 */
+                  <>
+                    <button onClick={() => setSearchIndustryDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>
+                      ← {searchIndustryDrillGroup}
+                    </button>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {CATEGORY_GROUPS[searchIndustryDrillGroup].map(cat => (
+                        <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustryDrillGroup(null); }}
+                          style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
+                          {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  /* 대분류 목록 */
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {selectedIndustry && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
+                        <span style={{ fontSize: 12, color: "#93B8EE" }}>{CATEGORY_EMOJI[selectedIndustry] ?? "🏪"} {selectedIndustry}</span>
+                        <button onClick={() => setSelectedIndustry(null)} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
+                      </div>
+                    )}
+                    {DRILL_GROUPS.map(group => (
+                      <button key={group} onClick={() => setSearchIndustryDrillGroup(group)}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; e.currentTarget.style.color = "#93B8EE"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                      >
+                        <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                        <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                 <p style={{ ...popupSectionLabel, margin: "12px 0 8px", fontSize: 14 }}>지역 필터</p>
@@ -1555,16 +1655,54 @@ export default function MapPage() {
                           {storeLoading ? "불러오는 중..." : showStoreMarkers ? "📍 상가 마커 표시 중 (클릭으로 숨기기)" : "📍 상가 마커 보기"}
                         </button>
                         {showStoreMarkers && (
-                          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
-                            <button onClick={() => setStoreCategoryFilter([])} style={{ ...storeFilterChipStyle(storeCategoryFilter.length === 0), gridColumn: "1 / -1", justifyContent: "center", fontSize: 13 }}>전체</button>
-                            {Object.keys(STORE_CATEGORY_COLORS).map((cat) => {
-                              const active = storeCategoryFilter.includes(cat);
-                              return (
-                                <button key={cat} onClick={() => setStoreCategoryFilter(active ? storeCategoryFilter.filter((c) => c !== cat) : [...storeCategoryFilter, cat])} style={{ ...storeFilterChipStyle(active), borderColor: active ? STORE_CATEGORY_COLORS[cat] : undefined, color: active ? STORE_CATEGORY_COLORS[cat] : undefined }}>
-                                  <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat], flexShrink: 0 }} />{cat}
-                                </button>
-                              );
-                            })}
+                          <div style={{ marginTop: 8 }}>
+                            {storeDrillGroup ? (
+                              /* 세부 카테고리 */
+                              <>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                  <button onClick={() => setStoreDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>← {storeDrillGroup}</button>
+                                  {storeCategoryFilter.length > 0 && <button onClick={() => setStoreCategoryFilter([])} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>전체 해제</button>}
+                                </div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                                  {(storeDrillGroup === "store-only"
+                                    ? Object.keys(STORE_CATEGORY_COLORS).filter(c => !Object.keys(STARTUP_COSTS).includes(c))
+                                    : CATEGORY_GROUPS[storeDrillGroup]
+                                  ).map((cat) => {
+                                    const active = storeCategoryFilter.includes(cat);
+                                    return (
+                                      <button key={cat} onClick={() => setStoreCategoryFilter(active ? storeCategoryFilter.filter((c) => c !== cat) : [...storeCategoryFilter, cat])}
+                                        style={{ ...storeFilterChipStyle(active), borderColor: active ? STORE_CATEGORY_COLORS[cat] : undefined, color: active ? STORE_CATEGORY_COLORS[cat] : undefined }}>
+                                        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat] ?? "#9E9E9E", flexShrink: 0 }} />{cat}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            ) : (
+                              /* 대분류 선택 */
+                              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                                {storeCategoryFilter.length > 0 && (
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                                    <span style={{ fontSize: 11, color: "#93B8EE" }}>{storeCategoryFilter.length}개 선택됨</span>
+                                    <button onClick={() => setStoreCategoryFilter([])} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>전체 해제</button>
+                                  </div>
+                                )}
+                                {DRILL_GROUPS.map(group => {
+                                  const groupCats = CATEGORY_GROUPS[group];
+                                  const selectedCount = groupCats.filter(c => storeCategoryFilter.includes(c)).length;
+                                  return (
+                                    <button key={group} onClick={() => setStoreDrillGroup(group)}
+                                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: selectedCount > 0 ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(255,255,255,0.1)", background: selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)", color: selectedCount > 0 ? "#93B8EE" : "#C8C8C8" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)"; }}
+                                    >
+                                      <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                                      <span style={{ fontSize: 11, color: selectedCount > 0 ? "#93B8EE" : "#6B7280" }}>{selectedCount > 0 ? `${selectedCount}개 선택 →` : `${groupCats.length}개 →`}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2249,81 +2387,94 @@ export default function MapPage() {
                     ← 방식 다시 선택
                   </button>
 
-                  {/* 모드별 폼 */}
-                  {aiMode === "dong" && (
-                    <div style={{ marginBottom: 20, position: "relative" }}>
-                      <div style={aiSectionLabel}>
-                        <span style={aiRequiredBadge}>필수</span> 창업 업종 입력
-                      </div>
-                      <input
-                        value={aiSubIndustry}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setAiSubIndustry(v);
-                          setAiIndustry(v);
-                          clearTimeout(aiSuggestTimer.current);
-                          if (v.trim().length >= 1) {
-                            aiSuggestTimer.current = setTimeout(() => {
-                              fetch(`http://localhost:8000/api/suggest/industries/?q=${encodeURIComponent(v)}`)
-                                .then((r) => r.json())
-                                .then((d) => setAiSuggestions(d.suggestions || []))
-                                .catch(() => setAiSuggestions([]));
-                            }, 200);
-                          } else {
-                            setAiSuggestions([]);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            setAiSuggestions([]);
-                            handleAiRecommend();
-                          }
-                        }}
-                        placeholder="예: 세차장, 네일샵, 치킨전문점"
-                        style={{
-                          width: "100%", padding: "10px 14px", background: "#2E2E2E",
-                          border: "1.5px solid #4A4A4A", borderRadius: 10, color: "#E8E8E8",
-                          fontSize: 16, outline: "none", boxSizing: "border-box",
-                        }}
-                      />
-                      {aiSuggestions.length > 0 && (
-                        <div style={{
-                          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20,
-                          background: "#2A2A2A", border: "1px solid #444", borderRadius: 10,
-                          overflow: "hidden", marginTop: 4, boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
-                        }}>
-                          {aiSuggestions.map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => { setAiSubIndustry(s); setAiIndustry(s); setAiSuggestions([]); }}
-                              style={{
-                                display: "block", width: "100%", padding: "10px 14px", textAlign: "left",
-                                background: "none", border: "none", color: "#C8C8C8", fontSize: 15,
-                                cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.06)",
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.15)"; e.currentTarget.style.color = "#93B8EE"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#C8C8C8"; }}
-                            >
-                              {s}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {aiMode === "score" && (
+                  {/* 모드별 폼 — dong/score 공통 업종 선택 UI */}
+                  {(aiMode === "dong" || aiMode === "score") && (
                     <div style={{ marginBottom: 20 }}>
                       <div style={aiSectionLabel}>
                         <span style={aiRequiredBadge}>필수</span> 창업 업종 선택
+                        {aiIndustry && (
+                          <span style={{ marginLeft: 8, fontSize: 13, color: "#93B8EE", fontWeight: 600 }}>
+                            {CATEGORY_EMOJI[aiIndustry] ?? "🏪"} {aiIndustry}
+                          </span>
+                        )}
                       </div>
-                      <div style={chipGrid}>
-                        {INDUSTRIES.map((item) => (
-                          <button key={item} onClick={() => setAiIndustry(aiIndustry === item ? null : item)} style={chipStyle(aiIndustry === item)}>
-                            {item}
-                          </button>
+
+                      {/* 검색창 */}
+                      <input type="text" placeholder="업종 검색... (예: 치킨, 네일, 한의원)"
+                        value={aiIndustrySearchQuery}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setAiIndustrySearchQuery(v);
+                          clearTimeout(aiIndustrySuggestTimer.current);
+                          if (v.trim().length >= 1) {
+                            aiIndustrySuggestTimer.current = setTimeout(() => {
+                              fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                                .then((r) => r.json())
+                                .then((d) => { setAiIndustrySuggestions(d.suggestions || []); setAiIndustrySuggestOpen(true); })
+                                .catch(() => setAiIndustrySuggestions([]));
+                            }, 200);
+                          } else {
+                            setAiIndustrySuggestions([]);
+                            setAiIndustrySuggestOpen(false);
+                          }
+                        }}
+                        onBlur={() => setTimeout(() => setAiIndustrySuggestOpen(false), 150)}
+                        style={{
+                          width: "100%", padding: "7px 11px", fontSize: 13, marginBottom: 8,
+                          borderRadius: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? "8px 8px 0 0" : 8,
+                          background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)",
+                          color: "#E8E8E8", outline: "none", boxSizing: "border-box",
+                        }}
+                      />
+                      {/* 자동완성 드롭다운 */}
+                      <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 260 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#1E2330", border: "1.5px solid rgba(255,255,255,0.12)", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
+                        {aiIndustrySuggestions.map((s, i) => (
+                          <div key={i} onMouseDown={() => { if (aiMode === "dong") setAiSubIndustry(s.통합카테고리); setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
+                            style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.15)"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                          >
+                            <span style={{ color: "#E8E8E8" }}>{s.소분류명}</span>
+                            <span style={{ fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)", padding: "2px 7px", borderRadius: 10 }}>{s.통합카테고리}</span>
+                          </div>
                         ))}
                       </div>
+
+                      {/* 드릴다운 */}
+                      {!aiIndustrySearchQuery && (
+                        aiIndustryDrillGroup ? (
+                          /* 세부 카테고리 */
+                          <>
+                            <button onClick={() => setAiIndustryDrillGroup(null)} style={{ fontSize: 13, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 10px 0" }}>
+                              ← {aiIndustryDrillGroup}
+                            </button>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              {CATEGORY_GROUPS[aiIndustryDrillGroup].map((cat) => (
+                                <button key={cat}
+                                  onClick={() => { const next = aiIndustry === cat ? null : cat; if (aiMode === "dong") setAiSubIndustry(next ?? ""); setAiIndustry(next); }}
+                                  style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: aiIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: aiIndustry === cat ? "#93B8EE" : "#C8C8C8", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
+                                >
+                                  <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          /* 대분류 목록 */
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {DRILL_GROUPS.map(group => (
+                              <button key={group} onClick={() => setAiIndustryDrillGroup(group)}
+                                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", transition: "background 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.12)"; e.currentTarget.style.color = "#93B8EE"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                              >
+                                <span style={{ fontSize: 15 }}>{DRILL_GROUP_META[group].emoji} {group}</span>
+                                <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
 
@@ -2620,42 +2771,69 @@ export default function MapPage() {
           </div>
           <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 12, flexShrink: 0 }}>업종을 선택하면 해당 지역의 창업 적합도를 분석합니다</div>
           <div style={{ flex: 1, overflowY: "auto" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {Object.keys(STORE_CATEGORY_COLORS).map((cat) => (
+            {pickerDrillGroup ? (
+              /* 세부 카테고리 */
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <button
-                  key={cat}
-                  onClick={() => {
-                    setAiIndustry(cat);
-                    setAiMode("score");
-                    setShowIndustryPicker(false);
-                    setAiStep("loading");
-                    Promise.all([
-                      fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
-                      new Promise((res) => setTimeout(res, 1200)),
-                    ])
-                      .then(([data]) => {
-                        if (data.error) { alert(data.error); setAiStep("form"); return; }
-                        setAiResults(data);
-                        setAiStep("result");
-                      })
-                      .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
-                  }}
-                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "transform 0.28s cubic-bezier(0.34,1.56,0.64,1), background 0.15s, color 0.15s" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.15)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.35)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+                  onClick={() => setPickerDrillGroup(null)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#9E9E9E", marginBottom: 4 }}
                 >
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>
-                  {cat}
+                  ← {DRILL_GROUP_META[pickerDrillGroup].emoji} {pickerDrillGroup}
                 </button>
-              ))}
-            </div>
+                {CATEGORY_GROUPS[pickerDrillGroup].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => {
+                      setAiIndustry(cat);
+                      setAiMode("score");
+                      setShowIndustryPicker(false);
+                      setPickerDrillGroup(null);
+                      setAiStep("loading");
+                      Promise.all([
+                        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
+                        new Promise((res) => setTimeout(res, 1200)),
+                      ])
+                        .then(([data]) => {
+                          if (data.error) { alert(data.error); setAiStep("form"); return; }
+                          setAiResults(data);
+                          setAiStep("result");
+                        })
+                        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                    }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.15)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.35)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+                  >
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              /* 대분류 목록 */
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {DRILL_GROUPS.map((group) => (
+                  <button
+                    key={group}
+                    onClick={() => setPickerDrillGroup(group)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 14px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.12)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.3)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+                  >
+                    <span style={{ fontSize: 20 }}>{DRILL_GROUP_META[group].emoji}</span>
+                    {group}
+                    <span style={{ marginLeft: "auto", fontSize: 12, color: "#6B7280" }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* ── 창업비용 계산기 오버레이 ── */}
       {startupCalcOpen && (
-        <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcActiveTab("전체"); }}>
+        <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); }}>
           <div style={startupCalcPanelStyle} onClick={(e) => e.stopPropagation()}>
 
             {/* 헤더 */}
@@ -2664,7 +2842,7 @@ export default function MapPage() {
                 <span style={{ fontSize: 22 }}>💰</span>
                 <span style={{ fontSize: 19, fontWeight: 700, color: "#E8E8E8" }}>창업비용 계산기</span>
               </div>
-              <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcActiveTab("전체"); }} style={closeBtnStyle}>✕</button>
+              <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); }} style={closeBtnStyle}>✕</button>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -2742,20 +2920,6 @@ export default function MapPage() {
               {/* ① 업종 선택 */}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 10, letterSpacing: "0.05em" }}>① 업종 선택</div>
-                {/* 카테고리 탭 */}
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  {Object.keys(CATEGORY_GROUPS).map((tab) => (
-                    <button key={tab} onClick={() => { setCalcActiveTab(tab); setCalcSearchQuery(""); }}
-                      style={{
-                        padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12,
-                        border: calcActiveTab === tab ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
-                        background: calcActiveTab === tab ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
-                        color: calcActiveTab === tab ? "#93B8EE" : "#9E9E9E",
-                        fontWeight: calcActiveTab === tab ? 700 : 400,
-                      }}
-                    >{tab}</button>
-                  ))}
-                </div>
                 {/* 업종 검색창 */}
                 <div style={{ marginBottom: 8 }}>
                   <input
@@ -2765,8 +2929,7 @@ export default function MapPage() {
                     onChange={(e) => {
                       const v = e.target.value;
                       setCalcSearchQuery(v);
-                      setCalcActiveTab("전체");
-                      // 200ms 디바운스 — 타이핑마다 API 호출 방지
+                      setCalcDrillGroup(null);
                       clearTimeout(calcSuggestTimer.current);
                       if (v.trim().length >= 1) {
                         calcSuggestTimer.current = setTimeout(() => {
@@ -2780,7 +2943,6 @@ export default function MapPage() {
                         setCalcSuggestOpen(false);
                       }
                     }}
-                    // onBlur 150ms 지연 — onMouseDown 클릭이 먼저 처리된 뒤 목록 닫힘
                     onBlur={() => setTimeout(() => setCalcSuggestOpen(false), 150)}
                     style={{
                       width: "100%", padding: "6px 10px", fontSize: 13,
@@ -2789,8 +2951,6 @@ export default function MapPage() {
                       color: "#E8E8E8", outline: "none", boxSizing: "border-box",
                     }}
                   />
-                  {/* 자동완성 목록 — maxHeight/opacity 트랜지션으로 부드럽게 펼쳐짐
-                      항상 DOM에 존재하되 숨겨두는 방식 (조건부 렌더링은 애니메이션 불가) */}
                   <div style={{
                     overflow: "hidden",
                     maxHeight: calcSuggestOpen && calcSuggestions.length > 0 ? 320 : 0,
@@ -2802,7 +2962,7 @@ export default function MapPage() {
                     {calcSuggestions.map((s, i) => (
                       <div
                         key={i}
-                        onMouseDown={() => { // onMouseDown — onBlur보다 먼저 발생해서 선택이 안전하게 처리됨
+                        onMouseDown={() => {
                           setCalcIndustry(s.통합카테고리);
                           setCalcResult(null);
                           setCalcSearchQuery("");
@@ -2817,7 +2977,6 @@ export default function MapPage() {
                         onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                       >
                         <span style={{ color: "#E8E8E8" }}>{s.소분류명}</span>
-                        {/* 통합카테고리 뱃지 — STARTUP_COSTS 키와 매핑되는 실제 선택값 */}
                         <span style={{
                           fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)",
                           padding: "2px 7px", borderRadius: 10,
@@ -2827,25 +2986,52 @@ export default function MapPage() {
                   </div>
                 </div>
 
-                {/* 업종 pill 목록 — 검색 중에는 숨겨서 자동완성 목록만 표시 */}
+                {/* 드릴다운 목록 — 검색 중에는 숨김 */}
                 {!calcSearchQuery && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {CATEGORY_GROUPS[calcActiveTab]
-                      .map((cat) => (
-                        <button key={cat} onClick={() => { setCalcIndustry(cat); setCalcResult(null); }}
-                          style={{
-                            padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13,
-                            border: calcIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
-                            background: calcIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
-                            color: calcIndustry === cat ? "#93B8EE" : "#C8C8C8",
-                            fontWeight: calcIndustry === cat ? 700 : 400,
-                            display: "flex", alignItems: "center", gap: 4,
-                          }}
+                  calcDrillGroup ? (
+                    /* 세부 카테고리 */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <button
+                        onClick={() => setCalcDrillGroup(null)}
+                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#9E9E9E", marginBottom: 4 }}
+                      >
+                        ← {DRILL_GROUP_META[calcDrillGroup].emoji} {calcDrillGroup}
+                      </button>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {CATEGORY_GROUPS[calcDrillGroup].map((cat) => (
+                          <button key={cat} onClick={() => { setCalcIndustry(cat); setCalcResult(null); }}
+                            style={{
+                              padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13,
+                              border: calcIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
+                              background: calcIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
+                              color: calcIndustry === cat ? "#93B8EE" : "#C8C8C8",
+                              fontWeight: calcIndustry === cat ? 700 : 400,
+                              display: "flex", alignItems: "center", gap: 4,
+                            }}
+                          >
+                            <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    /* 대분류 목록 */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {DRILL_GROUPS.map((group) => (
+                        <button
+                          key={group}
+                          onClick={() => setCalcDrillGroup(group)}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.12)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.3)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
                         >
-                          <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
+                          <span style={{ fontSize: 18 }}>{DRILL_GROUP_META[group].emoji}</span>
+                          {group}
+                          <span style={{ marginLeft: "auto", fontSize: 12, color: "#6B7280" }}>{CATEGORY_GROUPS[group].length}개 →</span>
                         </button>
                       ))}
-                  </div>
+                    </div>
+                  )
                 )}
               </div>
 
@@ -3001,71 +3187,155 @@ export default function MapPage() {
 
 /* ── 상가 카테고리 색상 ── */
 const CATEGORY_EMOJI = {
-  "한식":           "🍚",
-  "중식":           "🥢",
-  "일식":           "🍱",
-  "양식/기타외식":  "🍝",
-  "분식/간식":      "🥯",
-  "베이커리/디저트":"🥐",
-  "치킨전문점":     "🍗",
-  "패스트푸드":     "🍔",
-  "카페":           "☕",
-  "주점":           "🍺",
-  "편의점":         "🏪",
-  "식품 소매":      "🛒",
-  "의료/약국":      "💊",
-  "미용실":         "✂️",
-  "뷰티/화장품":    "💄",
-  "스포츠/레저":    "⚽",
-  "일반학원":       "📚",
-  "예술학원":       "🎨",
-  "의류/패션":      "👗",
-  "전자/통신":      "📱",
-  "생활용품 소매":  "🧹",
-  "수리/세탁":      "🔧",
-  "숙박":           "🛏️",
-  "오락/유흥":      "🎮",
-  "애완동물":       "🐾",
-  "B2B 서비스":     "💼",
+  // 음식
+  "한식":                   "🍚",
+  "중식":                   "🥢",
+  "일식":                   "🍱",
+  "양식/기타외식":          "🍝",
+  "분식/간식":              "🥯",
+  "베이커리/디저트":        "🥐",
+  "치킨전문점":             "🍗",
+  "패스트푸드":             "🍔",
+  "카페":                   "☕",
+  "주점":                   "🍺",
+  // 식품 소매
+  "편의점":                 "🏪",
+  "슈퍼마켓":               "🏬",
+  "미곡판매":               "🌾",
+  "수산물판매":             "🐟",
+  "육류판매":               "🥩",
+  "청과상":                 "🍎",
+  "반찬가게":               "🥘",
+  "식품 소매":              "🛒",  // store pin 전용
+  // 의류
+  "일반의류":               "👗",
+  "신발":                   "👟",
+  "가방":                   "👜",
+  "섬유제품":               "🧵",
+  "의류/패션":              "👗",  // store pin 전용
+  // 뷰티
+  "화장품":                 "💄",
+  "네일숍":                 "💅",
+  "피부관리실":             "🧖",
+  "뷰티/화장품":            "💄",  // store pin 전용
+  "미용실":                 "✂️",
+  // 전자
+  "가전제품":               "📺",
+  "핸드폰":                 "📱",
+  "컴퓨터및주변장치판매":   "💻",
+  "전자상거래업":           "🛍️",
+  "전자/통신":              "📱",  // store pin 전용
+  "생활용품 소매":          "🧹",
+  // 의료
+  "일반의원":               "🏥",
+  "치과의원":               "🦷",
+  "한의원":                 "🌿",
+  "의료기기":               "🩺",
+  "의약품":                 "💊",
+  "안경":                   "👓",
+  "의료/약국":              "💊",  // store pin 전용
+  // 학원
+  "외국어학원":             "🌍",
+  "일반교습학원":           "📚",
+  "예술학원":               "🎨",
+  // 스포츠
+  "스포츠 강습":            "🏃",
+  "골프연습장":             "⛳",
+  "스포츠클럽":             "🏋️",
+  "스포츠/레저":            "⚽",  // store pin 전용
+  // 기타
+  "숙박":                   "🛏️",
+  "PC방":                   "🖥️",
+  "노래방":                 "🎤",
+  "당구장":                 "🎱",
+  "오락/유흥":              "🎮",  // store pin 전용
+  "가전제품수리":           "🔧",
+  "세탁소":                 "👕",
+  "인테리어":               "🏗️",
+  "자동차수리/미용":        "🚗",
+  "기타 B2B서비스":         "💼",
+  "애완동물":               "🐾",
 };
 
 const STORE_CATEGORY_COLORS = {
-  // 음식 — 빨강·주황 계열, 각 단계 충분히 분리
-  "한식":           "#FF2D2D",  // 순빨강
-  "중식":           "#FF6900",  // 딥오렌지
-  "일식":           "#FFB300",  // 황금오렌지
-  "양식/기타외식":  "#FFE600",  // 노랑
-  "분식/간식":      "#FF85C8",  // 핑크
-  "베이커리/디저트":"#FFAB40",  // 연주황
-  "치킨전문점":     "#FF4500",  // 레드오렌지
-  "패스트푸드":     "#FF6D00",  // 딥오렌지
-  "카페":           "#7B3F00",  // 다크브라운
-  "주점":           "#AA00FF",  // 바이올렛
+  // 음식 — 빨강·주황 계열
+  "한식":                   "#FF2D2D",
+  "중식":                   "#FF6900",
+  "일식":                   "#FFB300",
+  "양식/기타외식":          "#FFE600",
+  "분식/간식":              "#FF85C8",
+  "베이커리/디저트":        "#FFAB40",
+  "치킨전문점":             "#FF4500",
+  "패스트푸드":             "#FF6D00",
+  "카페":                   "#7B3F00",
+  "주점":                   "#AA00FF",
 
-  // 유통/소매 — 초록·청록 계열
-  "편의점":         "#00C853",  // 에메랄드
-  "식품 소매":      "#76FF03",  // 라임 (에메랄드와 명도 차이 큼)
-  "생활용품 소매":  "#00BFA5",  // 틸그린
-  "의류/패션":      "#304FFE",  // 인디고블루
-  "전자/통신":      "#00E5FF",  // 아쿠아
+  // 식품 소매 — 초록 계열
+  "편의점":                 "#00C853",
+  "슈퍼마켓":               "#1B5E20",
+  "미곡판매":               "#827717",
+  "수산물판매":             "#0D47A1",
+  "육류판매":               "#4E342E",
+  "청과상":                 "#558B2F",
+  "반찬가게":               "#E65100",
+  "식품 소매":              "#76FF03",  // store pin 전용
 
-  // 건강/뷰티 — 핑크·레드 계열
-  "의료/약국":      "#B71C1C",  // 다크레드 (순빨강 한식과 명도 차이 큼)
-  "미용실":         "#F50057",  // 딥마젠타핑크
-  "뷰티/화장품":    "#FF80AB",  // 라이트핑크
+  // 의류/패션 — 인디고 계열
+  "일반의류":               "#1A237E",
+  "신발":                   "#3949AB",
+  "가방":                   "#5C6BC0",
+  "섬유제품":               "#283593",
+  "의류/패션":              "#304FFE",  // store pin 전용
 
-  // 스포츠/교육 — 파랑 계열, 명도 차이로 구분
-  "스포츠/레저":    "#40C4FF",  // 하늘
+  // 뷰티 — 핑크 계열
+  "화장품":                 "#AD1457",
+  "네일숍":                 "#E91E63",
+  "피부관리실":             "#F48FB1",
+  "뷰티/화장품":            "#FF80AB",  // store pin 전용
+  "미용실":                 "#F50057",
 
-  "일반학원":       "#2979FF",  // 미디엄블루
-  "예술학원":       "#6200EA",  // 딥퍼플
+  // 전자 — 청록 계열
+  "가전제품":               "#0097A7",
+  "핸드폰":                 "#00BCD4",
+  "컴퓨터및주변장치판매":   "#006064",
+  "전자상거래업":           "#80DEEA",
+  "전자/통신":              "#00E5FF",  // store pin 전용
+  "생활용품 소매":          "#00BFA5",
 
-  // 서비스
-  "수리/세탁":      "#78909C",  // 슬레이트
-  "숙박":           "#F57F17",  // 앰버
-  "오락/유흥":      "#E040FB",  // 마젠타
-  "애완동물":       "#69F0AE",  // 민트그린
-  "B2B 서비스":     "#546E7A",  // 다크슬레이트
+  // 의료 — 레드 계열
+  "일반의원":               "#C62828",
+  "치과의원":               "#EF5350",
+  "한의원":                 "#2E7D32",
+  "의료기기":               "#455A64",
+  "의약품":                 "#880E4F",
+  "안경":                   "#4A148C",
+  "의료/약국":              "#B71C1C",  // store pin 전용
+
+  // 학원
+  "외국어학원":             "#1565C0",
+  "일반교습학원":           "#1976D2",
+  "예술학원":               "#6200EA",
+
+  // 스포츠 — 파랑 계열
+  "스포츠 강습":            "#29B6F6",
+  "골프연습장":             "#0288D1",
+  "스포츠클럽":             "#4FC3F7",
+  "스포츠/레저":            "#40C4FF",  // store pin 전용
+
+  // 오락/유흥 — 퍼플 계열
+  "PC방":                   "#CE93D8",
+  "노래방":                 "#BA68C8",
+  "당구장":                 "#8E24AA",
+  "오락/유흥":              "#E040FB",  // store pin 전용
+
+  // 기타 서비스
+  "숙박":                   "#F57F17",
+  "애완동물":               "#69F0AE",
+  "가전제품수리":           "#78909C",
+  "세탁소":                 "#B0BEC5",
+  "인테리어":               "#FF8A65",
+  "자동차수리/미용":        "#546E7A",
+  "기타 B2B서비스":         "#37474F",
 };
 
 const storeFilterChipStyle = (active) => ({
