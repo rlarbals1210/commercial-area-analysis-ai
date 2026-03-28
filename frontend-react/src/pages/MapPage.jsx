@@ -1120,10 +1120,9 @@ export default function MapPage() {
 
   // ── 상권 직접 그리기 ──
   function hideAllPolygons() {
-    const hidden = { fillOpacity: 0, strokeOpacity: 0 };
-    polygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setOptions(hidden)));
-    guPolygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setOptions(hidden)));
-    streetPolygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setOptions(hidden)));
+    polygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setMap(null)));
+    guPolygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setMap(null)));
+    streetPolygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setMap(null)));
     dongLabelsRef.current.forEach(l => l.setMap(null));
     guLabelsRef.current.forEach(l => l.setMap(null));
   }
@@ -1134,7 +1133,10 @@ export default function MapPage() {
     applyMode(map, map.getLevel());
     streetPolygonGroupsRef.current.forEach(({ 상권코드, polygons }) => {
       const isSelected = selectedStreetRef.current?.상권코드 === 상권코드;
-      polygons.forEach(p => p.setOptions(isSelected ? POLYGON_STREET_SELECTED : POLYGON_STREET_DEFAULT));
+      polygons.forEach(p => {
+        p.setMap(map);
+        p.setOptions(isSelected ? POLYGON_STREET_SELECTED : POLYGON_STREET_DEFAULT);
+      });
     });
   }
 
@@ -1192,7 +1194,7 @@ export default function MapPage() {
     setTimeout(() => {
       if (!drawingModeRef.current) return; // 딜레이 중 취소된 경우 등록 안 함
 
-      drawingClickListenerRef.current = kakao.maps.event.addListener(map, "click", (e) => {
+      const clickHandler = (e) => {
         if (!drawingModeRef.current) return;
         const latlng = e.latLng;
         const points = drawingPointsRef.current;
@@ -1223,9 +1225,11 @@ export default function MapPage() {
             strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 0.9, strokeStyle: "solid",
           });
         }
-      });
+      };
+      drawingClickListenerRef.current = clickHandler;
+      kakao.maps.event.addListener(map, "click", clickHandler);
 
-      drawingMousemoveListenerRef.current = kakao.maps.event.addListener(map, "mousemove", (e) => {
+      const mousemoveHandler = (e) => {
         if (!drawingModeRef.current || drawingPointsRef.current.length === 0) return;
         const points = drawingPointsRef.current;
         if (drawingPreviewRef.current) drawingPreviewRef.current.setMap(null);
@@ -1233,7 +1237,9 @@ export default function MapPage() {
           map, path: [points[points.length - 1], e.latLng],
           strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 0.5, strokeStyle: "dashed",
         });
-      });
+      };
+      drawingMousemoveListenerRef.current = mousemoveHandler;
+      kakao.maps.event.addListener(map, "mousemove", mousemoveHandler);
     }, 200);
   }
 
@@ -3852,7 +3858,7 @@ export default function MapPage() {
               )}
 
               <button
-                onClick={() => { clearCustomDrawing(); startDrawing(); }}
+                onClick={() => { startDrawing(); }}
                 style={{
                   width: "100%", marginTop: 10, padding: "7px 0", borderRadius: 8,
                   border: "1px solid rgba(245,158,11,0.3)", background: "transparent",
