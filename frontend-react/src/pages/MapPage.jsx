@@ -1114,17 +1114,28 @@ export default function MapPage() {
         const positions = data.results.map((r) => new window.kakao.maps.LatLng(r.lat, r.lng));
         data.results.forEach((r, idx) => {
           const pos = new window.kakao.maps.LatLng(r.lat, r.lng);
-          const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+          const colors = ["#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"];
           const color = colors[idx] || "#6B7280";
-          const content = `
-            <div style="
-              background:${color};color:#fff;font-size:12px;font-weight:700;
-              border-radius:50%;width:28px;height:28px;
-              display:flex;align-items:center;justify-content:center;
-              box-shadow:0 2px 6px rgba(0,0,0,0.4);
-              border:2px solid #fff;cursor:pointer;
-            ">${idx + 1}</div>`;
-          const overlay = new window.kakao.maps.CustomOverlay({ position: pos, content, zIndex: 15 });
+          const sizes = [38, 32, 28, 24, 22];
+          const w = sizes[idx] || 22;
+          const h = Math.round(w * 30 / 22);
+          const fontSize = [11, 10, 9, 8, 8][idx] || 8;
+          const el = document.createElement("div");
+          el.style.cssText = "display:flex;align-items:flex-end;justify-content:center;cursor:pointer;";
+          el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 22 30" fill="none"><path d="M11 0C4.925 0 0 4.925 0 11c0 8.25 11 19 11 19s11-10.75 11-19C22 4.925 17.075 0 11 0z" fill="${color}"/><text x="11" y="15" text-anchor="middle" fill="white" font-size="${fontSize}" font-weight="700" font-family="sans-serif">${idx + 1}</text></svg>`;
+          el.addEventListener("click", () => {
+            map.panTo(pos);
+            const cur = map.getLevel();
+            let level = cur;
+            const step = () => {
+              if (level <= 1) return;
+              level -= 1;
+              map.setLevel(level, { animate: true });
+              setTimeout(step, 400);
+            };
+            setTimeout(step, 500);
+          });
+          const overlay = new window.kakao.maps.CustomOverlay({ position: pos, content: el, zIndex: 15 });
           overlay.setMap(map);
           streetSpotMarkersRef.current.push(overlay);
         });
@@ -1158,17 +1169,28 @@ export default function MapPage() {
 
         data.results.forEach((r, idx) => {
           const pos = new window.kakao.maps.LatLng(r.lat, r.lng);
-          const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+          const colors = ["#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"];
           const color = colors[idx] || "#6B7280";
-          const content = `
-            <div style="
-              background:${color};color:#fff;font-size:12px;font-weight:700;
-              border-radius:50%;width:28px;height:28px;
-              display:flex;align-items:center;justify-content:center;
-              box-shadow:0 2px 6px rgba(0,0,0,0.4);
-              border:2px solid #fff;cursor:pointer;
-            ">${idx + 1}</div>`;
-          const overlay = new window.kakao.maps.CustomOverlay({ position: pos, content, zIndex: 10 });
+          const sizes = [38, 32, 28, 24, 22];
+          const w = sizes[idx] || 22;
+          const h = Math.round(w * 30 / 22);
+          const fontSize = [11, 10, 9, 8, 8][idx] || 8;
+          const el = document.createElement("div");
+          el.style.cssText = "display:flex;align-items:flex-end;justify-content:center;cursor:pointer;";
+          el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 22 30" fill="none"><path d="M11 0C4.925 0 0 4.925 0 11c0 8.25 11 19 11 19s11-10.75 11-19C22 4.925 17.075 0 11 0z" fill="${color}"/><text x="11" y="15" text-anchor="middle" fill="white" font-size="${fontSize}" font-weight="700" font-family="sans-serif">${idx + 1}</text></svg>`;
+          el.addEventListener("click", () => {
+            map.panTo(pos);
+            const cur = map.getLevel();
+            let level = cur;
+            const step = () => {
+              if (level <= 1) return;
+              level -= 1;
+              map.setLevel(level, { animate: true });
+              setTimeout(step, 400);
+            };
+            setTimeout(step, 500);
+          });
+          const overlay = new window.kakao.maps.CustomOverlay({ position: pos, content: el, zIndex: 10 });
           overlay.setMap(map);
           spotMarkersRef.current.push(overlay);
         });
