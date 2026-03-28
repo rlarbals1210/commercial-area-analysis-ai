@@ -1423,3 +1423,109 @@ def recommend_street_spot(request):
         "category": category,
         "results": results,
     })
+
+
+@csrf_exempt
+def recommend_custom_spot(request):
+    """사용자가 직접 그린 폴리곤 + 업종 → 영역 내 추천 위치 Top 5 (POST)
+    body: { "coordinates": [[lat, lng], ...], "category": "카페" }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST 요청만 허용됩니다."}, status=405)
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON 파싱 오류입니다."}, status=400)
+
+    coordinates = body.get("coordinates", [])
+    category = body.get("category", "").strip()
+
+    if not category:
+        return JsonResponse({"error": "category가 필요합니다."}, status=400)
+    if len(coordinates) < 3:
+        return JsonResponse({"error": "폴리곤은 최소 3개의 꼭짓점이 필요합니다."}, status=400)
+
+    # 1) 전송받은 좌표로 폴리곤 생성 (coordinates: [[lat, lng], ...])
+    try:
+        from shapely.geometry import Polygon as ShapelyPolygon
+        # shapely는 (lng, lat) 순서
+        polygon = ShapelyPolygon([(lng, lat) for lat, lng in coordinates])
+    except Exception:
+        return JsonResponse({"error": "유효하지 않은 폴리곤 좌표입니다."}, status=400)
+
+    if not polygon.is_valid or polygon.area == 0:
+        return JsonResponse({"error": "유효하지 않은 폴리곤입니다."}, status=400)
+
+    # 최소 면적 검증 (0.001도 ≈ 100m → 0.001*0.001 = 0.000001 제곱도)
+    # 대략 300m x 300m 이상 권장 → 0.003 * 0.003 = 0.000009
+    MIN_AREA = 0.000004  # 약 200m x 200m
+    if polygon.area < MIN_AREA:
+        return JsonResponse({"error": "선택 영역이 너무 작습니다. 더 넓게 그려주세요."}, status=400)
+
+    # 2) location_scores 로드
+    df = _get_location_df()
+    if df.empty:
+        return JsonResponse({"error": "위치 점수 데이터가 없습니다. build_location_scores.py를 먼저 실행하세요."}, status=503)
+
+    # 3) 업종 필터
+    filtered = df[df["통합카테고리"] == category]
+    if filtered.empty:
+        return JsonResponse({"error": f'"{category}" 위치 데이터가 없습니다.'}, status=404)
+
+    # 4) Point-in-polygon 필터
+    mask = filtered.apply(
+        lambda row: polygon.contains(Point(row["grid_lng"], row["grid_lat"])),
+        axis=1,
+    )
+    inside = filtered[mask]
+
+    if inside.empty:
+        return JsonResponse({"error": f"선택 영역 내 '{category}' 위치 데이터가 없습니다. 영역을 더 넓게 그려주세요."}, status=404)
+
+    top = inside.nlargest(5, "입지점수").copy()
+
+    results = []
+    for rank, (_, row) in enumerate(top.iterrows(), 1):
+        생존율  = row["생존율"]
+        경쟁밀도 = int(row["경쟁밀도"])
+        보완밀도 = int(row["보완밀도"])
+        활성도  = int(row["상권활성도"])
+        점수    = row["입지점수"]
+
+        reasons = []
+        if 생존율 >= 60:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 높은 편")
+        elif 생존율 >= 40:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 평균 수준")
+        else:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 낮은 편")
+
+        if 경쟁밀도 <= 2:
+            reasons.append("반경 300m 내 동업종 경쟁 적음")
+        elif 경쟁밀도 <= 5:
+            reasons.append(f"반경 300m 내 동업종 {경쟁밀도}개")
+        else:
+            reasons.append(f"반경 300m 내 동업종 {경쟁밀도}개로 경쟁 많음")
+
+        if 보완밀도 >= 10:
+            reasons.append(f"시너지 업종 {보완밀도}개로 집객 유리")
+        elif 보완밀도 >= 5:
+            reasons.append(f"시너지 업종 {보완밀도}개 인근")
+
+        results.append({
+            "rank":       rank,
+            "lat":        round(row["grid_lat"], 4),
+            "lng":        round(row["grid_lng"], 4),
+            "score":      점수,
+            "생존율":     round(생존율, 1),
+            "경쟁밀도":   경쟁밀도,
+            "보완밀도":   보완밀도,
+            "상권활성도": 활성도,
+            "reasons":    reasons,
+        })
+
+    return JsonResponse({
+        "category": category,
+        "results": results,
+    })

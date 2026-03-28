@@ -218,6 +218,23 @@ export default function MapPage() {
   const streetGeoJsonRef = useRef(null);                         // GeoJSON 캐시 (lazy load)
   const selectedStreetRef = useRef(null);                        // 현재 선택된 상권
 
+  // ── 상권 직접 그리기 ──
+  const [drawingMode, setDrawingMode] = useState(false);
+  const [customPolygonDone, setCustomPolygonDone] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
+  const [customResults, setCustomResults] = useState(null);
+  const [customLoading, setCustomLoading] = useState(false);
+  const [customDrillGroup, setCustomDrillGroup] = useState(null);
+  const [customSearchQuery, setCustomSearchQuery] = useState("");
+  const drawingModeRef = useRef(false);
+  const drawingPointsRef = useRef([]);
+  const drawingPolylineRef = useRef(null);
+  const drawingPreviewRef = useRef(null);
+  const customPolygonRef = useRef(null);
+  const customMarkersRef = useRef([]);
+  const drawingDotsRef = useRef([]);
+  const drawingClickListenerRef = useRef(null);
+  const drawingMousemoveListenerRef = useRef(null);
 
   // 사이드바 안 검색 input에 포커스를 주기 위한 ref
   const searchInputRef = useRef(null);
@@ -389,6 +406,7 @@ export default function MapPage() {
 
       polygons.forEach((polygon) => {
         kakao.maps.event.addListener(polygon, "mouseover", () => {
+          if (drawingModeRef.current) return;
           // 이전 호버 동이 mouseout 없이 남아있으면 강제 리셋
           const prev = hoveredDongGroupRef.current;
           if (prev && prev.dongName !== dongName) {
@@ -409,6 +427,7 @@ export default function MapPage() {
           setHoveredDong({ dongName, guName });
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
+          if (drawingModeRef.current) return;
           hoveredDongGroupRef.current = null;
           if (selectedGroupRef.current?.dongName !== dongName) {
             const selGuNm = selectedGuGroupRef.current?.guName;
@@ -419,6 +438,7 @@ export default function MapPage() {
           setHoveredDong(null);
         });
         kakao.maps.event.addListener(polygon, "click", () => {
+          if (drawingModeRef.current) return;
           // 모든 행정동 딤처리, 선택된 것만 강조
           polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
             ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_DONG_SELECTED : POLYGON_DIMMED));
@@ -496,6 +516,7 @@ export default function MapPage() {
 
       polygons.forEach((polygon) => {
         kakao.maps.event.addListener(polygon, "mouseover", () => {
+          if (drawingModeRef.current) return;
           // 이전 호버 구가 mouseout 없이 남아있으면 강제 리셋
           const prev = hoveredGuGroupRef.current;
           if (prev && prev.guName !== guName) {
@@ -513,6 +534,7 @@ export default function MapPage() {
           setHoveredDong({ dongName: null, guName });
         });
         kakao.maps.event.addListener(polygon, "mouseout", () => {
+          if (drawingModeRef.current) return;
           hoveredGuGroupRef.current = null;
           const isSelected = selectedGuGroupRef.current?.guName === guName;
           const isDongGu   = selectedGroupRef.current?.guName === guName;
@@ -525,6 +547,7 @@ export default function MapPage() {
           setHoveredDong(null);
         });
         kakao.maps.event.addListener(polygon, "click", () => {
+          if (drawingModeRef.current) return;
           // 모든 구 딤처리, 선택된 구만 투명(원래 지도 색)
           guPolygonGroupsRef.current.forEach(({ guName: gn, polygons: ps }) => {
             ps.forEach(p => p.setOptions(gn === guName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
@@ -791,6 +814,7 @@ export default function MapPage() {
               polygon.setOptions(POLYGON_STREET_DEFAULT);
           });
           kakao.maps.event.addListener(polygon, "click", () => {
+            if (drawingModeRef.current) return;
             // 이전 선택 해제
             if (selectedStreetRef.current) {
               streetPolygonGroupsRef.current
@@ -1092,6 +1116,196 @@ export default function MapPage() {
   function clearStreetSpotMarkers() {
     streetSpotMarkersRef.current.forEach((m) => m.setMap(null));
     streetSpotMarkersRef.current = [];
+  }
+
+  // ── 상권 직접 그리기 ──
+  function hideAllPolygons() {
+    const hidden = { fillOpacity: 0, strokeOpacity: 0 };
+    polygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setOptions(hidden)));
+    guPolygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setOptions(hidden)));
+    streetPolygonGroupsRef.current.forEach(({ polygons }) => polygons.forEach(p => p.setOptions(hidden)));
+    dongLabelsRef.current.forEach(l => l.setMap(null));
+    guLabelsRef.current.forEach(l => l.setMap(null));
+  }
+
+  function restoreAllPolygons() {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    applyMode(map, map.getLevel());
+    streetPolygonGroupsRef.current.forEach(({ 상권코드, polygons }) => {
+      const isSelected = selectedStreetRef.current?.상권코드 === 상권코드;
+      polygons.forEach(p => p.setOptions(isSelected ? POLYGON_STREET_SELECTED : POLYGON_STREET_DEFAULT));
+    });
+  }
+
+  function clearCustomDrawing() {
+    const map = mapInstanceRef.current;
+    const kakao = window.kakao;
+    if (map && kakao) {
+      if (drawingClickListenerRef.current) {
+        kakao.maps.event.removeListener(map, "click", drawingClickListenerRef.current);
+        drawingClickListenerRef.current = null;
+      }
+      if (drawingMousemoveListenerRef.current) {
+        kakao.maps.event.removeListener(map, "mousemove", drawingMousemoveListenerRef.current);
+        drawingMousemoveListenerRef.current = null;
+      }
+      map.setZoomable(true);
+      restoreAllPolygons();
+    }
+    drawingPointsRef.current = [];
+    if (drawingPolylineRef.current) { drawingPolylineRef.current.setMap(null); drawingPolylineRef.current = null; }
+    if (drawingPreviewRef.current) { drawingPreviewRef.current.setMap(null); drawingPreviewRef.current = null; }
+    if (customPolygonRef.current) { customPolygonRef.current.setMap(null); customPolygonRef.current = null; }
+    drawingDotsRef.current.forEach((d) => d.setMap(null));
+    drawingDotsRef.current = [];
+    customMarkersRef.current.forEach((m) => m.setMap(null));
+    customMarkersRef.current = [];
+    setCustomResults(null);
+    setCustomCategory("");
+    setCustomPolygonDone(false);
+  }
+
+  function startDrawing() {
+    const map = mapInstanceRef.current;
+    const kakao = window.kakao;
+    if (!map || !kakao) return;
+
+    // 기존 리스너 먼저 제거
+    if (drawingClickListenerRef.current) {
+      kakao.maps.event.removeListener(map, "click", drawingClickListenerRef.current);
+      drawingClickListenerRef.current = null;
+    }
+    if (drawingMousemoveListenerRef.current) {
+      kakao.maps.event.removeListener(map, "mousemove", drawingMousemoveListenerRef.current);
+      drawingMousemoveListenerRef.current = null;
+    }
+
+    clearCustomDrawing();
+    drawingModeRef.current = true;
+    setDrawingMode(true);
+    setCustomPolygonDone(false);
+    map.setZoomable(false);
+    hideAllPolygons();
+
+    // 버튼 클릭 이벤트가 지도로 전파되는 것을 방지하기 위해 딜레이 후 리스너 등록
+    setTimeout(() => {
+      if (!drawingModeRef.current) return; // 딜레이 중 취소된 경우 등록 안 함
+
+      drawingClickListenerRef.current = kakao.maps.event.addListener(map, "click", (e) => {
+        if (!drawingModeRef.current) return;
+        const latlng = e.latLng;
+        const points = drawingPointsRef.current;
+
+        // 첫 번째 점 근처 클릭 시 폴리곤 닫기
+        if (points.length >= 3) {
+          const first = points[0];
+          const dist = Math.abs(latlng.getLat() - first.getLat()) + Math.abs(latlng.getLng() - first.getLng());
+          if (dist < 0.0005) {
+            finishPolygon(map, kakao);
+            return;
+          }
+        }
+
+        points.push(latlng);
+
+        // 꼭짓점 점 표시
+        const dotContent = `<div style="width:10px;height:10px;background:#F59E0B;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></div>`;
+        const dot = new kakao.maps.CustomOverlay({ position: latlng, content: dotContent, xAnchor: 0.5, yAnchor: 0.5, zIndex: 20 });
+        dot.setMap(map);
+        drawingDotsRef.current.push(dot);
+
+        // 폴리라인 업데이트
+        if (drawingPolylineRef.current) drawingPolylineRef.current.setMap(null);
+        if (points.length >= 2) {
+          drawingPolylineRef.current = new kakao.maps.Polyline({
+            map, path: points,
+            strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 0.9, strokeStyle: "solid",
+          });
+        }
+      });
+
+      drawingMousemoveListenerRef.current = kakao.maps.event.addListener(map, "mousemove", (e) => {
+        if (!drawingModeRef.current || drawingPointsRef.current.length === 0) return;
+        const points = drawingPointsRef.current;
+        if (drawingPreviewRef.current) drawingPreviewRef.current.setMap(null);
+        drawingPreviewRef.current = new kakao.maps.Polyline({
+          map, path: [points[points.length - 1], e.latLng],
+          strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 0.5, strokeStyle: "dashed",
+        });
+      });
+    }, 200);
+  }
+
+  function finishPolygon(map, kakao) {
+    const points = drawingPointsRef.current;
+    if (points.length < 3) return;
+
+    drawingModeRef.current = false;
+    setDrawingMode(false);
+    map.setZoomable(true);
+    restoreAllPolygons();
+    if (drawingClickListenerRef.current) {
+      kakao.maps.event.removeListener(map, "click", drawingClickListenerRef.current);
+      drawingClickListenerRef.current = null;
+    }
+    if (drawingMousemoveListenerRef.current) {
+      kakao.maps.event.removeListener(map, "mousemove", drawingMousemoveListenerRef.current);
+      drawingMousemoveListenerRef.current = null;
+    }
+
+    if (drawingPolylineRef.current) { drawingPolylineRef.current.setMap(null); drawingPolylineRef.current = null; }
+    if (drawingPreviewRef.current) { drawingPreviewRef.current.setMap(null); drawingPreviewRef.current = null; }
+
+    customPolygonRef.current = new kakao.maps.Polygon({
+      map, path: points,
+      strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 1,
+      fillColor: "#F59E0B", fillOpacity: 0.15,
+    });
+
+    setCustomPolygonDone(true);
+  }
+
+  function fetchCustomSpot(category) {
+    const points = drawingPointsRef.current;
+    if (points.length < 3) return;
+
+    customMarkersRef.current.forEach((m) => m.setMap(null));
+    customMarkersRef.current = [];
+    setCustomResults(null);
+    setCustomLoading(true);
+
+    const coordinates = points.map((p) => [p.getLat(), p.getLng()]);
+
+    fetch("http://localhost:8000/api/recommend/custom-spot/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coordinates, category }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        setCustomLoading(false);
+        if (data.error) { alert(data.error); return; }
+        setCustomResults(data.results);
+
+        const map = mapInstanceRef.current;
+        const kakao = window.kakao;
+        if (!map || !data.results.length) return;
+
+        const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+        data.results.forEach((r, idx) => {
+          const pos = new kakao.maps.LatLng(r.lat, r.lng);
+          const content = `<div style="background:${colors[idx]};color:#fff;font-size:12px;font-weight:700;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid #fff;">${idx + 1}</div>`;
+          const overlay = new kakao.maps.CustomOverlay({ position: pos, content, zIndex: 15 });
+          overlay.setMap(map);
+          customMarkersRef.current.push(overlay);
+        });
+
+        const bounds = new kakao.maps.LatLngBounds();
+        data.results.forEach((r) => bounds.extend(new kakao.maps.LatLng(r.lat, r.lng)));
+        map.setBounds(bounds, 80);
+      })
+      .catch(() => { setCustomLoading(false); alert("요청에 실패했습니다."); });
   }
 
   // ── 상권 클릭 → 업종 선택 → 입지 추천 요청 ──
@@ -1495,6 +1709,7 @@ export default function MapPage() {
         transition: (selectedDong || selectedGu)
           ? "transform 0.22s ease-out, opacity 0.15s"
           : "none",
+        pointerEvents: drawingMode ? "none" : undefined,
         ...((!selectedDong && !selectedGu) && {
           background: "transparent",
           borderRight: "none",
@@ -3468,18 +3683,41 @@ export default function MapPage() {
       {/* AI 패널(380px)이 열리면 버튼들을 왼쪽으로 밀어서 가려지지 않게 함 */}
       <div style={{ position: "absolute", top: 20, right: aiModalOpen ? 400 : 20, display: "flex", gap: 10, zIndex: 10, transition: "right 0.22s ease-out" }}>
 
+        {/* 상권 직접 그리기 버튼 */}
+        <button
+          onClick={() => {
+            if (drawingMode) {
+              drawingModeRef.current = false;
+              setDrawingMode(false);
+              clearCustomDrawing();
+            } else {
+              startDrawing();
+            }
+          }}
+          style={{
+            height: 40, padding: "0 16px", borderRadius: 10, border: "none",
+            background: drawingMode ? "#F59E0B" : "rgba(30,30,34,0.85)",
+            color: drawingMode ? "#000" : "#E8E8E8",
+            fontSize: 14, fontWeight: 600, cursor: "pointer",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+          }}
+        >
+          {drawingMode ? "✏️ 그리기 중... (취소)" : "✏️ 상권 그리기"}
+        </button>
+
         {/* 창업 비용 계산기 버튼 */}
-        <button onClick={() => setStartupCalcOpen((v) => !v)} style={startupCalcBtnStyle}>
+        <button onClick={() => setStartupCalcOpen((v) => !v)} disabled={drawingMode} style={{ ...startupCalcBtnStyle, opacity: drawingMode ? 0.3 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
           💰 창업비용 계산기
         </button>
 
         {/* AI 추천 버튼 */}
-        <button onClick={openAiModal} style={aiBtnStyle}>
+        <button onClick={openAiModal} disabled={drawingMode} style={{ ...aiBtnStyle, opacity: drawingMode ? 0.3 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
           ✨ AI 추천
         </button>
 
         {/* 메뉴 버튼 */}
-        <div data-popup style={{ position: "relative" }}>
+        <div data-popup style={{ position: "relative", opacity: drawingMode ? 0.3 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
           <button onClick={() => { setMenuOpen((v) => !v); setSearchExpanded(false); }} style={btnStyle(menuOpen)}>
             ☰ 메뉴
           </button>
@@ -3492,6 +3730,139 @@ export default function MapPage() {
           )}
         </div>
       </div>
+
+      {/* ── 상권 직접 그리기 결과 패널 ── */}
+      {(drawingMode || customPolygonDone) && (
+        <div style={{
+          position: "absolute", bottom: 32, left: "50%", transform: "translateX(-50%)",
+          width: 340, background: "rgba(18,18,22,0.95)", backdropFilter: "blur(12px)",
+          borderRadius: 14, border: "1px solid rgba(245,158,11,0.4)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.5)", zIndex: 300, padding: "16px 18px",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#F59E0B" }}>
+              {drawingMode ? "✏️ 지도를 클릭해 영역을 그리세요" : "✏️ 직접 그린 상권"}
+            </span>
+            <button
+              onClick={() => { clearCustomDrawing(); drawingModeRef.current = false; setDrawingMode(false); }}
+              style={{ background: "none", border: "none", color: "#9E9E9E", fontSize: 16, cursor: "pointer" }}
+            >✕</button>
+          </div>
+
+          {drawingMode && (
+            <p style={{ fontSize: 12, color: "#9E9E9E", margin: "0 0 8px" }}>
+              꼭짓점을 3개 이상 찍고 첫 번째 점을 다시 클릭하면 완성돼요.
+            </p>
+          )}
+
+          {customPolygonDone && (
+            <>
+              <div style={{ marginBottom: 10 }}>
+                <p style={{ fontSize: 12, color: "#9E9E9E", margin: "0 0 8px" }}>업종 선택</p>
+                {/* 검색 */}
+                <input
+                  type="text"
+                  placeholder="업종 검색..."
+                  value={customSearchQuery}
+                  onChange={(e) => { setCustomSearchQuery(e.target.value); setCustomDrillGroup(e.target.value ? "__search__" : null); }}
+                  style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)", color: "#E8E8E8", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+                />
+                {customSearchQuery ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {Object.values(CATEGORY_GROUPS).flat().filter((c, i, a) => a.indexOf(c) === i && c.includes(customSearchQuery)).map(cat => (
+                      <button key={cat} onClick={() => { setCustomCategory(cat); setCustomSearchQuery(""); setCustomDrillGroup(null); }}
+                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid rgba(255,255,255,0.15)", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.05)", color: customCategory === cat ? "#F59E0B" : "#C8C8C8" }}>
+                        {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
+                      </button>
+                    ))}
+                  </div>
+                ) : customDrillGroup ? (
+                  <>
+                    <button onClick={() => setCustomDrillGroup(null)} style={{ fontSize: 12, color: "#F59E0B", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>
+                      ← {customDrillGroup}
+                    </button>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {CATEGORY_GROUPS[customDrillGroup].map(cat => (
+                        <button key={cat} onClick={() => { setCustomCategory(cat); setCustomDrillGroup(null); }}
+                          style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid rgba(255,255,255,0.15)", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.05)", color: customCategory === cat ? "#F59E0B" : "#C8C8C8" }}>
+                          {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {customCategory && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
+                        <span style={{ fontSize: 12, color: "#F59E0B" }}>{CATEGORY_EMOJI[customCategory] ?? "🏪"} {customCategory}</span>
+                        <button onClick={() => setCustomCategory("")} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
+                      </div>
+                    )}
+                    {DRILL_GROUPS.map(group => (
+                      <button key={group} onClick={() => setCustomDrillGroup(group)}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(245,158,11,0.1)"; e.currentTarget.style.color = "#F59E0B"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                      >
+                        <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                        <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => { if (customCategory) fetchCustomSpot(customCategory); }}
+                disabled={!customCategory || customLoading}
+                style={{
+                  width: "100%", padding: "9px 0", borderRadius: 8, border: "none",
+                  background: customCategory ? "#F59E0B" : "rgba(255,255,255,0.1)",
+                  color: customCategory ? "#000" : "#666", fontWeight: 700, fontSize: 14, cursor: customCategory ? "pointer" : "default",
+                  marginBottom: customResults ? 12 : 0,
+                }}
+              >
+                {customLoading ? "분석 중..." : "이 지역 추천 받기"}
+              </button>
+
+              {customResults && (
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 8 }}>
+                    입지점수 Top {customResults.length} · 숫자 마커로 지도에 표시됨
+                  </div>
+                  {customResults.map((r) => (
+                    <div key={r.rank} style={{
+                      padding: "10px 0", borderBottom: r.rank < customResults.length ? "1px solid rgba(255,255,255,0.06)" : "none",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{
+                          background: ["#EF4444","#F97316","#EAB308","#22C55E","#3B82F6"][r.rank-1],
+                          color: "#fff", fontSize: 11, fontWeight: 700, width: 20, height: 20,
+                          borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                        }}>{r.rank}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>입지점수 {r.score}점</span>
+                        <span style={{ fontSize: 11, color: "#9E9E9E", marginLeft: "auto" }}>생존율 {r.생존율}%</span>
+                      </div>
+                      {r.reasons.map((reason, i) => (
+                        <div key={i} style={{ fontSize: 11, color: "#9E9E9E", paddingLeft: 28 }}>· {reason}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                onClick={() => { clearCustomDrawing(); startDrawing(); }}
+                style={{
+                  width: "100%", marginTop: 10, padding: "7px 0", borderRadius: 8,
+                  border: "1px solid rgba(245,158,11,0.3)", background: "transparent",
+                  color: "#F59E0B", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                }}
+              >다시 그리기</button>
+            </>
+          )}
+        </div>
+      )}
 
     </div>
   );
