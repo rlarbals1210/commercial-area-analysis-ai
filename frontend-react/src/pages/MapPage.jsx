@@ -92,6 +92,10 @@ const POLYGON_GU_SELECTED  = { fillColor: "#000000", fillOpacity: 0, strokeColor
 const POLYGON_DONG_SELECTED = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#7DD3FC", strokeOpacity: 0.8, strokeWeight: 2 };
 // 선택된 구 내 행정동: 투명 fill + 얇은 경계선만
 const POLYGON_DONG_IN_GU  = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#6B9FD4", strokeOpacity: 0.5, strokeWeight: 1 };
+// 길단위 상권 폴리곤
+const POLYGON_STREET_DEFAULT  = { fillColor: "#F59E0B", fillOpacity: 0.12, strokeColor: "#D97706", strokeOpacity: 0.7, strokeWeight: 1 };
+const POLYGON_STREET_HOVER    = { fillColor: "#F59E0B", fillOpacity: 0.40, strokeColor: "#B45309", strokeOpacity: 1,   strokeWeight: 2 };
+const POLYGON_STREET_SELECTED = { fillColor: "#EF4444", fillOpacity: 0.45, strokeColor: "#DC2626", strokeOpacity: 1,   strokeWeight: 2 };
 
 
 export default function MapPage() {
@@ -198,7 +202,18 @@ export default function MapPage() {
   const [spotDong, setSpotDong] = useState(null);               // 위치추천 선택된 행정동
   const [spotCategory, setSpotCategory] = useState(null);       // 위치추천 통합카테고리
   const [spotResults, setSpotResults] = useState(null);         // 위치추천 결과
+  const [selectedStreet, setSelectedStreet] = useState(null);   // { 상권코드, 상권명 }
+  const [streetResults, setStreetResults] = useState(null);     // 상권 업종 추천 결과
+  const [streetLoading, setStreetLoading] = useState(false);
+  const [streetCount, setStreetCount] = useState(0);            // 현재 동의 상권 수
+  const [streetSpotResults, setStreetSpotResults] = useState(null);   // 상권 내 입지 추천 결과
+  const [streetSpotLoading, setStreetSpotLoading] = useState(false);  // 입지 추천 로딩
+  const [streetSpotCategory, setStreetSpotCategory] = useState(null); // 선택된 업종
+  const streetSpotMarkersRef = useRef([]);                             // 상권 입지 마커
   const spotMarkersRef = useRef([]);                             // 지도 위 위치추천 마커
+  const streetPolygonGroupsRef = useRef([]);                     // 길단위 상권 폴리곤
+  const streetGeoJsonRef = useRef(null);                         // GeoJSON 캐시 (lazy load)
+  const selectedStreetRef = useRef(null);                        // 현재 선택된 상권
 
 
   // 사이드바 안 검색 input에 포커스를 주기 위한 ref
@@ -208,6 +223,7 @@ export default function MapPage() {
   // ── 행정동/구 선택 시 사이드바 자동 열기 ──
   useEffect(() => {
     if (selectedDong || selectedGu) setSidebarCollapsed(false);
+    if (!selectedDong) clearStreetPolygons();
   }, [selectedDong, selectedGu]);
 
   // ── 줌 레벨 또는 구 선택 변경 시 구 딤처리 재적용 ──
@@ -435,6 +451,7 @@ export default function MapPage() {
           setSelectedGu(null);
           setSidebarCollapsed(false);
           setSelectedDong({ dongName, guName });
+          drawStreetPolygons(map, kakao, normalizeDongName(dongName));
         });
       });
 
@@ -765,6 +782,95 @@ export default function MapPage() {
       : allStoresRef.current.filter((s) => storeCategoryFilterRef.current.includes(s.통합카테고리));
   }
 
+  function clearStreetPolygons() {
+    streetPolygonGroupsRef.current.forEach(({ polygons }) =>
+      polygons.forEach((p) => p.setMap(null))
+    );
+    streetPolygonGroupsRef.current = [];
+    selectedStreetRef.current = null;
+    setSelectedStreet(null);
+    setStreetResults(null);
+    setStreetCount(0);
+  }
+
+  function drawStreetPolygons(map, kakao, dongName) {
+    clearStreetPolygons();
+    const load = (geoJson) => {
+      const features = geoJson.features.filter(
+        (f) => f.properties.행정동명 === dongName
+      );
+      if (!features.length) return;
+
+      features.forEach((feature) => {
+        const { 상권_코드, 상권_코드_명 } = feature.properties;
+        const geom = feature.geometry;
+        const rings = geom.type === "MultiPolygon"
+          ? geom.coordinates.flat()
+          : geom.coordinates;
+
+        const polygons = rings.map((ring) => {
+          const path = ring.map(([lng, lat]) => new kakao.maps.LatLng(lat, lng));
+          const polygon = new kakao.maps.Polygon({
+            map,
+            path,
+            ...POLYGON_STREET_DEFAULT,
+          });
+          polygon.setZIndex(10);
+
+          kakao.maps.event.addListener(polygon, "mouseover", () => {
+            if (selectedStreetRef.current?.상권코드 !== 상권_코드)
+              polygon.setOptions(POLYGON_STREET_HOVER);
+          });
+          kakao.maps.event.addListener(polygon, "mouseout", () => {
+            if (selectedStreetRef.current?.상권코드 !== 상권_코드)
+              polygon.setOptions(POLYGON_STREET_DEFAULT);
+          });
+          kakao.maps.event.addListener(polygon, "click", () => {
+            // 이전 선택 해제
+            if (selectedStreetRef.current) {
+              streetPolygonGroupsRef.current
+                .find((g) => g.상권코드 === selectedStreetRef.current.상권코드)
+                ?.polygons.forEach((p) => p.setOptions(POLYGON_STREET_DEFAULT));
+            }
+            // 현재 선택
+            streetPolygonGroupsRef.current
+              .find((g) => g.상권코드 === 상권_코드)
+              ?.polygons.forEach((p) => p.setOptions(POLYGON_STREET_SELECTED));
+
+            selectedStreetRef.current = { 상권코드: 상권_코드, 상권명: 상권_코드_명 };
+            setSelectedStreet({ 상권코드: 상권_코드, 상권명: 상권_코드_명 });
+
+            setStreetLoading(true);
+            setStreetResults(null);
+            setStreetSpotResults(null);
+            setStreetSpotCategory(null);
+            clearStreetSpotMarkers();
+            fetch(`http://localhost:8000/api/recommend/street-industry/?상권코드=${상권_코드}`)
+              .then((r) => r.json())
+              .then((data) => { setStreetResults(data); setStreetLoading(false); })
+              .catch(() => setStreetLoading(false));
+          });
+
+          return polygon;
+        });
+
+        streetPolygonGroupsRef.current.push({ 상권코드: 상권_코드, 상권명: 상권_코드_명, polygons });
+      });
+      setStreetCount(streetPolygonGroupsRef.current.length);
+    };
+
+    if (streetGeoJsonRef.current) {
+      load(streetGeoJsonRef.current);
+    } else {
+      fetch("/street_boundaries.geojson")
+        .then((r) => r.json())
+        .then((geoJson) => {
+          streetGeoJsonRef.current = geoJson;
+          load(geoJson);
+        });
+    }
+  }
+
   // ── 행정동 선택 + 마커 토글 변경 시: 상가 마커 fetch ──
   useEffect(() => {
     clearStoreMarkers();
@@ -1004,6 +1110,54 @@ export default function MapPage() {
   function clearSpotMarkers() {
     spotMarkersRef.current.forEach((m) => m.setMap(null));
     spotMarkersRef.current = [];
+  }
+
+  // ── 상권 입지추천 마커 제거 ──
+  function clearStreetSpotMarkers() {
+    streetSpotMarkersRef.current.forEach((m) => m.setMap(null));
+    streetSpotMarkersRef.current = [];
+  }
+
+  // ── 상권 클릭 → 업종 선택 → 입지 추천 요청 ──
+  function handleStreetSpotRecommend(상권코드, category) {
+    clearStreetSpotMarkers();
+    setStreetSpotCategory(category);
+    setStreetSpotResults(null);
+    setStreetSpotLoading(true);
+
+    fetch(`http://localhost:8000/api/recommend/street-spot/?상권코드=${encodeURIComponent(상권코드)}&category=${encodeURIComponent(category)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setStreetSpotLoading(false);
+        if (data.error) { alert(data.error); return; }
+        setStreetSpotResults(data.results);
+
+        const map = mapInstanceRef.current;
+        if (!map || !data.results.length) return;
+
+        const positions = data.results.map((r) => new window.kakao.maps.LatLng(r.lat, r.lng));
+        data.results.forEach((r, idx) => {
+          const pos = new window.kakao.maps.LatLng(r.lat, r.lng);
+          const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+          const color = colors[idx] || "#6B7280";
+          const content = `
+            <div style="
+              background:${color};color:#fff;font-size:12px;font-weight:700;
+              border-radius:50%;width:28px;height:28px;
+              display:flex;align-items:center;justify-content:center;
+              box-shadow:0 2px 6px rgba(0,0,0,0.4);
+              border:2px solid #fff;cursor:pointer;
+            ">${idx + 1}</div>`;
+          const overlay = new window.kakao.maps.CustomOverlay({ position: pos, content, zIndex: 15 });
+          overlay.setMap(map);
+          streetSpotMarkersRef.current.push(overlay);
+        });
+
+        const bounds = new window.kakao.maps.LatLngBounds();
+        positions.forEach((p) => bounds.extend(p));
+        map.setBounds(bounds, 80);
+      })
+      .catch(() => { setStreetSpotLoading(false); alert("입지 추천 요청에 실패했습니다."); });
   }
 
   // ── 행정동 클릭 → 위치 추천 요청 (dong 모드 결과에서) ──
@@ -1759,6 +1913,104 @@ export default function MapPage() {
                         onClick={() => openAiDongRecommend(selectedDong.dongName, selectedDong.guName)}
                         style={{ width: "100%", marginTop: 8, padding: "9px 0", background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", color: "#93B8EE", border: "1px solid rgba(139,92,246,0.4)", borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", letterSpacing: "0.02em" }}
                       >✨ 이 지역에서 AI 추천 받기</button>
+
+                      {/* 길단위 상권 추천 패널 */}
+                      {streetCount > 0 && (
+                        <div style={{ marginTop: 14, borderTop: "1px solid #3A3A3A", paddingTop: 12 }}>
+                          <div style={{ fontSize: 13, color: "#F59E0B", fontWeight: 600, marginBottom: 8 }}>
+                            🏪 길단위 상권 {streetCount}개 표시됨<br/>
+                            <span style={{ fontWeight: 400, color: "#9E9E9E" }}>지도 위 주황색 구역을 클릭해 업종 추천을 받아보세요</span>
+                          </div>
+                          {selectedStreet && (
+                            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "10px 12px" }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#FCD34D", marginBottom: 6 }}>
+                                📍 {selectedStreet.상권명}
+                              </div>
+                              {streetLoading && <div style={{ color: "#9E9E9E", fontSize: 13 }}>분석 중...</div>}
+                              {!streetLoading && streetResults?.results && (
+                                <div>
+                                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 6 }}>유망 업종 Top 5 · 업종 클릭 시 상권 내 입지 추천</div>
+                                  {streetResults.results.map((r, i) => (
+                                    <div key={r.category} style={{ borderBottom: i < streetResults.results.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0" }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                          <span style={{ fontSize: 12, color: "#6B7280", minWidth: 16 }}>{r.rank}</span>
+                                          <span style={{ fontSize: 13, color: "#E8E8E8" }}>{r.category}</span>
+                                          <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: r.등급 === "A" ? "rgba(34,197,94,0.2)" : r.등급 === "B" ? "rgba(59,130,246,0.2)" : "rgba(107,114,128,0.2)", color: r.등급 === "A" ? "#4ADE80" : r.등급 === "B" ? "#93B8EE" : "#9E9E9E" }}>{r.등급}</span>
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                          <span style={{ fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>{r.성장확률}%</span>
+                                          <button
+                                            onClick={() => {
+                                              if (streetSpotCategory === r.category && streetSpotResults) {
+                                                clearStreetSpotMarkers();
+                                                setStreetSpotResults(null);
+                                                setStreetSpotCategory(null);
+                                              } else {
+                                                handleStreetSpotRecommend(selectedStreet.상권코드, r.category);
+                                              }
+                                            }}
+                                            style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.4)", background: streetSpotCategory === r.category ? "rgba(245,158,11,0.25)" : "rgba(245,158,11,0.08)", color: "#F59E0B", cursor: "pointer" }}
+                                          >📍 입지</button>
+                                        </div>
+                                      </div>
+
+                                      {/* 입지 추천 결과 인라인 */}
+                                      {streetSpotCategory === r.category && (
+                                        <div style={{ marginBottom: 8 }}>
+                                          {streetSpotLoading && (
+                                            <div style={{ fontSize: 12, color: "#9E9E9E", padding: "6px 0" }}>입지 분석 중...</div>
+                                          )}
+                                          {!streetSpotLoading && streetSpotResults && (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                              {streetSpotResults.map((spot) => {
+                                                const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+                                                const color = colors[spot.rank - 1] || "#6B7280";
+                                                return (
+                                                  <div key={spot.rank} style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "10px 12px", border: `1px solid ${color}30` }}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                        <div style={{ background: color, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>{spot.rank}</div>
+                                                        <span style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>추천 위치 {spot.rank}순위</span>
+                                                      </div>
+                                                      <span style={{ fontSize: 18, fontWeight: 800, color }}>{spot.score}</span>
+                                                    </div>
+                                                    <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                                                      <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 6px", textAlign: "center" }}>
+                                                        <div style={{ fontSize: 10, color: "#9E9E9E" }}>생존율</div>
+                                                        <div style={{ fontSize: 13, fontWeight: 600, color: spot.생존율 >= 60 ? "#34D399" : spot.생존율 >= 40 ? "#FBBF24" : "#F87171" }}>{spot.생존율}%</div>
+                                                      </div>
+                                                      <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 6px", textAlign: "center" }}>
+                                                        <div style={{ fontSize: 10, color: "#9E9E9E" }}>경쟁</div>
+                                                        <div style={{ fontSize: 13, fontWeight: 600, color: spot.경쟁밀도 <= 2 ? "#34D399" : spot.경쟁밀도 <= 5 ? "#FBBF24" : "#F87171" }}>{spot.경쟁밀도}개</div>
+                                                      </div>
+                                                      <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 6px", textAlign: "center" }}>
+                                                        <div style={{ fontSize: 10, color: "#9E9E9E" }}>시너지</div>
+                                                        <div style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>{spot.보완밀도}개</div>
+                                                      </div>
+                                                    </div>
+                                                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                                      {spot.reasons.map((reason, ri) => (
+                                                        <div key={ri} style={{ fontSize: 11, color: "#C8C8C8", display: "flex", gap: 4 }}>
+                                                          <span style={{ color, flexShrink: 0 }}>•</span>{reason}
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </>
                   );
                 })()}

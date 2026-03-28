@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.urls import path, include
-from analysis.views import analysis, quarters, gu_analysis, gu_quarters, gu_all_ranking, store_list, score, score_all, recommend_location, recommend_industry, recommend_score, suggest_industries, suggest_industries_with_category, recommend_spot, rental_regions, rental_calculate
+from analysis.views import analysis, quarters, gu_analysis, gu_quarters, gu_all_ranking, store_list, score, score_all, recommend_location, recommend_industry, recommend_score, suggest_industries, suggest_industries_with_category, recommend_spot, rental_regions, rental_calculate, recommend_street_industry, recommend_street_score, recommend_street_spot
 
 urlpatterns = [
     path('', include("accounts.urls")),
@@ -35,4 +35,7 @@ urlpatterns = [
     path('api/recommend/spot/', recommend_spot),
     path('api/rental/regions/', rental_regions),
     path('api/rental/calculate/', rental_calculate),
+    path('api/recommend/street-industry/', recommend_street_industry),
+    path('api/recommend/street-score/', recommend_street_score),
+    path('api/recommend/street-spot/', recommend_street_spot),
 ]

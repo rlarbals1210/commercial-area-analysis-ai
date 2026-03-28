@@ -27,6 +27,14 @@ df[직장인구_cols] = df[직장인구_cols].fillna(0)
 파생_cols = ["업종_점포당매출", "업종_포화도", "점포대비유동"]
 df[파생_cols] = df[파생_cols].fillna(0)
 
+# 크롤링 피처 NaN → 업종 평균으로 대체
+crawl_cols = ["crawl_avg_price", "crawl_price_range",
+              "crawl_1인비율", "crawl_회식비율", "crawl_목적다양성", "crawl_menu_count"]
+for col in crawl_cols:
+    if col in df.columns:
+        df[col] = df[col].fillna(df.groupby("통합카테고리")[col].transform("mean"))
+        df[col] = df[col].fillna(df[col].mean())
+
 df = df.dropna()
 
 print(f"총 행정동 수: {df['행정동명'].nunique()}")
@@ -111,6 +119,9 @@ feature_cols = [
     "유동_아침비율", "유동_점심비율", "유동_저녁비율", "유동_심야비율",
     "매출건수_증감률", "점포수_증감률",
     "개업_율_평균", "폐업_률_평균",
+    # 크롤링 피처 (네이버 플레이스 실측 데이터)
+    "crawl_avg_price", "crawl_price_range",
+    "crawl_1인비율", "crawl_회식비율", "crawl_목적다양성", "crawl_menu_count",
     "업종_encoded", "분기번호",
 ]
 print(f"피처 수: {len(feature_cols)}")

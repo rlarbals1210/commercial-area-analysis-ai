@@ -5,11 +5,31 @@ from pathlib import Path
 from django.http import JsonResponse
 from django.db.models import Count, Max, Sum
 from django.views.decorators.csrf import csrf_exempt
-from .models import CommercialData, StoreInfo, ScoreData
+from .models import CommercialData, StoreInfo, ScoreData, StreetScoreData, StreetCommercialData
+from shapely.geometry import Point, shape as shapely_shape
 
 # location_scores.csv 메모리 캐시
 _location_df = None
 _location_lock = threading.Lock()
+
+# street_boundaries.geojson 메모리 캐시
+_street_geojson = None
+_street_geojson_lock = threading.Lock()
+
+def _get_street_geojson():
+    global _street_geojson
+    if _street_geojson is not None:
+        return _street_geojson
+    with _street_geojson_lock:
+        if _street_geojson is not None:
+            return _street_geojson
+        path = Path(__file__).resolve().parents[2] / "frontend-react" / "public" / "street_boundaries.geojson"
+        if path.exists():
+            with open(path, encoding="utf-8") as f:
+                _street_geojson = json.load(f)
+        else:
+            _street_geojson = {}
+    return _street_geojson
 
 # gu_rental.json 메모리 캐시
 _gu_rental = None
@@ -50,7 +70,7 @@ def _get_location_df():
     with _location_lock:
         if _location_df is not None:
             return _location_df
-        path = Path(__file__).resolve().parents[2] / "ai" / "outputs" / "location_scores.csv"
+        path = Path(__file__).resolve().parents[2] / "data" / "processed_data" / "location_scores.csv"
         if path.exists():
             _location_df = pd.read_csv(path, encoding="utf-8-sig")
         else:
@@ -1059,4 +1079,308 @@ def rental_calculate(request):
         "임대료_만원per㎡": floor_data.get("임대료_만원per㎡"),
         "효용비율_%":       floor_data.get("효용비율_%"),
         "1층_임대료_만원per㎡": gu_data.get("1층", {}).get("임대료_만원per㎡"),
+    })
+
+
+def recommend_street_industry(request):
+    """상권코드 입력 → 유망 업종 추천 Top 5 (GET, 상권코드 필수)"""
+    상권코드_param = request.GET.get("상권코드", "").strip()
+    if not 상권코드_param:
+        return JsonResponse({"error": "상권코드 파라미터가 필요합니다."}, status=400)
+
+    try:
+        상권코드 = int(상권코드_param)
+    except ValueError:
+        return JsonResponse({"error": "상권코드는 숫자여야 합니다."}, status=400)
+
+    # StreetScoreData: 해당 상권의 모든 업종 AI 성장확률
+    score_map = {
+        row["통합카테고리"]: row
+        for row in StreetScoreData.objects.filter(상권_코드=상권코드).values(
+            "통합카테고리", "성장확률", "등급", "상위_퍼센트"
+        )
+    }
+    if not score_map:
+        return JsonResponse({"error": "해당 상권의 AI 점수 데이터가 없습니다."}, status=404)
+
+    상권_코드_명 = (
+        StreetScoreData.objects.filter(상권_코드=상권코드)
+        .values_list("상권_코드_명", flat=True).first() or str(상권코드)
+    )
+
+    # StreetCommercialData: 해당 상권 전 업종 지표
+    commercial_map = {
+        row["통합카테고리"]: row
+        for row in StreetCommercialData.objects.filter(상권_코드=상권코드).values(
+            "통합카테고리", "당월_매출_금액", "총_유동인구_수",
+            "매출_증감률", "월_평균_소득_금액",
+        )
+    }
+
+    categories = set(score_map.keys()) & set(commercial_map.keys())
+    if not categories:
+        return JsonResponse({"error": "추천할 수 있는 업종 데이터가 없습니다."}, status=404)
+
+    # 전체 상권 기준 정규화 최대값
+    global_max_cache = {}
+    for cat in categories:
+        all_rows = list(
+            StreetCommercialData.objects.filter(통합카테고리=cat)
+            .values("당월_매출_금액", "총_유동인구_수", "월_평균_소득_금액")
+        )
+        global_max_cache[cat] = {
+            "max_매출": max((r["당월_매출_금액"] or 0) for r in all_rows) or 1,
+            "max_유동": max((r["총_유동인구_수"] or 0) for r in all_rows) or 1,
+            "max_소득": max((r["월_평균_소득_금액"] or 0) for r in all_rows) or 1,
+        }
+
+    results = []
+    for cat in categories:
+        c = commercial_map[cat]
+        s = score_map[cat]
+        m = global_max_cache[cat]
+
+        성장확률 = s.get("성장확률") or 50.0
+        매출 = c.get("당월_매출_금액") or 0
+        유동인구 = c.get("총_유동인구_수") or 0
+        소득 = c.get("월_평균_소득_금액") or 0
+        매출_증감률 = c.get("매출_증감률") or 0
+
+        매출_점수 = round((매출 / m["max_매출"]) * 100, 1)
+        유동인구_점수 = round((유동인구 / m["max_유동"]) * 100, 1)
+        소득_점수 = round((소득 / m["max_소득"]) * 100, 1)
+
+        composite = round(
+            성장확률 * 0.40
+            + 매출_점수 * 0.30
+            + 유동인구_점수 * 0.15
+            + 소득_점수 * 0.15,
+            1
+        )
+
+        tags = []
+        if 성장확률 >= 70:
+            tags.append("성장 업종")
+        if 매출_증감률 > 0.05:
+            tags.append("매출 상승세")
+        if 유동인구 >= 50000:
+            tags.append("유동인구 多")
+        if 소득 >= 5000000:
+            tags.append("고소득 상권")
+        if s.get("등급") in ("A", "B"):
+            tags.append(f"AI 등급 {s['등급']}")
+
+        results.append({
+            "industry": cat,
+            "category": cat,
+            "score": composite,
+            "성장확률": round(성장확률, 1),
+            "등급": s.get("등급", "-"),
+            "revenue": 매출,
+            "총유동인구": 유동인구,
+            "월_평균_소득": round(소득),
+            "매출_증감률": round(매출_증감률, 3),
+            "tags": tags[:4],
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    top = results[:5]
+    for i, r in enumerate(top):
+        r["rank"] = i + 1
+
+    return JsonResponse({"results": top, "상권코드": 상권코드, "상권명": 상권_코드_명})
+
+
+def recommend_street_score(request):
+    """상권코드 + 업종 → 적합도 점수 (GET, 상권코드 + category 필수)"""
+    상권코드_param = request.GET.get("상권코드", "").strip()
+    category = request.GET.get("category", "").strip()
+    if not 상권코드_param or not category:
+        return JsonResponse({"error": "상권코드, category 파라미터가 필요합니다."}, status=400)
+
+    try:
+        상권코드 = int(상권코드_param)
+    except ValueError:
+        return JsonResponse({"error": "상권코드는 숫자여야 합니다."}, status=400)
+
+    score_obj = StreetScoreData.objects.filter(상권_코드=상권코드, 통합카테고리=category).first()
+    if not score_obj:
+        return JsonResponse({"error": "AI 점수 데이터가 없습니다."}, status=404)
+
+    c = StreetCommercialData.objects.filter(상권_코드=상권코드, 통합카테고리=category).first()
+    if not c:
+        return JsonResponse({"error": "상권 데이터가 없습니다."}, status=404)
+
+    # 전체 상권 기준 정규화
+    all_rows = list(
+        StreetCommercialData.objects.filter(통합카테고리=category)
+        .values("당월_매출_금액", "총_유동인구_수", "월_평균_소득_금액")
+    )
+    max_매출 = max((r["당월_매출_금액"] or 0) for r in all_rows) or 1
+    max_유동 = max((r["총_유동인구_수"] or 0) for r in all_rows) or 1
+    max_소득 = max((r["월_평균_소득_금액"] or 0) for r in all_rows) or 1
+
+    성장확률 = score_obj.성장확률 or 50.0
+    매출_점수 = round(((c.당월_매출_금액 or 0) / max_매출) * 100, 1)
+    유동인구_점수 = round(((c.총_유동인구_수 or 0) / max_유동) * 100, 1)
+    소득_점수 = round(((c.월_평균_소득_금액 or 0) / max_소득) * 100, 1)
+
+    composite = round(
+        성장확률 * 0.40
+        + 매출_점수 * 0.30
+        + 유동인구_점수 * 0.15
+        + 소득_점수 * 0.15,
+        1
+    )
+
+    grade = (
+        "A" if composite >= 75 else
+        "B" if composite >= 55 else
+        "C" if composite >= 35 else
+        "D"
+    )
+
+    # 장점/단점 생성
+    pros, cons = [], []
+    if 성장확률 >= 65:
+        pros.append(f"AI 성장 확률 {round(성장확률, 1)}%로 업종 전망 우수")
+    else:
+        cons.append(f"AI 성장 확률 {round(성장확률, 1)}%로 성장 가능성 주의 필요")
+    if (c.매출_증감률 or 0) > 0.05:
+        pros.append(f"매출 증감률 {round((c.매출_증감률 or 0)*100, 1)}%로 상승세")
+    elif (c.매출_증감률 or 0) < -0.05:
+        cons.append(f"매출 증감률 {round((c.매출_증감률 or 0)*100, 1)}%로 하락세 주의")
+    if (c.총_유동인구_수 or 0) >= 50000:
+        pros.append("풍부한 유동인구로 고객 확보 유리")
+    elif (c.총_유동인구_수 or 0) < 10000:
+        cons.append("유동인구 적어 고정 고객 확보 중요")
+    if (c.월_평균_소득_금액 or 0) >= 5000000:
+        pros.append("고소득 상권으로 객단가 높은 업종에 유리")
+
+    if composite >= 75:
+        summary = f"{score_obj.상권_코드_명}은 {category} 창업에 매우 적합한 상권입니다."
+    elif composite >= 55:
+        summary = f"{score_obj.상권_코드_명}은 {category} 창업 시 평균 이상의 적합도를 보입니다."
+    elif composite >= 35:
+        summary = f"{score_obj.상권_코드_명}은 {category} 창업에 보통 수준의 적합도를 보입니다."
+    else:
+        summary = f"{score_obj.상권_코드_명}은 {category} 창업 시 신중한 검토가 필요합니다."
+
+    return JsonResponse({
+        "score": composite,
+        "grade": grade,
+        "summary": summary,
+        "breakdown": [
+            {"label": "성장 추세", "score": 성장확률, "max": 100},
+            {"label": "매출 잠재력", "score": 매출_점수, "max": 100},
+            {"label": "유동인구", "score": 유동인구_점수, "max": 100},
+            {"label": "소득 수준", "score": 소득_점수, "max": 100},
+        ],
+        "pros": pros[:3],
+        "cons": cons[:3],
+        "상권코드": 상권코드,
+        "상권명": score_obj.상권_코드_명,
+        "category": category,
+        "기준_년분기_코드": score_obj.기준_년분기_코드,
+    })
+
+
+def recommend_street_spot(request):
+    """상권코드 + 업종 → 상권 경계 내 추천 위치 Top 5 (GET)
+    params: 상권코드, category
+    """
+    상권코드_param = request.GET.get("상권코드", "").strip()
+    category = request.GET.get("category", "").strip()
+    if not 상권코드_param or not category:
+        return JsonResponse({"error": "상권코드, category 파라미터가 필요합니다."}, status=400)
+
+    try:
+        상권코드 = int(상권코드_param)
+    except ValueError:
+        return JsonResponse({"error": "상권코드는 숫자여야 합니다."}, status=400)
+
+    # 1) GeoJSON에서 해당 상권 폴리곤 조회
+    geojson = _get_street_geojson()
+    if not geojson:
+        return JsonResponse({"error": "상권 경계 데이터를 불러올 수 없습니다."}, status=503)
+
+    polygon = None
+    상권명 = ""
+    for feature in geojson.get("features", []):
+        props = feature.get("properties", {})
+        if int(props.get("상권_코드", -1)) == 상권코드:
+            polygon = shapely_shape(feature["geometry"])
+            상권명 = props.get("상권_코드_명", "")
+            break
+
+    if polygon is None:
+        return JsonResponse({"error": f"상권코드 {상권코드}의 경계 데이터가 없습니다."}, status=404)
+
+    # 2) location_scores 로드
+    df = _get_location_df()
+    if df.empty:
+        return JsonResponse({"error": "위치 점수 데이터가 없습니다. build_location_scores.py를 먼저 실행하세요."}, status=503)
+
+    # 3) 업종 필터
+    filtered = df[df["통합카테고리"] == category]
+    if filtered.empty:
+        return JsonResponse({"error": f'"{category}" 위치 데이터가 없습니다.'}, status=404)
+
+    # 4) Point-in-polygon 필터
+    mask = filtered.apply(
+        lambda row: polygon.contains(Point(row["grid_lng"], row["grid_lat"])),
+        axis=1,
+    )
+    inside = filtered[mask]
+
+    if inside.empty:
+        return JsonResponse({"error": f"상권 경계 내 '{category}' 위치 데이터가 없습니다. 인근 행정동 데이터를 이용해주세요."}, status=404)
+
+    top = inside.nlargest(5, "입지점수").copy()
+
+    results = []
+    for rank, (_, row) in enumerate(top.iterrows(), 1):
+        생존율  = row["생존율"]
+        경쟁밀도 = int(row["경쟁밀도"])
+        보완밀도 = int(row["보완밀도"])
+        활성도  = int(row["상권활성도"])
+        점수    = row["입지점수"]
+
+        reasons = []
+        if 생존율 >= 60:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 높은 편")
+        elif 생존율 >= 40:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 평균 수준")
+        else:
+            reasons.append(f"2년 생존율 {생존율:.0f}%로 낮은 편")
+
+        if 경쟁밀도 <= 2:
+            reasons.append("반경 300m 내 동업종 경쟁 적음")
+        elif 경쟁밀도 <= 5:
+            reasons.append(f"반경 300m 내 동업종 {경쟁밀도}개")
+        else:
+            reasons.append(f"반경 300m 내 동업종 {경쟁밀도}개로 경쟁 많음")
+
+        if 보완밀도 >= 10:
+            reasons.append(f"시너지 업종 {보완밀도}개로 집객 유리")
+        elif 보완밀도 >= 5:
+            reasons.append(f"시너지 업종 {보완밀도}개 인근")
+
+        results.append({
+            "rank":       rank,
+            "lat":        round(row["grid_lat"], 4),
+            "lng":        round(row["grid_lng"], 4),
+            "score":      점수,
+            "생존율":     round(생존율, 1),
+            "경쟁밀도":   경쟁밀도,
+            "보완밀도":   보완밀도,
+            "상권활성도": 활성도,
+            "reasons":    reasons,
+        })
+
+    return JsonResponse({
+        "상권코드": 상권코드,
+        "상권명": 상권명,
+        "category": category,
+        "results": results,
     })

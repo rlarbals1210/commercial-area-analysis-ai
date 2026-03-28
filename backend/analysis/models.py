@@ -106,6 +106,57 @@ class ScoreData(models.Model):
         ]
 
 
+class StreetScoreData(models.Model):
+    """AI 창업 적합도 점수 (업종×상권, 최신 분기)"""
+    상권_코드           = models.BigIntegerField()
+    상권_코드_명        = models.CharField(max_length=100)
+    통합카테고리        = models.CharField(max_length=50)
+    기준_년분기_코드    = models.IntegerField()
+    성장확률            = models.FloatField()   # 0~100
+    업종내_순위         = models.IntegerField()
+    업종내_전체상권수   = models.IntegerField()
+    상위_퍼센트        = models.FloatField()
+    등급                = models.CharField(max_length=2)  # A/B/C/D
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["상권_코드"]),
+            models.Index(fields=["상권_코드", "통합카테고리"]),
+            models.Index(fields=["통합카테고리"]),
+        ]
+
+
+class StreetCommercialData(models.Model):
+    """상권 단위 상권 지표 (최신 분기)"""
+    기준_년분기_코드    = models.IntegerField()
+    상권_코드           = models.BigIntegerField()
+    상권_코드_명        = models.CharField(max_length=100)
+    통합카테고리        = models.CharField(max_length=50)
+
+    # 매출
+    당월_매출_금액      = models.BigIntegerField()
+    당월_매출_건수      = models.BigIntegerField()
+    객단가              = models.FloatField(null=True)
+    매출_증감률         = models.FloatField(null=True)
+    매출_주말비율       = models.FloatField(null=True)
+    매출_저녁비율       = models.FloatField(null=True)
+
+    # 유동인구
+    총_유동인구_수      = models.BigIntegerField(null=True)
+    유동_증감률         = models.FloatField(null=True)
+
+    # 소득소비
+    월_평균_소득_금액   = models.FloatField(null=True)
+    지출_총금액         = models.FloatField(null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["상권_코드"]),
+            models.Index(fields=["상권_코드", "통합카테고리"]),
+            models.Index(fields=["통합카테고리"]),
+        ]
+
+
 class StoreInfo(models.Model):
     """개별 상가 정보 (소상공인 상가(상권)정보 원본 데이터)"""
     상가업소번호        = models.CharField(max_length=30, unique=True)
