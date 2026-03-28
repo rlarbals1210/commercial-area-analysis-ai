@@ -81,7 +81,7 @@ const CATEGORY_GROUPS = {
 // GeoJSON은 중점(·) 사용, 데이터셋은 마침표(.) 사용 → API 호출 시 정규화
 const normalizeDongName = (name) => name.replace(/·/g, ".");
 
-const POLYGON_DEFAULT    = { fillColor: "#9EC8F0", fillOpacity: 0.01, strokeColor: "#6B9FD4", strokeOpacity: 0.8, strokeWeight: 1 };
+const POLYGON_DEFAULT    = { fillColor: "#9EC8F0", fillOpacity: 0.01, strokeColor: "#9CA3AF", strokeOpacity: 0.8, strokeWeight: 2 };
 const POLYGON_HOVER      = { fillColor: "#60A5FA", fillOpacity: 0.35, strokeColor: "#3B82F6", strokeOpacity: 1,  strokeWeight: 1 };
 const POLYGON_SELECTED   = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColor: "#1D4ED8", strokeOpacity: 1,  strokeWeight: 1 };
 // 선택 시 나머지 폴리곤에 적용할 회색 딤처리
@@ -160,6 +160,9 @@ export default function MapPage() {
   // ── 창업 적합도 상태 ──
   const [scoreData, setScoreData] = useState(null);       // 전체 업종 점수 목록
   const [selectedScoreCat, setSelectedScoreCat] = useState(null); // 선택된 업종
+
+  const [markerToast, setMarkerToast] = useState(false);
+  const [markerPanelOpen, setMarkerPanelOpen] = useState(false);
 
   // ── AI 추천 상태 ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -303,16 +306,12 @@ export default function MapPage() {
     });
     mapInstanceRef.current = map;
 
-    // 세 GeoJSON 동시 로드
     Promise.all([
       fetch("/seoul_hangjeongdong.geojson").then((r) => r.json()),
       fetch("/seoul_gu.geojson").then((r) => r.json()),
-      fetch("/seoul_boundary.geojson").then((r) => r.json()),
-    ]).then(([dongGeoJson, guGeoJson, boundaryGeoJson]) => {
+    ]).then(([dongGeoJson, guGeoJson]) => {
       drawDongPolygons(map, dongGeoJson, kakao);
       drawGuPolygons(map, guGeoJson, kakao);
-      drawSeoulBoundary(map, boundaryGeoJson, kakao);
-      // 초기 레벨 8 → 구 모드 적용
       applyMode(map, map.getLevel());
     });
 
@@ -563,28 +562,6 @@ export default function MapPage() {
     });
   }
 
-  // ── 서울 외곽 경계선 ──
-  function drawSeoulBoundary(map, geojson, kakao) {
-    geojson.features.forEach((feature) => {
-      const { geometry } = feature;
-      const coords = geometry.type === "Polygon"
-        ? [geometry.coordinates]
-        : geometry.coordinates; // MultiPolygon
-      coords.forEach((rings) => {
-        const path = rings[0].map(([lng, lat]) => new kakao.maps.LatLng(lat, lng));
-        const polygon = new kakao.maps.Polygon({
-          path,
-          strokeWeight: 4,
-          strokeColor: "#94A3B8",
-          strokeOpacity: 0.7,
-          fillColor: "#000000",
-          fillOpacity: 0,
-          zIndex: 0,
-        });
-        polygon.setMap(map);
-      });
-    });
-  }
 
   // ── 상가 마커 관련 ──
   function clearStoreMarkers() {
@@ -609,8 +586,7 @@ export default function MapPage() {
     if (cellSize === 0) return stores.map((s) => ({ single: s }));
     const cells = {};
     stores.forEach((s) => {
-      // 업종 + 그리드 위치를 함께 키로 사용 → 같은 업종끼리만 묶임
-      const key = `${s.통합카테고리}|${Math.floor(s.경도 / cellSize)},${Math.floor(s.위도 / cellSize)}`;
+      const key = `${Math.floor(s.경도 / cellSize)},${Math.floor(s.위도 / cellSize)}`;
       if (!cells[key]) cells[key] = [];
       cells[key].push(s);
     });
@@ -648,9 +624,9 @@ export default function MapPage() {
     kakao.maps.event.addListener(map, "zoom_changed", handler);
   }
 
-  function addClusterMarker(map, { count, category, lat, lng }) {
+  function addClusterMarker(map, { count, lat, lng }) {
     const { kakao } = window;
-    const color = STORE_CATEGORY_COLORS[category] || "#3B82F6";
+    const color = "#3B82F6";
     const size = Math.min(28 + Math.floor(Math.log2(count) * 5), 52);
     const el = document.createElement("div");
     el.style.cssText = `
@@ -689,29 +665,18 @@ export default function MapPage() {
       const el = document.createElement("div");
       el.title = store.상호명;
       el.style.cssText = `
-        display: flex; flex-direction: column; align-items: center;
+        display: flex; align-items: flex-end; justify-content: center;
         cursor: pointer;
-        filter: drop-shadow(0 2px 5px rgba(0,0,0,0.55));
-        transition: transform 0.35s cubic-bezier(0.34, 1.7, 0.64, 1);
+        filter: none;
+        transition: transform 0.2s cubic-bezier(0.34, 1.7, 0.64, 1);
         transform-origin: bottom center;
       `;
-      const pinHead = document.createElement("div");
-      pinHead.style.cssText = `
-        width: 16px; height: 16px;
-        background: ${color};
-        border: 2.5px solid #fff;
-        border-radius: 50%;
+      el.innerHTML = `
+        <svg width="22" height="30" viewBox="0 0 22 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M11 0C4.925 0 0 4.925 0 11c0 8.25 11 19 11 19s11-10.75 11-19C22 4.925 17.075 0 11 0z" fill="${color}"/>
+          <circle cx="11" cy="11" r="4.5" fill="white" fill-opacity="0.85"/>
+        </svg>
       `;
-      const pinStem = document.createElement("div");
-      pinStem.style.cssText = `
-        width: 0; height: 0;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 9px solid ${color};
-        margin-top: -1px;
-      `;
-      el.appendChild(pinHead);
-      el.appendChild(pinStem);
       el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.5)"; });
       el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
       el.addEventListener("click", () => {
@@ -916,7 +881,9 @@ export default function MapPage() {
     if (!selectedDong) {
       clearStoreMarkers();
       setShowStoreMarkers(false);
+      setMarkerPanelOpen(false);
       setStoreCategoryFilter([]);
+      setStoreDrillGroup(null);
       setScoreData(null);
       setSelectedScoreCat(null);
     }
@@ -961,6 +928,15 @@ export default function MapPage() {
       .catch(() => setDongData(null))
       .finally(() => setDongLoading(false));
   }, [selectedDong, selectedQuarter]);
+
+  // ── 검색창 열림/닫힘 시 사이드바 토글 ──
+  useEffect(() => {
+    if (searchExpanded) {
+      setSidebarCollapsed(true);
+    } else {
+      if (selectedDong || selectedGu) setSidebarCollapsed(false);
+    }
+  }, [searchExpanded]);
 
   // ── 구 변경 시: 분기 목록 fetch ──
   useEffect(() => {
@@ -1209,7 +1185,7 @@ export default function MapPage() {
 
   // ── AI 추천 요청 ──
   function handleAiRecommend() {
-    if (aiMode === "dong" && !aiSubIndustry.trim()) return;
+    if (aiMode === "dong" && !aiIndustry) return;
     if (aiMode === "industry" && !aiDong.trim()) return;
     if (aiMode === "score" && (!aiDong.trim() || !aiIndustry)) return;
     setAiStep("loading");
@@ -1220,7 +1196,7 @@ export default function MapPage() {
 
     if (aiMode === "dong") {
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiSubIndustry.trim())}`).then((r) => r.json()),
+        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1485,47 +1461,19 @@ export default function MapPage() {
         title="사이드바 접기"
       >«</button>
 
-      {/* ── 플로팅 검색창 (사이드바가 닫혀 있을 때 지도 위에 표시) ──
-          애니메이션 없이 즉시 전환 → 클릭 즉시 사라지고 사이드바 즉시 등장 */}
-      <div
-        data-sidebar
-        style={{
-          position: "absolute",
-          top: 16,
-          left: 16,
-          zIndex: 20,
-          display: "flex",
-          alignItems: "center",
-          ...searchBoxStyle,
-          width: 280,
-          cursor: "text",
-          // 애니메이션 없이 즉시 show/hide
-          opacity: sidebarCollapsed ? 1 : 0,
-          pointerEvents: sidebarCollapsed ? "auto" : "none",
-        }}
-        onClick={() => {
-          setSidebarCollapsed(false);
-          // 즉시 전환이므로 짧은 딜레이 후 포커스
-          setTimeout(() => searchInputRef.current?.focus(), 50);
-        }}
-      >
-        <span style={{ fontSize: 19, marginRight: 8, color: "#777" }}>🔍</span>
-        <span style={{ fontSize: 17, color: "#666" }}>지역명 · 업종 검색</span>
-      </div>
-
 
       {/* ── 왼쪽 사이드바 ── */}
       <div data-sidebar style={{
         ...leftSidebarStyle,
         // 선택된 항목이 있을 때만 슬라이드 애니메이션 사용.
         // 검색만 활성화된 경우(선택 없음)는 애니메이션 없이 즉시 표시/숨김.
-        transform: (sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry))
+        transform: (sidebarCollapsed && (selectedDong || selectedGu))
           ? "translateX(-320px)" : "translateX(0)",
-        opacity: (sidebarCollapsed && !selectedDong && !selectedGu && !selectedIndustry) ? 0 : 1,
-        transition: (selectedDong || selectedGu || selectedIndustry)
+        opacity: (sidebarCollapsed && !selectedDong && !selectedGu) ? 0 : 1,
+        transition: (selectedDong || selectedGu)
           ? "transform 0.22s ease-out, opacity 0.15s"
           : "none",
-        ...((searchExpanded || (!selectedDong && !selectedGu && !selectedIndustry)) && {
+        ...((!selectedDong && !selectedGu) && {
           background: "transparent",
           borderRight: "none",
           backdropFilter: "none",
@@ -1534,203 +1482,13 @@ export default function MapPage() {
         }),
       }}>
 
-        {/* 검색창 */}
-        <div data-popup style={{ position: "relative", padding: "16px 16px 10px", flexShrink: 0 }}>
-          <div
-            style={{ ...searchBoxStyle, width: "100%", boxSizing: "border-box", borderRadius: searchExpanded ? "12px 12px 0 0" : 12, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
-            onClick={() => { setSearchExpanded(true); setSidebarCollapsed(false); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
-          >
-            <span style={{ fontSize: 19, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => { setSearchExpanded(true); setSidebarCollapsed(false); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && searchResults.length > 0) { handleSelectResult(searchResults[0]); setSearchExpanded(false); }
-                if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }
-              }}
-              ref={searchInputRef}
-              placeholder="지역명 · 업종 검색"
-              style={{ border: "none", outline: "none", fontSize: 17, width: "100%", background: "transparent", color: "#E8E8E8" }}
-            />
-            {searchExpanded && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }}
-                style={{ border: "none", background: "none", cursor: "pointer", color: "#777", fontSize: 18, padding: 0, flexShrink: 0 }}
-              >✕</button>
-            )}
-          </div>
-
-          {/* 확장 드롭다운 */}
-          {searchExpanded && (
-            <div data-popup className="anim-slide-down" style={{
-              background: "#2A2A2A", borderRadius: "0 0 14px 14px",
-              boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
-              border: "1px solid rgba(255,255,255,0.08)", borderTop: "none",
-              maxHeight: 420, overflowY: "auto",
-            }} ref={searchDropdownRef}>
-              {searchResults.length > 0 && (
-                <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ padding: "8px 14px 4px", fontSize: 13, fontWeight: 700, color: "#6B7280", letterSpacing: "0.06em" }}>지역 검색 결과</div>
-                  {searchResults.map((r, i) => (
-                    <button
-                      key={i}
-                      onClick={() => { handleSelectResult(r); setSearchExpanded(false); }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        width: "100%", padding: "9px 14px", border: "none",
-                        background: "none", cursor: "pointer", textAlign: "left",
-                        borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
-                      onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-                    >
-                      <span style={{
-                        fontSize: 12, fontWeight: 700, color: r.type === "gu" ? "#FBBF24" : "#93B8EE",
-                        background: r.type === "gu" ? "rgba(251,191,36,0.12)" : "rgba(59,130,246,0.12)",
-                        borderRadius: 4, padding: "2px 6px", flexShrink: 0,
-                      }}>
-                        {r.type === "gu" ? "구" : "행정동"}
-                      </span>
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 600, color: "#E8E8E8" }}>{r.type === "gu" ? r.guName : r.dongName}</div>
-                        {r.type === "dong" && <div style={{ fontSize: 14, color: "#9E9E9E" }}>{r.guName}</div>}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div style={{ padding: "12px 14px" }}>
-                <p style={{ ...popupSectionLabel, marginBottom: 8, fontSize: 14 }}>업종 필터</p>
-                {/* 검색창 */}
-                <input
-                  type="text" placeholder="업종 검색..."
-                  value={searchIndustrySearchQuery}
-                  onChange={(e) => {
-                    setSearchIndustrySearchQuery(e.target.value);
-                    if (e.target.value) setSearchIndustryDrillGroup("__search__");
-                    else setSearchIndustryDrillGroup(null);
-                  }}
-                  style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)", color: "#E8E8E8", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
-                />
-                {/* 검색 결과 */}
-                {searchIndustrySearchQuery ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {Object.keys(STARTUP_COSTS).filter(c => c.includes(searchIndustrySearchQuery)).map(cat => (
-                      <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustrySearchQuery(""); setSearchIndustryDrillGroup(null); }}
-                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
-                        {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
-                      </button>
-                    ))}
-                  </div>
-                ) : searchIndustryDrillGroup ? (
-                  /* 대분류 선택 후 세부 목록 */
-                  <>
-                    <button onClick={() => setSearchIndustryDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>
-                      ← {searchIndustryDrillGroup}
-                    </button>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {CATEGORY_GROUPS[searchIndustryDrillGroup].map(cat => (
-                        <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustryDrillGroup(null); }}
-                          style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
-                          {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  /* 대분류 목록 */
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {selectedIndustry && (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
-                        <span style={{ fontSize: 12, color: "#93B8EE" }}>{CATEGORY_EMOJI[selectedIndustry] ?? "🏪"} {selectedIndustry}</span>
-                        <button onClick={() => setSelectedIndustry(null)} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
-                      </div>
-                    )}
-                    {DRILL_GROUPS.map(group => (
-                      <button key={group} onClick={() => setSearchIndustryDrillGroup(group)}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; e.currentTarget.style.color = "#93B8EE"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
-                      >
-                        <span>{DRILL_GROUP_META[group].emoji} {group}</span>
-                        <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                <p style={{ ...popupSectionLabel, margin: "12px 0 8px", fontSize: 14 }}>지역 필터</p>
-                <div style={chipGrid}>
-                  {REGIONS.map((item) => (
-                    <button
-                      key={item}
-                      onClick={() => {
-                        const group = guPolygonGroupsRef.current.find((g) => g.guName === item);
-                        if (group) handleSelectResult({ type: "gu", guName: item, dongName: null, centroid: group.centroid });
-                        setSelectedRegion(selectedRegion === item ? null : item);
-                        // 구 선택 시 드롭다운을 행정동 목록 위치로 자동 스크롤
-                        if (selectedRegion !== item) {
-                          setTimeout(() => {
-                            if (searchDropdownRef.current) {
-                              searchDropdownRef.current.scrollTo({ top: searchDropdownRef.current.scrollHeight, behavior: "smooth" });
-                            }
-                          }, 50);
-                        }
-                      }}
-                      style={chipStyle(selectedRegion === item)}
-                    >{item}</button>
-                  ))}
-                </div>
-              </div>
-              {selectedRegion && (
-                <div data-popup className="anim-slide-down" style={{ background: "rgba(24,24,34,0.97)", borderTop: "1px solid rgba(59,130,246,0.25)", padding: "12px 14px 14px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#FBBF24", background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 6px" }}>구</span>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8" }}>{selectedRegion}</span>
-                    <span style={{ fontSize: 14, color: "#555" }}>({(guToDongsRef.current[selectedRegion] || []).length}개 행정동)</span>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {(guToDongsRef.current[selectedRegion] || []).map((dong) => (
-                      <button
-                        key={dong}
-                        onClick={() => {
-                          const group = polygonGroupsRef.current.find((g) => g.dongName === dong && g.guName === selectedRegion);
-                          if (group) handleSelectResult({ type: "dong", guName: selectedRegion, dongName: dong, centroid: group.centroid });
-                          setSearchExpanded(false);
-                          setSelectedRegion(null);
-                        }}
-                        style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#C8C8C8", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "all 0.1s" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.2)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)"; e.currentTarget.style.color = "#93B8EE"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#C8C8C8"; }}
-                      >{dong}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 선택된 업종 뱃지 */}
-        {selectedIndustry && (
-          <div className="anim-badge-in" style={{ padding: "0 16px 8px", flexShrink: 0 }}>
-            <span style={badgeStyle}>
-              {selectedIndustry}
-              <button onClick={() => setSelectedIndustry(null)} style={badgeClose}>✕</button>
-            </span>
-          </div>
-        )}
-
         {/* ── 스크롤 콘텐츠 영역 (선택된 항목 있을 때만 표시) ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", display: (selectedDong || selectedGu) && !searchExpanded ? "block" : "none" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", display: (selectedDong || selectedGu) ? "block" : "none" }}>
 
           {/* 행정동 상세 */}
           {selectedDong && (
             <div className="anim-slide-in-left">
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 16, paddingTop: 24 }}>
                 <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
               </div>
@@ -1850,65 +1608,7 @@ export default function MapPage() {
                           ))}
                         </div>
                       </div>
-                      <div style={{ marginTop: 8 }}>
-                        <button
-                          onClick={() => setShowStoreMarkers((v) => !v)}
-                          style={{ width: "100%", padding: "9px 0", background: showStoreMarkers ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.05)", color: showStoreMarkers ? "#34D399" : "#9E9E9E", border: `1px solid ${showStoreMarkers ? "rgba(16,185,129,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, border-color 0.2s, color 0.2s" }}
-                        >
-                          {storeLoading ? "불러오는 중..." : showStoreMarkers ? "📍 상가 마커 표시 중 (클릭으로 숨기기)" : "📍 상가 마커 보기"}
-                        </button>
-                        {showStoreMarkers && (
-                          <div style={{ marginTop: 8 }}>
-                            {storeDrillGroup ? (
-                              /* 세부 카테고리 */
-                              <>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                                  <button onClick={() => setStoreDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>← {storeDrillGroup}</button>
-                                  {storeCategoryFilter.length > 0 && <button onClick={() => setStoreCategoryFilter([])} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>전체 해제</button>}
-                                </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                                  {(storeDrillGroup === "store-only"
-                                    ? Object.keys(STORE_CATEGORY_COLORS).filter(c => !Object.keys(STARTUP_COSTS).includes(c))
-                                    : CATEGORY_GROUPS[storeDrillGroup]
-                                  ).map((cat) => {
-                                    const active = storeCategoryFilter.includes(cat);
-                                    return (
-                                      <button key={cat} onClick={() => setStoreCategoryFilter(active ? storeCategoryFilter.filter((c) => c !== cat) : [...storeCategoryFilter, cat])}
-                                        style={{ ...storeFilterChipStyle(active), borderColor: active ? STORE_CATEGORY_COLORS[cat] : undefined, color: active ? STORE_CATEGORY_COLORS[cat] : undefined }}>
-                                        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat] ?? "#9E9E9E", flexShrink: 0 }} />{cat}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </>
-                            ) : (
-                              /* 대분류 선택 */
-                              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                                {storeCategoryFilter.length > 0 && (
-                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-                                    <span style={{ fontSize: 11, color: "#93B8EE" }}>{storeCategoryFilter.length}개 선택됨</span>
-                                    <button onClick={() => setStoreCategoryFilter([])} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>전체 해제</button>
-                                  </div>
-                                )}
-                                {DRILL_GROUPS.map(group => {
-                                  const groupCats = CATEGORY_GROUPS[group];
-                                  const selectedCount = groupCats.filter(c => storeCategoryFilter.includes(c)).length;
-                                  return (
-                                    <button key={group} onClick={() => setStoreDrillGroup(group)}
-                                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: selectedCount > 0 ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(255,255,255,0.1)", background: selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)", color: selectedCount > 0 ? "#93B8EE" : "#C8C8C8" }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.background = selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)"; }}
-                                    >
-                                      <span>{DRILL_GROUP_META[group].emoji} {group}</span>
-                                      <span style={{ fontSize: 11, color: selectedCount > 0 ? "#93B8EE" : "#6B7280" }}>{selectedCount > 0 ? `${selectedCount}개 선택 →` : `${groupCats.length}개 →`}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      <div style={{ marginTop: 8 }}></div>
                       <button
                         onClick={() => openAiDongRecommend(selectedDong.dongName, selectedDong.guName)}
                         style={{ width: "100%", marginTop: 8, padding: "9px 0", background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", color: "#93B8EE", border: "1px solid rgba(139,92,246,0.4)", borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", letterSpacing: "0.02em" }}
@@ -2021,7 +1721,7 @@ export default function MapPage() {
           {/* 구 상세 */}
           {selectedGu && (
             <div className="anim-slide-in-left">
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 16, paddingTop: 24 }}>
                 <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
               </div>
@@ -2136,8 +1836,8 @@ export default function MapPage() {
             </div>
           )}
 
-          {/* 구별 매출 순위 - 사이드바 활성화 시 내부에 표시 */}
-          {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && guAllRanking.length > 0 && (
+          {/* 구별 매출 순위 - 선택 없을 때만 표시 */}
+          {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && guAllRanking.length > 0 && !selectedGu && !selectedDong && (
             <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 8 }}>구별 매출 순위</div>
               {guAllRanking.slice(0, 10).map((item, i) => (
@@ -2203,8 +1903,10 @@ export default function MapPage() {
       {/* ── 구 매출 순위 패널 (사이드바 비활성 시 플로팅) ── */}
       {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && sidebarCollapsed && guAllRanking.length > 0 && (
         <div style={{
-          position: "absolute", top: 70, left: 24,
+          position: "absolute", top: 16, left: 24,
           width: 280,
+          maxHeight: "calc(100vh - 120px)",
+          overflowY: "auto",
           background: "rgba(18,18,22,0.92)", backdropFilter: "blur(12px)",
           borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)",
           boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
@@ -2233,73 +1935,145 @@ export default function MapPage() {
       )}
 
       {/* ── 현재위치 버튼 ── */}
-      <button
-        onClick={() => {
-          if (!mapInstanceRef.current) return;
-          if (!navigator.geolocation) {
-            alert("이 브라우저는 위치 서비스를 지원하지 않습니다.");
-            return;
-          }
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              const { latitude, longitude } = pos.coords;
-              const { kakao } = window;
-              const latlng = new kakao.maps.LatLng(latitude, longitude);
-              mapInstanceRef.current.setCenter(latlng);
+      {/* ── 상가 마커 토스트 ── */}
+      {markerToast && (
+        <div style={{
+          position: "absolute",
+          bottom: 144,
+          right: aiModalOpen ? 480 : 82,
+          zIndex: 20,
+          background: "rgba(30,30,40,0.95)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 10,
+          padding: "10px 16px",
+          fontSize: 14,
+          color: "#E8E8E8",
+          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+          backdropFilter: "blur(8px)",
+          whiteSpace: "nowrap",
+          transition: "right 0.22s ease-out",
+          animation: "anim-slide-up 0.2s ease-out",
+        }}>
+          행정동을 선택해주세요
+        </div>
+      )}
 
-              // 기존 마커 제거 후 새로 생성
-              if (myLocationOverlayRef.current) myLocationOverlayRef.current.setMap(null);
-              const content = `<div style="
-                width:18px;height:18px;border-radius:50%;
-                background:#3B82F6;border:3px solid #fff;
-                box-shadow:0 0 0 3px rgba(59,130,246,0.4),0 2px 8px rgba(0,0,0,0.4);
-                position:relative;
-              "><div style="
-                position:absolute;top:50%;left:50%;
-                transform:translate(-50%,-50%);
-                width:32px;height:32px;border-radius:50%;
-                background:rgba(59,130,246,0.2);
-                animation:myloc-pulse 1.8s ease-out infinite;
-              "></div></div>`;
-              const overlay = new kakao.maps.CustomOverlay({
-                position: latlng,
-                content,
-                zIndex: 20,
-                yAnchor: 0.5,
-                xAnchor: 0.5,
-              });
-              overlay.setMap(mapInstanceRef.current);
-              myLocationOverlayRef.current = overlay;
-            },
-            () => alert("위치 정보를 가져올 수 없습니다.\n브라우저 위치 권한을 허용해 주세요.")
-          );
-        }}
-        title="현재위치로 이동"
-        style={{
+      {/* ── 상가 마커 업종 패널 ── */}
+      {markerPanelOpen && selectedDong && (
+        <div data-popup className="anim-slide-up" style={{
           position: "absolute",
           bottom: 134,
-          right: aiModalOpen ? 400 : 20,
-          zIndex: 10,
-          width: 42,
-          height: 42,
-          borderRadius: 10,
-          background: "rgba(35,35,35,0.97)",
-          border: "none",
-          color: "#7EC8E3",
-          fontSize: 18,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backdropFilter: "blur(6px)",
-          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
-          transition: "right 0.22s ease-out, background 0.2s, color 0.2s",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.25)"; e.currentTarget.style.color = "#fff"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(35,35,35,0.97)"; e.currentTarget.style.color = "#7EC8E3"; }}
-      >
-        ⊙
-      </button>
+          right: aiModalOpen ? 480 : 82,
+          zIndex: 20,
+          width: 240,
+          background: "rgba(28,28,38,0.97)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 14,
+          padding: "14px 14px 12px",
+          boxShadow: "0 8px 28px rgba(0,0,0,0.55)",
+          backdropFilter: "blur(12px)",
+          transition: "right 0.22s ease-out",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>업종 필터</span>
+            {storeCategoryFilter.length > 0 && (
+              <button onClick={() => { setStoreCategoryFilter([]); setStoreDrillGroup(null); }}
+                style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>
+                전체 해제
+              </button>
+            )}
+          </div>
+
+          {storeDrillGroup ? (
+            <>
+              <button onClick={() => setStoreDrillGroup(null)}
+                style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, marginBottom: 8, padding: 0 }}>
+                ← {storeDrillGroup}
+              </button>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {(storeDrillGroup === "store-only"
+                  ? Object.keys(STORE_CATEGORY_COLORS).filter(c => !Object.keys(STARTUP_COSTS).includes(c))
+                  : CATEGORY_GROUPS[storeDrillGroup]
+                ).map((cat) => {
+                  const active = storeCategoryFilter.includes(cat);
+                  return (
+                    <button key={cat}
+                      onClick={() => setStoreCategoryFilter(active ? storeCategoryFilter.filter(c => c !== cat) : [...storeCategoryFilter, cat])}
+                      style={{ ...storeFilterChipStyle(active), borderColor: active ? STORE_CATEGORY_COLORS[cat] : undefined, color: active ? STORE_CATEGORY_COLORS[cat] : undefined }}>
+                      <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat] ?? "#9E9E9E", flexShrink: 0 }} />{cat}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {DRILL_GROUPS.map(group => {
+                const groupCats = CATEGORY_GROUPS[group];
+                const selectedCount = groupCats.filter(c => storeCategoryFilter.includes(c)).length;
+                return (
+                  <button key={group} onClick={() => setStoreDrillGroup(group)}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: selectedCount > 0 ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(255,255,255,0.08)", background: selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)", color: selectedCount > 0 ? "#93B8EE" : "#C8C8C8" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)"; }}
+                  >
+                    <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                    <span style={{ fontSize: 11, color: selectedCount > 0 ? "#93B8EE" : "#6B7280" }}>
+                      {selectedCount > 0 ? `${selectedCount}개 선택 →` : `${groupCats.length}개 →`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 상가 마커 토글 버튼 (우하단, 줌 버튼 위) ── */}
+      {(
+        <button
+          onClick={() => {
+            if (!selectedDong) {
+              setMarkerToast(true);
+              setTimeout(() => setMarkerToast(false), 2000);
+              return;
+            }
+            const next = !markerPanelOpen;
+            setMarkerPanelOpen(next);
+            setShowStoreMarkers(next);
+            if (!next) { setStoreCategoryFilter([]); setStoreDrillGroup(null); }
+          }}
+          title="상가 마커 보기"
+          style={{
+            position: "absolute",
+            bottom: 134,
+            right: aiModalOpen ? 400 : 20,
+            zIndex: 10,
+            width: 52,
+            height: 52,
+            borderRadius: 12,
+            background: showStoreMarkers ? "rgba(59,130,246,0.25)" : "rgba(35,35,35,0.97)",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backdropFilter: "blur(6px)",
+            boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+            transition: "right 0.22s ease-out, background 0.2s",
+          }}
+        >
+          {storeLoading ? (
+            <span style={{ fontSize: 13, color: "#9E9E9E", fontWeight: 700 }}>...</span>
+          ) : (
+            <svg style={{ width: 36, height: 36 }} viewBox="0 0 20 27" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 0C4.477 0 0 4.477 0 10c0 7.5 10 17 10 17s10-9.5 10-17C20 4.477 15.523 0 10 0z"
+                fill={showStoreMarkers ? "#3B82F6" : "#6B7280"} />
+              <circle cx="10" cy="10" r="4" fill="white" fillOpacity="0.9"/>
+            </svg>
+          )}
+        </button>
+      )}
 
       {/* ── 줌 버튼 (우하단) ── */}
       <div style={{ ...zoomBtnGroupStyle, right: aiModalOpen ? 400 : 20, transition: "right 0.22s ease-out" }}>
@@ -2324,9 +2098,224 @@ export default function MapPage() {
         </button>
       </div>
 
+      {/* ── 하단 중앙 검색창 + 마커 버튼 ── */}
+      <div style={{
+        position: "absolute",
+        bottom: 32,
+        left: "50%",
+        transform: "translateX(-50%)",
+        transition: "transform 0.22s ease-out",
+        zIndex: 20,
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "flex-end",
+        gap: 8,
+      }}>
+
+      {/* 검색창 */}
+      <div style={{
+        width: 480,
+        maxWidth: "calc(100vw - 120px)",
+        display: "flex",
+        flexDirection: "column",
+      }}>
+        {/* 드롭다운 (아래로 열림) */}
+        {searchExpanded && (
+          <div data-popup className="anim-slide-down" style={{
+            order: 2,
+            background: "#2A2A2A",
+            borderRadius: "0 0 14px 14px",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderTop: "none",
+            maxHeight: 420,
+            overflowY: "auto",
+          }} ref={searchDropdownRef}>
+            {/* 지역 검색 결과 */}
+            {searchResults.length > 0 && (
+              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ padding: "8px 14px 4px", fontSize: 13, fontWeight: 700, color: "#6B7280", letterSpacing: "0.06em" }}>지역 검색 결과</div>
+                {searchResults.map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { handleSelectResult(r); setSearchExpanded(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      width: "100%", padding: "9px 14px", border: "none",
+                      background: "none", cursor: "pointer", textAlign: "left",
+                      borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                  >
+                    <span style={{
+                      fontSize: 12, fontWeight: 700, color: r.type === "gu" ? "#FBBF24" : "#93B8EE",
+                      background: r.type === "gu" ? "rgba(251,191,36,0.12)" : "rgba(59,130,246,0.12)",
+                      borderRadius: 4, padding: "2px 6px", flexShrink: 0,
+                    }}>
+                      {r.type === "gu" ? "구" : "행정동"}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "#E8E8E8" }}>{r.type === "gu" ? r.guName : r.dongName}</div>
+                      {r.type === "dong" && <div style={{ fontSize: 14, color: "#9E9E9E" }}>{r.guName}</div>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* 업종 필터 */}
+            <div style={{ padding: "12px 14px" }}>
+              <p style={{ ...popupSectionLabel, marginBottom: 8, fontSize: 14 }}>업종 필터</p>
+              <input
+                type="text" placeholder="업종 검색..."
+                value={searchIndustrySearchQuery}
+                onChange={(e) => {
+                  setSearchIndustrySearchQuery(e.target.value);
+                  if (e.target.value) setSearchIndustryDrillGroup("__search__");
+                  else setSearchIndustryDrillGroup(null);
+                }}
+                style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)", color: "#E8E8E8", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+              />
+              {searchIndustrySearchQuery ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {Object.keys(STARTUP_COSTS).filter(c => c.includes(searchIndustrySearchQuery)).map(cat => (
+                    <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustrySearchQuery(""); setSearchIndustryDrillGroup(null); }}
+                      style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
+                      {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
+                    </button>
+                  ))}
+                </div>
+              ) : searchIndustryDrillGroup ? (
+                <>
+                  <button onClick={() => setSearchIndustryDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>
+                    ← {searchIndustryDrillGroup}
+                  </button>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {CATEGORY_GROUPS[searchIndustryDrillGroup].map(cat => (
+                      <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustryDrillGroup(null); }}
+                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
+                        {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {selectedIndustry && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
+                      <span style={{ fontSize: 12, color: "#93B8EE" }}>{CATEGORY_EMOJI[selectedIndustry] ?? "🏪"} {selectedIndustry}</span>
+                      <button onClick={() => setSelectedIndustry(null)} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
+                    </div>
+                  )}
+                  {DRILL_GROUPS.map(group => (
+                    <button key={group} onClick={() => setSearchIndustryDrillGroup(group)}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; e.currentTarget.style.color = "#93B8EE"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                    >
+                      <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                      <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* 지역 필터 */}
+            <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <p style={{ ...popupSectionLabel, margin: "12px 0 8px", fontSize: 14 }}>지역 필터</p>
+              <div style={chipGrid}>
+                {REGIONS.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => {
+                      const group = guPolygonGroupsRef.current.find((g) => g.guName === item);
+                      if (group) handleSelectResult({ type: "gu", guName: item, dongName: null, centroid: group.centroid });
+                      setSelectedRegion(selectedRegion === item ? null : item);
+                      if (selectedRegion !== item) {
+                        setTimeout(() => {
+                          if (searchDropdownRef.current) {
+                            searchDropdownRef.current.scrollTo({ top: searchDropdownRef.current.scrollHeight, behavior: "smooth" });
+                          }
+                        }, 50);
+                      }
+                    }}
+                    style={chipStyle(selectedRegion === item)}
+                  >{item}</button>
+                ))}
+              </div>
+            </div>
+            {/* 선택된 구의 행정동 목록 */}
+            {selectedRegion && (
+              <div data-popup className="anim-slide-down" style={{ background: "rgba(24,24,34,0.97)", borderTop: "1px solid rgba(59,130,246,0.25)", padding: "12px 14px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#FBBF24", background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 6px" }}>구</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8" }}>{selectedRegion}</span>
+                  <span style={{ fontSize: 14, color: "#555" }}>({(guToDongsRef.current[selectedRegion] || []).length}개 행정동)</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {(guToDongsRef.current[selectedRegion] || []).map((dong) => (
+                    <button
+                      key={dong}
+                      onClick={() => {
+                        const group = polygonGroupsRef.current.find((g) => g.dongName === dong && g.guName === selectedRegion);
+                        if (group) handleSelectResult({ type: "dong", guName: selectedRegion, dongName: dong, centroid: group.centroid });
+                        setSearchExpanded(false);
+                        setSelectedRegion(null);
+                      }}
+                      style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#C8C8C8", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "all 0.1s" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.2)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)"; e.currentTarget.style.color = "#93B8EE"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                    >{dong}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 선택된 업종 뱃지 */}
+        {selectedIndustry && !searchExpanded && (
+          <div style={{ marginBottom: 6, paddingLeft: 4 }}>
+            <span style={badgeStyle}>
+              {selectedIndustry}
+              <button onClick={() => setSelectedIndustry(null)} style={badgeClose}>✕</button>
+            </span>
+          </div>
+        )}
+
+        {/* 검색 입력창 */}
+        <div
+          style={{ ...searchBoxStyle, order: 1, borderRadius: searchExpanded ? "14px 14px 0 0" : 14, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
+          onClick={() => { setSearchExpanded(true); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
+        >
+          <span style={{ fontSize: 19, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => { setSearchExpanded(true); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchResults.length > 0) { handleSelectResult(searchResults[0]); setSearchExpanded(false); }
+              if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }
+            }}
+            ref={searchInputRef}
+            placeholder="지역명 · 업종 검색"
+            style={{ border: "none", outline: "none", fontSize: 17, width: "100%", background: "transparent", color: "#E8E8E8" }}
+          />
+          {searchExpanded && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setSearchQuery(""); setSearchResults([]); setSearchExpanded(false); }}
+              style={{ border: "none", background: "none", cursor: "pointer", color: "#777", fontSize: 18, padding: 0, flexShrink: 0 }}
+            >✕</button>
+          )}
+        </div>
+      </div>
+
+      </div>
+
       {/* ── 호버 툴팁 (사이드바 오른쪽 하단) ── */}
       {hoveredDong && (
-        <div className="anim-slide-up" style={{ ...tooltipStyle, left: (sidebarCollapsed || searchExpanded) ? 16 : 340 }}>
+        <div className="anim-slide-up" style={{ ...tooltipStyle, left: sidebarCollapsed ? 16 : 340 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hoveredDong.dongName ? 6 : 0 }}>
             <span style={tooltipLabel}>구</span>
             <span style={{ fontWeight: 700, color: "#E8E8E8", fontSize: 17 }}>{hoveredDong.guName}</span>
@@ -2730,7 +2719,7 @@ export default function MapPage() {
                       {/* 자동완성 드롭다운 */}
                       <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 260 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#1E2330", border: "1.5px solid rgba(255,255,255,0.12)", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
                         {aiIndustrySuggestions.map((s, i) => (
-                          <div key={i} onMouseDown={() => { if (aiMode === "dong") setAiSubIndustry(s.통합카테고리); setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
+                          <div key={i} onMouseDown={() => { setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
                             style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
                             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.15)"}
                             onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
@@ -2752,7 +2741,7 @@ export default function MapPage() {
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                               {CATEGORY_GROUPS[aiIndustryDrillGroup].map((cat) => (
                                 <button key={cat}
-                                  onClick={() => { const next = aiIndustry === cat ? null : cat; if (aiMode === "dong") setAiSubIndustry(next ?? ""); setAiIndustry(next); }}
+                                  onClick={() => { const next = aiIndustry === cat ? null : cat; setAiIndustry(next); }}
                                   style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: aiIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: aiIndustry === cat ? "#93B8EE" : "#C8C8C8", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
                                 >
                                   <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
@@ -2799,7 +2788,7 @@ export default function MapPage() {
 
                   {(() => {
                     const disabled =
-                      (aiMode === "dong" && !aiSubIndustry.trim()) ||
+                      (aiMode === "dong" && !aiIndustry) ||
                       (aiMode === "industry" && !aiDong.trim()) ||
                       (aiMode === "score" && (!aiDong.trim() || !aiIndustry));
                     return (
@@ -3559,84 +3548,84 @@ const CATEGORY_EMOJI = {
 };
 
 const STORE_CATEGORY_COLORS = {
-  // 음식 — 빨강·주황 계열
-  "한식":                   "#FF2D2D",
-  "중식":                   "#FF6900",
-  "일식":                   "#FFB300",
-  "양식/기타외식":          "#FFE600",
-  "분식/간식":              "#FF85C8",
-  "베이커리/디저트":        "#FFAB40",
-  "치킨전문점":             "#FF4500",
-  "패스트푸드":             "#FF6D00",
-  "카페":                   "#7B3F00",
-  "주점":                   "#AA00FF",
+  // 음식 — 중간 파랑 계열 (hue ~210-220)
+  "한식":                   "#4A7FCC",
+  "중식":                   "#3D72C0",
+  "일식":                   "#5589D4",
+  "양식/기타외식":          "#6496DE",
+  "분식/간식":              "#7AAAE8",
+  "베이커리/디저트":        "#85B3EE",
+  "치킨전문점":             "#3068B8",
+  "패스트푸드":             "#4478C8",
+  "카페":                   "#2A5AA0",
+  "주점":                   "#6878C8",
 
-  // 식품 소매 — 초록 계열
-  "편의점":                 "#00C853",
-  "슈퍼마켓":               "#1B5E20",
-  "미곡판매":               "#827717",
-  "수산물판매":             "#0D47A1",
-  "육류판매":               "#4E342E",
-  "청과상":                 "#558B2F",
-  "반찬가게":               "#E65100",
-  "식품 소매":              "#76FF03",  // store pin 전용
+  // 식품 소매 — 시안-파랑 계열 (hue ~193-200)
+  "편의점":                 "#2AAAC8",
+  "슈퍼마켓":               "#2090B0",
+  "미곡판매":               "#3898BC",
+  "수산물판매":             "#1A80A8",
+  "육류판매":               "#2878A0",
+  "청과상":                 "#3AAAC0",
+  "반찬가게":               "#45B5C8",
+  "식품 소매":              "#55C0D8",
 
-  // 의류/패션 — 인디고 계열
-  "일반의류":               "#1A237E",
-  "신발":                   "#3949AB",
-  "가방":                   "#5C6BC0",
-  "섬유제품":               "#283593",
-  "의류/패션":              "#304FFE",  // store pin 전용
+  // 의류/패션 — 진한 파랑 계열 (hue ~226-232)
+  "일반의류":               "#3A5AC0",
+  "신발":                   "#4268CC",
+  "가방":                   "#5078D8",
+  "섬유제품":               "#3055B8",
+  "의류/패션":              "#5A85E0",
 
-  // 뷰티 — 핑크 계열
-  "화장품":                 "#AD1457",
-  "네일숍":                 "#E91E63",
-  "피부관리실":             "#F48FB1",
-  "뷰티/화장품":            "#FF80AB",  // store pin 전용
-  "미용실":                 "#F50057",
+  // 뷰티 — 블루-바이올렛 계열 (hue ~240-248)
+  "화장품":                 "#6464C8",
+  "네일숍":                 "#7070D0",
+  "피부관리실":             "#7E7EDA",
+  "뷰티/화장품":            "#8A8AE4",
+  "미용실":                 "#5858C0",
 
-  // 전자 — 청록 계열
-  "가전제품":               "#0097A7",
-  "핸드폰":                 "#00BCD4",
-  "컴퓨터및주변장치판매":   "#006064",
-  "전자상거래업":           "#80DEEA",
-  "전자/통신":              "#00E5FF",  // store pin 전용
-  "생활용품 소매":          "#00BFA5",
+  // 전자 — 밝은 시안-파랑 (hue ~193-198)
+  "가전제품":               "#2298C8",
+  "핸드폰":                 "#30AADC",
+  "컴퓨터및주변장치판매":   "#1888B8",
+  "전자상거래업":           "#50BEDD",
+  "전자/통신":              "#60C8E4",
+  "생활용품 소매":          "#3AB0C8",
 
-  // 의료 — 레드 계열
-  "일반의원":               "#C62828",
-  "치과의원":               "#EF5350",
-  "한의원":                 "#2E7D32",
-  "의료기기":               "#455A64",
-  "의약품":                 "#880E4F",
-  "안경":                   "#4A148C",
-  "의료/약국":              "#B71C1C",  // store pin 전용
+  // 의료 — 진한 네이비-파랑 (hue ~216-222)
+  "일반의원":               "#2050A0",
+  "치과의원":               "#2A5DB0",
+  "한의원":                 "#1A4898",
+  "의료기기":               "#3868B8",
+  "의약품":                 "#184090",
+  "안경":                   "#2C5AAA",
+  "의료/약국":              "#163888",
 
-  // 학원
-  "외국어학원":             "#1565C0",
-  "일반교습학원":           "#1976D2",
-  "예술학원":               "#6200EA",
+  // 학원 — 인디고-파랑 (hue ~228-234)
+  "외국어학원":             "#4462C0",
+  "일반교습학원":           "#3A58B8",
+  "예술학원":               "#5570CC",
 
-  // 스포츠 — 파랑 계열
-  "스포츠 강습":            "#29B6F6",
-  "골프연습장":             "#0288D1",
-  "스포츠클럽":             "#4FC3F7",
-  "스포츠/레저":            "#40C4FF",  // store pin 전용
+  // 스포츠 — 하늘색 계열 (hue ~200-206)
+  "스포츠 강습":            "#3AB5E8",
+  "골프연습장":             "#2AA0D8",
+  "스포츠클럽":             "#50C0EC",
+  "스포츠/레저":            "#60CAF0",
 
-  // 오락/유흥 — 퍼플 계열
-  "PC방":                   "#CE93D8",
-  "노래방":                 "#BA68C8",
-  "당구장":                 "#8E24AA",
-  "오락/유흥":              "#E040FB",  // store pin 전용
+  // 오락/유흥 — 블루-퍼플 (hue ~242-250)
+  "PC방":                   "#7878D4",
+  "노래방":                 "#8888DC",
+  "당구장":                 "#6868C8",
+  "오락/유흥":              "#9090E0",
 
-  // 기타 서비스
-  "숙박":                   "#F57F17",
-  "애완동물":               "#69F0AE",
-  "가전제품수리":           "#78909C",
-  "세탁소":                 "#B0BEC5",
-  "인테리어":               "#FF8A65",
-  "자동차수리/미용":        "#546E7A",
-  "기타 B2B서비스":         "#37474F",
+  // 기타 서비스 — 슬레이트 블루 (채도 낮음)
+  "숙박":                   "#5878A8",
+  "애완동물":               "#6888B8",
+  "가전제품수리":           "#708098",
+  "세탁소":                 "#8090A8",
+  "인테리어":               "#6078A8",
+  "자동차수리/미용":        "#506888",
+  "기타 B2B서비스":         "#485878",
 };
 
 const storeFilterChipStyle = (active) => ({

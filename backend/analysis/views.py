@@ -78,6 +78,25 @@ def _get_location_df():
     return _location_df
 
 
+# StoreInfo 통합카테고리 → CommercialData 통합카테고리 매핑
+# (StoreInfo는 32개 세분류, CommercialData는 25개 구분류)
+STORE_TO_COMMERCIAL_CAT = {
+    "베이커리/디저트":  "분식/간식",
+    "치킨전문점":       "패스트푸드/치킨",
+    "패스트푸드":       "패스트푸드/치킨",
+    "슈퍼마켓":         "식품 소매",
+    "가전제품수리":     "수리/세탁",
+    "세탁소":           "수리/세탁",
+    "안경":             "의료/약국",
+    "일반의원":         "의료/약국",
+    "일반교습학원":     "일반학원",
+    "자동차수리/미용":  "B2B 서비스",
+    "피부관리실":       "뷰티/화장품",
+    "화장품":           "뷰티/화장품",
+    "기타 B2B서비스":   "B2B 서비스",
+    "기타":             "B2B 서비스",
+}
+
 DONG_REMAP = {
     "신설동": "용신동",    # GeoJSON 경계명 → DB 행정동명
     "상일제1동": "상일동", # 분동 전 통합 데이터로 매핑
@@ -482,11 +501,11 @@ def suggest_industries_with_category(request):
     if not q:
         return JsonResponse({"suggestions": []})
 
-    # 소분류명 + 통합카테고리를 함께 조회, 출현 빈도 순 정렬
+    # 소분류명으로 검색
     results = (
         StoreInfo.objects
         .filter(상권업종소분류명__icontains=q)
-        .values("상권업종소분류명", "통합카테고리")  # 통합카테고리 추가 조회
+        .values("상권업종소분류명", "통합카테고리")
         .annotate(cnt=Count("id"))
         .order_by("-cnt")[:10]
     )
@@ -513,7 +532,20 @@ def suggest_industries_with_category(request):
             for r in results2
         ]
 
-    return JsonResponse({"suggestions": suggestions})
+    # 통합카테고리명으로도 검색해서 추가 (예: "베이커리" → "베이커리/디저트")
+    cat_results = (
+        StoreInfo.objects
+        .filter(통합카테고리__icontains=q)
+        .values("통합카테고리")
+        .annotate(cnt=Count("id"))
+        .order_by("-cnt")[:5]
+    )
+    existing_cats = {s["통합카테고리"] for s in suggestions}
+    for r in cat_results:
+        if r["통합카테고리"] not in existing_cats:
+            suggestions.insert(0, {"소분류명": r["통합카테고리"], "통합카테고리": r["통합카테고리"]})
+
+    return JsonResponse({"suggestions": suggestions[:10]})
 
 
 def recommend_location(request):
@@ -536,20 +568,27 @@ def recommend_location(request):
                   .filter(소분류_ns__icontains=q_ns))
         return qs
 
-    cat_rows = list(
-        _store_filter(소분류)
-        .values("통합카테고리")
-        .annotate(cnt=Count("id"))
-        .order_by("-cnt")[:1]
-    )
-    if not cat_rows:
-        return JsonResponse({"error": f'"{소분류}"에 해당하는 업종을 찾을 수 없습니다.'}, status=404)
-    통합카테고리 = cat_rows[0]["통합카테고리"]
+    # 통합카테고리명 직접 입력 시 바로 사용 (카테고리 그리드 선택 케이스)
+    if StoreInfo.objects.filter(통합카테고리=소분류).exists():
+        통합카테고리 = 소분류
+    else:
+        cat_rows = list(
+            _store_filter(소분류)
+            .values("통합카테고리")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")[:1]
+        )
+        if not cat_rows:
+            return JsonResponse({"error": f'"{소분류}"에 해당하는 업종을 찾을 수 없습니다.'}, status=404)
+        통합카테고리 = cat_rows[0]["통합카테고리"]
+
+    # CommercialData/ScoreData 조회용 카테고리 (구분류 체계)
+    commercial_카테고리 = STORE_TO_COMMERCIAL_CAT.get(통합카테고리, 통합카테고리)
 
     # 2. ScoreData: 통합카테고리 기반 AI 성장확률 (행정동별)
     score_map = {
         row["행정동명"]: row
-        for row in ScoreData.objects.filter(통합카테고리=통합카테고리).values(
+        for row in ScoreData.objects.filter(통합카테고리=commercial_카테고리).values(
             "행정동명", "성장확률", "등급", "상위_퍼센트"
         )
     }
@@ -557,7 +596,7 @@ def recommend_location(request):
     # 3. CommercialData: 최신 분기 지표 (행정동별)
     latest_q = (
         CommercialData.objects
-        .filter(통합카테고리=통합카테고리)
+        .filter(통합카테고리=commercial_카테고리)
         .aggregate(max=Max("기준_년분기_코드"))["max"]
     )
     if not latest_q:
@@ -566,7 +605,7 @@ def recommend_location(request):
     commercial_map = {
         row["행정동명"]: row
         for row in CommercialData.objects.filter(
-            통합카테고리=통합카테고리,
+            통합카테고리=commercial_카테고리,
             기준_년분기_코드=latest_q,
         ).values(
             "행정동명", "당월매출합", "총유동인구", "업종_포화도",
