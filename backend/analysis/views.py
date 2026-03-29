@@ -12,6 +12,29 @@ from shapely.geometry import Point, shape as shapely_shape
 _location_df = None
 _location_lock = threading.Lock()
 
+# street_boundaries.geojson 구→상권코드 매핑 캐시
+_gu_street_map = None
+_gu_street_map_lock = threading.Lock()
+
+def _get_gu_street_map():
+    """street_boundaries.geojson의 시군구명 속성을 이용해 {구명: [상권코드, ...]} 반환"""
+    global _gu_street_map
+    if _gu_street_map is not None:
+        return _gu_street_map
+    with _gu_street_map_lock:
+        if _gu_street_map is not None:
+            return _gu_street_map
+        gj = _get_street_geojson()
+        mapping = {}
+        for feat in gj.get("features", []):
+            props = feat.get("properties", {})
+            gu = props.get("시군구명", "")
+            code = props.get("상권_코드")
+            if gu and code:
+                mapping.setdefault(gu, []).append(int(code))
+        _gu_street_map = mapping
+    return _gu_street_map
+
 # street_boundaries.geojson 메모리 캐시
 _street_geojson = None
 _street_geojson_lock = threading.Lock()
@@ -55,12 +78,12 @@ _GU_CODE_MAP = {
     "11110": "종로구", "11140": "중구",    "11170": "용산구",
     "11200": "성동구", "11215": "광진구",  "11230": "동대문구",
     "11260": "중랑구", "11290": "성북구",  "11305": "강북구",
-    "11350": "도봉구", "11380": "노원구",  "11410": "은평구",
-    "11440": "서대문구","11470": "마포구", "11500": "양천구",
-    "11530": "강서구", "11545": "구로구",  "11560": "금천구",
-    "11590": "영등포구","11620": "동작구", "11650": "관악구",
-    "11680": "서초구", "11710": "강남구",  "11740": "송파구",
-    "11770": "강동구",
+    "11320": "도봉구", "11350": "노원구",  "11380": "은평구",
+    "11410": "서대문구","11440": "마포구", "11470": "양천구",
+    "11500": "강서구", "11530": "구로구",  "11545": "금천구",
+    "11560": "영등포구","11590": "동작구", "11620": "관악구",
+    "11650": "서초구", "11680": "강남구",  "11710": "송파구",
+    "11740": "강동구",
 }
 
 def _get_location_df():
@@ -79,23 +102,8 @@ def _get_location_df():
 
 
 # StoreInfo 통합카테고리 → CommercialData 통합카테고리 매핑
-# (StoreInfo는 32개 세분류, CommercialData는 25개 구분류)
-STORE_TO_COMMERCIAL_CAT = {
-    "베이커리/디저트":  "분식/간식",
-    "치킨전문점":       "패스트푸드/치킨",
-    "패스트푸드":       "패스트푸드/치킨",
-    "슈퍼마켓":         "식품 소매",
-    "가전제품수리":     "수리/세탁",
-    "세탁소":           "수리/세탁",
-    "안경":             "의료/약국",
-    "일반의원":         "의료/약국",
-    "일반교습학원":     "일반학원",
-    "자동차수리/미용":  "B2B 서비스",
-    "피부관리실":       "뷰티/화장품",
-    "화장품":           "뷰티/화장품",
-    "기타 B2B서비스":   "B2B 서비스",
-    "기타":             "B2B 서비스",
-}
+# 파이프라인 재구성 후 두 테이블이 동일한 세분류 체계를 사용하므로 매핑 불필요
+STORE_TO_COMMERCIAL_CAT: dict = {}
 
 DONG_REMAP = {
     "신설동": "용신동",    # GeoJSON 경계명 → DB 행정동명
@@ -549,8 +557,9 @@ def suggest_industries_with_category(request):
 
 
 def recommend_location(request):
-    """소분류 업종 입력 → 최적 창업 행정동 추천 (GET, 업종=소분류명)"""
+    """소분류 업종 입력 → 최적 창업 행정동 추천 (GET, 업종=소분류명, gu=구명(선택))"""
     소분류 = request.GET.get("업종", "").strip()
+    gu_filter = request.GET.get("gu", "").strip()  # 선택: 특정 구 내 행정동만 추천
     if not 소분류:
         return JsonResponse({"error": "업종 파라미터가 필요합니다."}, status=400)
 
@@ -594,21 +603,22 @@ def recommend_location(request):
     }
 
     # 3. CommercialData: 최신 분기 지표 (행정동별)
-    latest_q = (
-        CommercialData.objects
-        .filter(통합카테고리=commercial_카테고리)
-        .aggregate(max=Max("기준_년분기_코드"))["max"]
-    )
+    cd_qs = CommercialData.objects.filter(통합카테고리=commercial_카테고리)
+    if gu_filter:
+        # 구 코드(5자리) 조회 → 행정동코드 prefix 필터
+        gu_code = next((k for k, v in _GU_CODE_MAP.items() if v == gu_filter), None)
+        if gu_code:
+            cd_qs = cd_qs.filter(행정동코드__gte=int(gu_code) * 1000,
+                                  행정동코드__lt=(int(gu_code) + 1) * 1000)
+
+    latest_q = cd_qs.aggregate(max=Max("기준_년분기_코드"))["max"]
     if not latest_q:
         return JsonResponse({"error": "분석 데이터가 없습니다."}, status=404)
 
     commercial_map = {
         row["행정동명"]: row
-        for row in CommercialData.objects.filter(
-            통합카테고리=commercial_카테고리,
-            기준_년분기_코드=latest_q,
-        ).values(
-            "행정동명", "당월매출합", "총유동인구", "업종_포화도",
+        for row in cd_qs.filter(기준_년분기_코드=latest_q).values(
+            "행정동명", "행정동코드", "당월매출합", "총유동인구", "업종_포화도",
             "경쟁강도", "점포수", "행정동_전체점포수", "업종_점포당매출",
         )
     }
@@ -658,8 +668,11 @@ def recommend_location(request):
             + 포화도_점수 * 0.15
         )
 
+        dong_code = c.get("행정동코드") or 0
+        gu_prefix = str(int(dong_code) // 1000) if dong_code else ""
         results.append({
             "dongName": dong,
+            "guName": _GU_CODE_MAP.get(gu_prefix, ""),
             "score": round(composite, 1),
             "성장확률": round(성장확률, 1),
             "등급": s.get("등급", "-"),
@@ -1119,6 +1132,108 @@ def rental_calculate(request):
         "효용비율_%":       floor_data.get("효용비율_%"),
         "1층_임대료_만원per㎡": gu_data.get("1층", {}).get("임대료_만원per㎡"),
     })
+
+
+def recommend_gu_streets(request):
+    """구 + 업종 입력 → 해당 구 내 길단위 상권 추천 Top 5 (GET, gu + category 필수)"""
+    gu = request.GET.get("gu", "").strip()
+    category = request.GET.get("category", "").strip()
+    if not gu or not category:
+        return JsonResponse({"error": "gu, category 파라미터가 필요합니다."}, status=400)
+
+    # 해당 구에 속한 상권코드 목록
+    gu_street_map = _get_gu_street_map()
+    gu_codes = gu_street_map.get(gu, [])
+    if not gu_codes:
+        return JsonResponse({"error": f"'{gu}'에 해당하는 길단위 상권 데이터가 없습니다."}, status=404)
+
+    # StreetScoreData: 해당 구 내 상권 × 업종 AI 점수
+    score_rows = list(
+        StreetScoreData.objects.filter(상권_코드__in=gu_codes, 통합카테고리=category)
+        .values("상권_코드", "상권_코드_명", "통합카테고리", "성장확률", "등급", "상위_퍼센트")
+    )
+    if not score_rows:
+        return JsonResponse({"error": f"'{gu}' 내 '{category}' AI 점수 데이터가 없습니다."}, status=404)
+
+    score_map = {r["상권_코드"]: r for r in score_rows}
+    candidate_codes = list(score_map.keys())
+
+    # StreetCommercialData: 매출·유동·소득 지표
+    commercial_map = {
+        row["상권_코드"]: row
+        for row in StreetCommercialData.objects.filter(
+            상권_코드__in=candidate_codes, 통합카테고리=category
+        ).values("상권_코드", "당월_매출_금액", "총_유동인구_수", "월_평균_소득_금액", "매출_증감률")
+    }
+
+    # 교집합 상권만 사용
+    valid_codes = [c for c in candidate_codes if c in commercial_map]
+    if not valid_codes:
+        return JsonResponse({"error": "추천할 수 있는 상권 데이터가 없습니다."}, status=404)
+
+    # 전국 기준 정규화 최대값
+    all_rows = list(
+        StreetCommercialData.objects.filter(통합카테고리=category)
+        .values("당월_매출_금액", "총_유동인구_수", "월_평균_소득_금액")
+    )
+    max_매출 = max((r["당월_매출_금액"] or 0) for r in all_rows) or 1
+    max_유동  = max((r["총_유동인구_수"] or 0) for r in all_rows) or 1
+    max_소득  = max((r["월_평균_소득_금액"] or 0) for r in all_rows) or 1
+
+    results = []
+    for code in valid_codes:
+        s = score_map[code]
+        c = commercial_map[code]
+
+        성장확률 = s.get("성장확률") or 50.0
+        매출 = c.get("당월_매출_금액") or 0
+        유동인구 = c.get("총_유동인구_수") or 0
+        소득 = c.get("월_평균_소득_금액") or 0
+        매출_증감률 = c.get("매출_증감률") or 0
+
+        매출_점수 = (매출 / max_매출) * 100
+        유동인구_점수 = (유동인구 / max_유동) * 100
+        소득_점수 = (소득 / max_소득) * 100
+
+        composite = round(
+            성장확률 * 0.40
+            + 매출_점수 * 0.30
+            + 유동인구_점수 * 0.15
+            + 소득_점수 * 0.15,
+            1
+        )
+
+        tags = []
+        if 성장확률 >= 70:
+            tags.append("성장 업종")
+        if 매출_증감률 > 0.05:
+            tags.append("매출 상승세")
+        if 유동인구 >= 50000:
+            tags.append("유동인구 多")
+        if 소득 >= 5000000:
+            tags.append("고소득 상권")
+        if s.get("등급") in ("A", "B"):
+            tags.append(f"AI {s['등급']}등급")
+
+        results.append({
+            "상권코드": code,
+            "상권명": s["상권_코드_명"],
+            "score": composite,
+            "성장확률": round(성장확률, 1),
+            "등급": s.get("등급", "-"),
+            "revenue": 매출,
+            "총유동인구": 유동인구,
+            "월_평균_소득": round(소득),
+            "매출_증감률": round(매출_증감률, 3),
+            "tags": tags[:4],
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    top = results[:5]
+    for i, r in enumerate(top):
+        r["rank"] = i + 1
+
+    return JsonResponse({"results": top, "gu": gu, "category": category})
 
 
 def recommend_street_industry(request):
