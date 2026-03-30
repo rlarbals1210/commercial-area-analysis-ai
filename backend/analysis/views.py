@@ -2161,3 +2161,234 @@ def gu_report(request):
         "gu": gu,
         "category": category,
     })
+
+
+def compare_region(request):
+    """두 지역 비교 (GET)
+    params:
+      type = "dong" | "gu"
+      a    = 첫 번째 지역명
+      b    = 두 번째 지역명
+    """
+    region_type = request.GET.get("type", "dong")
+    a = request.GET.get("a", "").strip()
+    b = request.GET.get("b", "").strip()
+    if not a or not b:
+        return JsonResponse({"error": "a, b 파라미터가 필요합니다."}, status=400)
+
+    def _get_dong_metrics(dong_name):
+        dong_name = normalize_dong(dong_name)
+        latest = (
+            CommercialData.objects.filter(행정동명=dong_name)
+            .order_by("-기준_년분기_코드")
+            .values_list("기준_년분기_코드", flat=True)
+            .first()
+        )
+        if not latest:
+            return None, None
+        agg = CommercialData.objects.filter(행정동명=dong_name, 기준_년분기_코드=latest).aggregate(
+            총매출=Sum("당월매출합"),
+            총유동인구=Sum("총유동인구"),
+            주거인구=Avg("주거인구"),
+            직장인구=Avg("총_직장_인구_수"),
+            유동대비매출=Avg("유동대비매출"),
+            개업률=Avg("개업_율_평균"),
+            폐업률=Avg("폐업_률_평균"),
+            유동_20대비율=Avg("유동_20대비율"),
+        )
+        # 유동인구는 분기 합산이 아닌 단일값 사용 (행정동 공통값이므로 Max)
+        pop_row = CommercialData.objects.filter(행정동명=dong_name, 기준_년분기_코드=latest).aggregate(
+            총유동인구=Max("총유동인구"),
+            주거인구=Max("주거인구"),
+            직장인구=Max("총_직장_인구_수"),
+        )
+        return {
+            "name": dong_name,
+            "총매출": agg["총매출"] or 0,
+            "총유동인구": pop_row["총유동인구"] or 0,
+            "주거인구": pop_row["주거인구"] or 0,
+            "직장인구": pop_row["직장인구"] or 0,
+            "유동대비매출": round(agg["유동대비매출"] or 0, 1),
+            "개업률": round(agg["개업률"] or 0, 1),
+            "폐업률": round(agg["폐업률"] or 0, 1),
+            "유동_20대비율": round((agg["유동_20대비율"] or 0) * 100, 1),
+        }, latest
+
+    def _get_gu_metrics(gu_name):
+        # 구에 속하는 행정동 찾기
+        gu_prefix = next((k for k, v in _GU_CODE_MAP.items() if v == gu_name), None)
+        if not gu_prefix:
+            return None, None
+        dongs = list(
+            CommercialData.objects.filter(행정동코드__startswith=int(gu_prefix))
+            .values_list("행정동명", flat=True).distinct()
+        )
+        if not dongs:
+            return None, None
+        latest = (
+            CommercialData.objects.filter(행정동명__in=dongs)
+            .order_by("-기준_년분기_코드")
+            .values_list("기준_년분기_코드", flat=True)
+            .first()
+        )
+        if not latest:
+            return None, None
+        agg = CommercialData.objects.filter(행정동명__in=dongs, 기준_년분기_코드=latest).aggregate(
+            총매출=Sum("당월매출합"),
+            유동대비매출=Avg("유동대비매출"),
+            개업률=Avg("개업_율_평균"),
+            폐업률=Avg("폐업_률_평균"),
+            유동_20대비율=Avg("유동_20대비율"),
+        )
+        pop_row = CommercialData.objects.filter(행정동명__in=dongs, 기준_년분기_코드=latest).aggregate(
+            총유동인구=Sum("총유동인구"),
+            주거인구=Sum("주거인구"),
+            직장인구=Sum("총_직장_인구_수"),
+        )
+        # 유동인구는 행정동별 대표값 합산
+        dong_pops = CommercialData.objects.filter(행정동명__in=dongs, 기준_년분기_코드=latest).values("행정동명").annotate(
+            유동=Max("총유동인구"), 주거=Max("주거인구"), 직장=Max("총_직장_인구_수")
+        )
+        총유동 = sum(r["유동"] or 0 for r in dong_pops)
+        주거합 = sum(r["주거"] or 0 for r in dong_pops)
+        직장합 = sum(r["직장"] or 0 for r in dong_pops)
+        return {
+            "name": gu_name,
+            "총매출": agg["총매출"] or 0,
+            "총유동인구": 총유동,
+            "주거인구": 주거합,
+            "직장인구": 직장합,
+            "유동대비매출": round(agg["유동대비매출"] or 0, 1),
+            "개업률": round(agg["개업률"] or 0, 1),
+            "폐업률": round(agg["폐업률"] or 0, 1),
+            "유동_20대비율": round((agg["유동_20대비율"] or 0) * 100, 1),
+        }, latest
+
+    if region_type == "dong":
+        data_a, q_a = _get_dong_metrics(a)
+        data_b, q_b = _get_dong_metrics(b)
+    else:
+        data_a, q_a = _get_gu_metrics(a)
+        data_b, q_b = _get_gu_metrics(b)
+
+    if data_a is None:
+        return JsonResponse({"error": f"'{a}' 데이터를 찾을 수 없습니다."}, status=404)
+    if data_b is None:
+        return JsonResponse({"error": f"'{b}' 데이터를 찾을 수 없습니다."}, status=404)
+
+    return JsonResponse({"a": data_a, "b": data_b, "quarter": q_a, "type": region_type})
+
+
+def compare_industry(request):
+    """한 지역 내 두 업종 비교 (GET)
+    params:
+      region      = 행정동명 또는 구명
+      region_type = "dong" | "gu"
+      cat_a       = 업종 A
+      cat_b       = 업종 B
+    """
+    region = normalize_dong(request.GET.get("region", "").strip())
+    region_type = request.GET.get("region_type", "dong")
+    cat_a = request.GET.get("cat_a", "").strip()
+    cat_b = request.GET.get("cat_b", "").strip()
+    if not region or not cat_a or not cat_b:
+        return JsonResponse({"error": "region, cat_a, cat_b 파라미터가 필요합니다."}, status=400)
+
+    def _get_industry_metrics(dong_list, cat, region_name):
+        latest = (
+            CommercialData.objects.filter(행정동명__in=dong_list, 통합카테고리=cat)
+            .order_by("-기준_년분기_코드")
+            .values_list("기준_년분기_코드", flat=True)
+            .first()
+        )
+        if not latest:
+            return None
+        agg = CommercialData.objects.filter(행정동명__in=dong_list, 통합카테고리=cat, 기준_년분기_코드=latest).aggregate(
+            점포수=Sum("점포수"),
+            매출합=Sum("당월매출합"),
+            경쟁강도=Avg("경쟁강도"),
+            업종_포화도=Avg("업종_포화도"),
+            업종_매출점유율=Avg("업종_매출점유율"),
+            점포당매출=Avg("업종_점포당매출"),
+            개업률=Avg("개업_율_평균"),
+            폐업률=Avg("폐업_률_평균"),
+        )
+        # ScoreData (행정동 모드에서는 정확한 행정동, 구 모드에서는 평균)
+        score_qs = ScoreData.objects.filter(행정동명__in=dong_list, 통합카테고리=cat)
+        score_agg = score_qs.aggregate(성장확률=Avg("성장확률"))
+        # 등급은 가장 많은 등급으로
+        from collections import Counter
+        grades = list(score_qs.values_list("등급", flat=True))
+        등급 = Counter(grades).most_common(1)[0][0] if grades else "-"
+
+        return {
+            "category": cat,
+            "점포수": int(agg["점포수"] or 0),
+            "월매출": int(agg["매출합"] or 0),
+            "점포당매출": round(agg["점포당매출"] or 0, 0),
+            "경쟁강도": round(agg["경쟁강도"] or 0, 1),
+            "업종_포화도": round((agg["업종_포화도"] or 0) * 100, 1),
+            "업종_매출점유율": round((agg["업종_매출점유율"] or 0) * 100, 1),
+            "개업률": round(agg["개업률"] or 0, 1),
+            "폐업률": round(agg["폐업률"] or 0, 1),
+            "성장확률": round((score_agg["성장확률"] or 0) * 100, 1),
+            "등급": 등급,
+        }
+
+    if region_type == "dong":
+        dong_list = [region]
+    else:
+        gu_prefix = next((k for k, v in _GU_CODE_MAP.items() if v == region), None)
+        if not gu_prefix:
+            return JsonResponse({"error": f"'{region}' 구를 찾을 수 없습니다."}, status=404)
+        dong_list = list(
+            CommercialData.objects.filter(행정동코드__startswith=int(gu_prefix))
+            .values_list("행정동명", flat=True).distinct()
+        )
+
+    metrics_a = _get_industry_metrics(dong_list, cat_a, region)
+    metrics_b = _get_industry_metrics(dong_list, cat_b, region)
+
+    if metrics_a is None:
+        return JsonResponse({"error": f"'{region}'에서 '{cat_a}' 데이터를 찾을 수 없습니다."}, status=404)
+    if metrics_b is None:
+        return JsonResponse({"error": f"'{region}'에서 '{cat_b}' 데이터를 찾을 수 없습니다."}, status=404)
+
+    return JsonResponse({"a": metrics_a, "b": metrics_b, "region": region, "region_type": region_type})
+
+
+def search_regions(request):
+    """행정동/구 검색 자동완성 (GET)
+    params:
+      q    = 검색어
+      type = "dong" | "gu"
+    """
+    q = request.GET.get("q", "").strip()
+    region_type = request.GET.get("type", "dong")
+    if not q:
+        return JsonResponse({"results": []})
+
+    if region_type == "gu":
+        GU_LIST = list(_GU_CODE_MAP.values())
+        results = [g for g in GU_LIST if q in g]
+        return JsonResponse({"results": results[:10]})
+
+    # 행정동 검색
+    dongs = list(
+        CommercialData.objects.filter(행정동명__icontains=q)
+        .values("행정동명", "행정동코드")
+        .distinct()
+        .order_by("행정동명")[:20]
+    )
+    # 구명 추가
+    out = []
+    seen = set()
+    for row in dongs:
+        name = row["행정동명"]
+        if name in seen:
+            continue
+        seen.add(name)
+        code_str = str(row["행정동코드"])[:5]
+        gu = _GU_CODE_MAP.get(code_str, "")
+        out.append({"dong": name, "gu": gu})
+    return JsonResponse({"results": out})
