@@ -1644,3 +1644,218 @@ def recommend_custom_spot(request):
         "category": category,
         "results": results,
     })
+
+
+@csrf_exempt
+def trend_categories(request):
+    """업종별 트렌드 - 전체 서울 업종별 매출 합산 및 전 분기 대비 증감률"""
+    quarters = list(
+        CommercialData.objects
+        .values_list("기준_년분기_코드", flat=True)
+        .distinct()
+        .order_by("-기준_년분기_코드")[:2]
+    )
+    if len(quarters) < 2:
+        return JsonResponse({"results": []})
+
+    latest_q, prev_q = quarters[0], quarters[1]
+
+    latest = {
+        r["통합카테고리"]: r
+        for r in CommercialData.objects
+        .filter(기준_년분기_코드=latest_q)
+        .values("통합카테고리")
+        .annotate(매출=Sum("당월매출합"), 점포=Sum("점포수"))
+    }
+    prev = {
+        r["통합카테고리"]: r
+        for r in CommercialData.objects
+        .filter(기준_년분기_코드=prev_q)
+        .values("통합카테고리")
+        .annotate(매출=Sum("당월매출합"), 점포=Sum("점포수"))
+    }
+
+    results = []
+    for cat, data in latest.items():
+        prev_data = prev.get(cat, {})
+        curr_매출 = data["매출"] or 0
+        prev_매출 = prev_data.get("매출") or 0
+        매출_증감 = round((curr_매출 - prev_매출) / prev_매출 * 100, 1) if prev_매출 else 0
+        results.append({
+            "통합카테고리": cat,
+            "매출": curr_매출,
+            "매출_증감률": 매출_증감,
+        })
+
+    results.sort(key=lambda x: x["매출"], reverse=True)
+    return JsonResponse({"latest_quarter": latest_q, "prev_quarter": prev_q, "results": results})
+
+
+@csrf_exempt
+def trend_gu_industries(request):
+    """구별 인기 업종 - 해당 구의 행정동 리스트를 받아 업종 순위 반환"""
+    if request.method != "POST":
+        return JsonResponse({"error": "POST만 지원합니다."}, status=405)
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON 파싱 오류"}, status=400)
+
+    gu = body.get("gu", "")
+    dongs = [normalize_dong(d) for d in body.get("dongs", [])]
+
+    if not dongs:
+        return JsonResponse({"results": []})
+
+    quarters = list(
+        CommercialData.objects
+        .filter(행정동명__in=dongs)
+        .values_list("기준_년분기_코드", flat=True)
+        .distinct()
+        .order_by("-기준_년분기_코드")[:2]
+    )
+    if not quarters:
+        return JsonResponse({"gu": gu, "results": []})
+
+    latest_q = quarters[0]
+    prev_q = quarters[1] if len(quarters) > 1 else None
+
+    latest = list(
+        CommercialData.objects
+        .filter(행정동명__in=dongs, 기준_년분기_코드=latest_q)
+        .values("통합카테고리")
+        .annotate(매출=Sum("당월매출합"), 점포=Sum("점포수"))
+        .order_by("-매출")
+    )
+
+    prev = {}
+    if prev_q:
+        for r in (
+            CommercialData.objects
+            .filter(행정동명__in=dongs, 기준_년분기_코드=prev_q)
+            .values("통합카테고리")
+            .annotate(매출=Sum("당월매출합"), 점포=Sum("점포수"))
+        ):
+            prev[r["통합카테고리"]] = r
+
+    # 카테고리별 최고 행정동
+    best_dong = {}
+    for r in (
+        CommercialData.objects
+        .filter(행정동명__in=dongs, 기준_년분기_코드=latest_q)
+        .values("통합카테고리", "행정동명")
+        .annotate(매출=Sum("당월매출합"))
+        .order_by("통합카테고리", "-매출")
+    ):
+        if r["통합카테고리"] not in best_dong:
+            best_dong[r["통합카테고리"]] = r["행정동명"]
+
+    results = []
+    for i, item in enumerate(latest, 1):
+        cat = item["통합카테고리"]
+        p = prev.get(cat, {})
+        curr_매출 = item["매출"] or 0
+        prev_매출 = p.get("매출") or 0
+        curr_점포 = item["점포"] or 0
+        prev_점포 = p.get("점포") or 0
+        매출_증감 = round((curr_매출 - prev_매출) / prev_매출 * 100, 1) if prev_매출 else 0
+        점포_증감 = round((curr_점포 - prev_점포) / prev_점포 * 100, 1) if prev_점포 else 0
+        results.append({
+            "순위": i,
+            "통합카테고리": cat,
+            "최고_행정동": best_dong.get(cat, ""),
+            "매출": curr_매출,
+            "매출_증감률": 매출_증감,
+            "점포수": curr_점포,
+            "점포_증감률": 점포_증감,
+        })
+
+    return JsonResponse({"gu": gu, "quarter": latest_q, "results": results})
+
+
+@csrf_exempt
+def trend_mz_industries(request):
+    """MZ 인기 업종 - 20대 매출 비율이 높은 업종 순위"""
+    latest_q = (
+        CommercialData.objects
+        .values_list("기준_년분기_코드", flat=True)
+        .distinct()
+        .order_by("-기준_년분기_코드")
+        .first()
+    )
+    if not latest_q:
+        return JsonResponse({"results": []})
+
+    from django.db.models import Avg
+    rows = list(
+        CommercialData.objects
+        .filter(기준_년분기_코드=latest_q)
+        .values("통합카테고리")
+        .annotate(
+            매출_20대합=Sum("매출_20대합"),
+            총매출=Sum("당월매출합"),
+            avg_20대비율=Avg("매출_20대비율"),
+            avg_mz_차이=Avg("MZ_차이"),
+        )
+        .order_by("-avg_20대비율")
+    )
+
+    results = []
+    for i, r in enumerate(rows, 1):
+        총매출 = r["총매출"] or 0
+        매출_20대 = r["매출_20대합"] or 0
+        비율 = round(매출_20대 / 총매출 * 100, 1) if 총매출 else 0
+        results.append({
+            "순위": i,
+            "통합카테고리": r["통합카테고리"],
+            "20대_매출비율": 비율,
+            "20대_매출": 매출_20대,
+            "MZ_지수": round(r["avg_mz_차이"] or 0, 2),
+        })
+
+    return JsonResponse({"quarter": latest_q, "results": results})
+
+
+@csrf_exempt
+def trend_worker_industries(request):
+    """직장인 인기 업종 - 주중 매출 비율이 높은 업종 순위"""
+    from django.db.models import Avg
+    latest_q = (
+        CommercialData.objects
+        .values_list("기준_년분기_코드", flat=True)
+        .distinct()
+        .order_by("-기준_년분기_코드")
+        .first()
+    )
+    if not latest_q:
+        return JsonResponse({"results": []})
+
+    rows = list(
+        CommercialData.objects
+        .filter(기준_년분기_코드=latest_q)
+        .exclude(주중매출합__isnull=True)
+        .values("통합카테고리")
+        .annotate(
+            총매출=Sum("당월매출합"),
+            주중매출=Sum("주중매출합"),
+            avg_주말비율=Avg("매출_주말비율"),
+        )
+        .order_by("-총매출")  # 전체 매출 기준 정렬
+    )
+
+    results = []
+    for i, r in enumerate(rows, 1):
+        총매출 = r["총매출"] or 0
+        주중매출 = r["주중매출"] or 0
+        주중비율 = round(주중매출 / 총매출 * 100, 1) if 총매출 else 0
+        주말비율 = round((r["avg_주말비율"] or 0) * 100, 1)
+        results.append({
+            "순위": i,
+            "통합카테고리": r["통합카테고리"],
+            "주중_매출비율": 주중비율,
+            "주말_매출비율": 주말비율,
+            "직장인_지수": round(1 - (r["avg_주말비율"] or 0), 4),
+        })
+
+    return JsonResponse({"quarter": latest_q, "results": results})

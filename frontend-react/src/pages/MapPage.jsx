@@ -3882,6 +3882,23 @@ export default function MapPage() {
           {drawingMode ? "✏️ 그리기 중... (취소)" : "✏️ 상권 그리기"}
         </button>
 
+        {/* 상권 트렌드 버튼 */}
+        <button
+          onClick={() => navigate("/trend")}
+          disabled={drawingMode}
+          style={{
+            height: 40, padding: "0 16px", borderRadius: 10, border: "none",
+            background: "rgba(30,30,34,0.85)", color: "#E8E8E8",
+            fontSize: 14, fontWeight: 600, cursor: "pointer",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+            opacity: drawingMode ? 0.3 : 1,
+            pointerEvents: drawingMode ? "none" : "auto",
+          }}
+        >
+          📈 상권 트렌드
+        </button>
+
         {/* 창업 비용 계산기 버튼 */}
         <button onClick={() => setStartupCalcOpen((v) => !v)} disabled={drawingMode} style={{ ...startupCalcBtnStyle, opacity: drawingMode ? 0.3 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
           💰 창업비용 계산기
