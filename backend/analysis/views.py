@@ -1,9 +1,10 @@
 import json
+import os
 import threading
 import pandas as pd
 from pathlib import Path
 from django.http import JsonResponse
-from django.db.models import Count, Max, Sum
+from django.db.models import Avg, Count, Max, Sum
 from django.views.decorators.csrf import csrf_exempt
 from .models import CommercialData, StoreInfo, ScoreData, StreetScoreData, StreetCommercialData
 from shapely.geometry import Point, shape as shapely_shape
@@ -1859,3 +1860,304 @@ def trend_worker_industries(request):
         })
 
     return JsonResponse({"quarter": latest_q, "results": results})
+
+
+def report(request):
+    dong = normalize_dong(request.GET.get("dong", ""))
+    category = request.GET.get("category", "")
+
+    if not dong:
+        return JsonResponse({"error": "dong 파라미터가 필요합니다."}, status=400)
+
+    target = (
+        CommercialData.objects
+        .filter(행정동명=dong)
+        .order_by("-기준_년분기_코드")
+        .values_list("기준_년분기_코드", flat=True)
+        .first()
+    )
+    if not target:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    총매출 = (
+        CommercialData.objects
+        .filter(행정동명=dong, 기준_년분기_코드=target)
+        .values_list("행정동_전체매출", flat=True)
+        .first() or 0
+    )
+
+    dong_revenues = (
+        CommercialData.objects
+        .filter(기준_년분기_코드=target)
+        .values("행정동명")
+        .annotate(총매출=Max("행정동_전체매출"))
+    )
+    전체동수 = dong_revenues.count()
+    순위 = dong_revenues.filter(총매출__gt=총매출).count() + 1
+
+    first_row = CommercialData.objects.filter(행정동명=dong, 기준_년분기_코드=target).first()
+    총유동인구 = int(first_row.총유동인구) if first_row and first_row.총유동인구 else 0
+    주거인구 = int(first_row.주거인구) if first_row and first_row.주거인구 else 0
+    직장인구 = int(first_row.총_직장_인구_수) if first_row and first_row.총_직장_인구_수 else 0
+
+    industries = list(
+        CommercialData.objects
+        .filter(행정동명=dong, 기준_년분기_코드=target)
+        .values("통합카테고리", "당월매출합", "점포수")
+        .order_by("-당월매출합")[:5]
+    )
+
+    agg = CommercialData.objects.filter(행정동명=dong, 기준_년분기_코드=target).aggregate(
+        남성매출=Sum("남성매출합"),
+        여성매출=Sum("여성매출합"),
+        주중매출=Sum("주중매출합"),
+        주말매출=Sum("주말매출합"),
+        t00_06=Sum("시간대_00_06_매출"),
+        t06_11=Sum("시간대_06_11_매출"),
+        t11_14=Sum("시간대_11_14_매출"),
+        t14_17=Sum("시간대_14_17_매출"),
+        t17_21=Sum("시간대_17_21_매출"),
+        t21_24=Sum("시간대_21_24_매출"),
+    )
+
+    성별합 = (agg["남성매출"] or 0) + (agg["여성매출"] or 0)
+    남성비율 = round((agg["남성매출"] or 0) / 성별합 * 100, 1) if 성별합 > 0 else 50
+    주중주말합 = (agg["주중매출"] or 0) + (agg["주말매출"] or 0)
+    주중비율 = round((agg["주중매출"] or 0) / 주중주말합 * 100, 1) if 주중주말합 > 0 else 70
+
+    data = {
+        "dong": dong,
+        "총매출": 총매출,
+        "순위": 순위,
+        "전체동수": 전체동수,
+        "총유동인구": 총유동인구,
+        "주거인구": 주거인구,
+        "직장인구": 직장인구,
+        "top_업종": [{"업종": r["통합카테고리"], "매출": r["당월매출합"], "점포수": r["점포수"]} for r in industries],
+        "성별": {"남성비율": 남성비율, "여성비율": round(100 - 남성비율, 1)},
+        "주중주말": {"주중비율": 주중비율, "주말비율": round(100 - 주중비율, 1)},
+        "시간대": {
+            "새벽(0~6시)": agg["t00_06"] or 0,
+            "오전(6~11시)": agg["t06_11"] or 0,
+            "점심(11~14시)": agg["t11_14"] or 0,
+            "오후(14~17시)": agg["t14_17"] or 0,
+            "저녁(17~21시)": agg["t17_21"] or 0,
+            "심야(21~24시)": agg["t21_24"] or 0,
+        },
+    }
+
+    if category:
+        cat_row = CommercialData.objects.filter(행정동명=dong, 기준_년분기_코드=target, 통합카테고리=category).first()
+        score_row = ScoreData.objects.filter(행정동명=dong, 기준_년분기_코드=target, 통합카테고리=category).first()
+        if cat_row:
+            점포수 = cat_row.점포수 or 0
+            프랜차이즈 = cat_row.프랜차이즈_점포수 or 0
+            data["category_data"] = {
+                "category": category,
+                "점포당매출": int(cat_row.업종_점포당매출) if cat_row.업종_점포당매출 else 0,
+                "프랜차이즈비율": round(프랜차이즈 / 점포수 * 100, 1) if 점포수 > 0 else 0,
+                "점포수": 점포수,
+                "개업률": float(cat_row.개업_율_평균) if cat_row.개업_율_평균 else 0,
+                "폐업률": float(cat_row.폐업_률_평균) if cat_row.폐업_률_평균 else 0,
+                "경쟁강도": float(cat_row.경쟁강도) if cat_row.경쟁강도 else 0,
+                "업종포화도": round(float(cat_row.업종_포화도 or 0), 4),
+                "20대매출비율": round(float(cat_row.매출_20대비율 or 0) * 100, 1),
+                "성장확률": float(score_row.성장확률) if score_row else None,
+                "AI등급": score_row.등급 if score_row else None,
+                "업종내순위": score_row.업종내_순위 if score_row else None,
+                "업종내전체동수": score_row.업종내_전체동수 if score_row else None,
+            }
+
+    ai_descriptions = {}
+    try:
+        import requests as http_requests
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if api_key:
+            if category and data.get("category_data"):
+                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
+            else:
+                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"..."}'
+            prompt = (
+                "다음 서울 행정동 상권 데이터를 분석해서 보고서 형식으로 설명해줘. "
+                "각 섹션마다 2~3문장으로 자연스럽게 설명하고, JSON 형식으로만 반환해줘. "
+                "코드 블록이나 다른 텍스트는 절대 포함하지 마. JSON만 반환해.\n\n"
+                f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                f"반환 형식: {fmt}"
+            )
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+            body = {"contents": [{"parts": [{"text": prompt}]}]}
+            resp = http_requests.post(url, json=body, timeout=30)
+            if resp.status_code == 200:
+                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if "```" in text:
+                    for part in text.split("```"):
+                        part = part.strip().lstrip("json").strip()
+                        if part.startswith("{"):
+                            text = part
+                            break
+                ai_descriptions = json.loads(text)
+    except Exception as e:
+        ai_descriptions = {"error": str(e)}
+
+    return JsonResponse({
+        "data": data,
+        "ai_descriptions": ai_descriptions,
+        "quarter": target,
+        "category": category,
+    })
+
+
+@csrf_exempt
+def gu_report(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST만 지원합니다."}, status=405)
+    try:
+        body = json.loads(request.body)
+    except Exception:
+        return JsonResponse({"error": "잘못된 JSON"}, status=400)
+
+    gu = body.get("gu", "")
+    dongs = [normalize_dong(d) for d in body.get("dongs", [])]
+    category = body.get("category", "")
+    if not gu or not dongs:
+        return JsonResponse({"error": "gu, dongs 필요"}, status=400)
+
+    target = (
+        CommercialData.objects
+        .filter(행정동명__in=dongs)
+        .order_by("-기준_년분기_코드")
+        .values_list("기준_년분기_코드", flat=True)
+        .first()
+    )
+    if not target:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    industries = list(
+        CommercialData.objects
+        .filter(행정동명__in=dongs, 기준_년분기_코드=target)
+        .values("통합카테고리")
+        .annotate(당월매출합=Sum("당월매출합"), 점포수=Sum("점포수"))
+        .order_by("-당월매출합")
+    )
+    총매출 = sum(item["당월매출합"] or 0 for item in industries)
+
+    gu_revenues = (
+        CommercialData.objects
+        .filter(기준_년분기_코드=target)
+        .values("행정동명")
+        .annotate(총매출=Max("행정동_전체매출"))
+    )
+    gu_totals = {}
+    for row in gu_revenues:
+        pass
+
+    agg = CommercialData.objects.filter(행정동명__in=dongs, 기준_년분기_코드=target).aggregate(
+        총유동인구=Sum("총유동인구"),
+        주거인구=Sum("주거인구"),
+        직장인구=Sum("총_직장_인구_수"),
+        남성매출=Sum("남성매출합"),
+        여성매출=Sum("여성매출합"),
+        주중매출=Sum("주중매출합"),
+        주말매출=Sum("주말매출합"),
+        t00_06=Sum("시간대_00_06_매출"),
+        t06_11=Sum("시간대_06_11_매출"),
+        t11_14=Sum("시간대_11_14_매출"),
+        t14_17=Sum("시간대_14_17_매출"),
+        t17_21=Sum("시간대_17_21_매출"),
+        t21_24=Sum("시간대_21_24_매출"),
+    )
+
+    성별합 = (agg["남성매출"] or 0) + (agg["여성매출"] or 0)
+    남성비율 = round((agg["남성매출"] or 0) / 성별합 * 100, 1) if 성별합 > 0 else 50
+    주중주말합 = (agg["주중매출"] or 0) + (agg["주말매출"] or 0)
+    주중비율 = round((agg["주중매출"] or 0) / 주중주말합 * 100, 1) if 주중주말합 > 0 else 70
+
+    data = {
+        "gu": gu,
+        "총매출": 총매출,
+        "행정동수": len(dongs),
+        "총유동인구": int(agg["총유동인구"] or 0),
+        "주거인구": int(agg["주거인구"] or 0),
+        "직장인구": int(agg["직장인구"] or 0),
+        "top_업종": [{"업종": r["통합카테고리"], "매출": r["당월매출합"], "점포수": r["점포수"]} for r in industries[:5]],
+        "성별": {"남성비율": 남성비율, "여성비율": round(100 - 남성비율, 1)},
+        "주중주말": {"주중비율": 주중비율, "주말비율": round(100 - 주중비율, 1)},
+        "시간대": {
+            "새벽(0~6시)": agg["t00_06"] or 0,
+            "오전(6~11시)": agg["t06_11"] or 0,
+            "점심(11~14시)": agg["t11_14"] or 0,
+            "오후(14~17시)": agg["t14_17"] or 0,
+            "저녁(17~21시)": agg["t17_21"] or 0,
+            "심야(21~24시)": agg["t21_24"] or 0,
+        },
+    }
+
+    if category:
+        cat_agg = CommercialData.objects.filter(
+            행정동명__in=dongs, 기준_년분기_코드=target, 통합카테고리=category
+        ).aggregate(
+            점포수=Sum("점포수"),
+            프랜차이즈=Sum("프랜차이즈_점포수"),
+            개업률=Avg("개업_율_평균"),
+            폐업률=Avg("폐업_률_평균"),
+            경쟁강도=Avg("경쟁강도"),
+            업종포화도=Avg("업종_포화도"),
+            매출_20대비율=Avg("매출_20대비율"),
+            점포당매출=Avg("업종_점포당매출"),
+        )
+        score_rows = ScoreData.objects.filter(
+            행정동명__in=dongs, 기준_년분기_코드=target, 통합카테고리=category
+        )
+        avg_성장확률 = score_rows.aggregate(avg=Avg("성장확률"))["avg"]
+        점포수 = cat_agg["점포수"] or 0
+        프랜차이즈 = cat_agg["프랜차이즈"] or 0
+        data["category_data"] = {
+            "category": category,
+            "점포당매출": int(cat_agg["점포당매출"] or 0),
+            "프랜차이즈비율": round(프랜차이즈 / 점포수 * 100, 1) if 점포수 > 0 else 0,
+            "점포수": 점포수,
+            "개업률": round(float(cat_agg["개업률"] or 0), 2),
+            "폐업률": round(float(cat_agg["폐업률"] or 0), 2),
+            "경쟁강도": round(float(cat_agg["경쟁강도"] or 0), 2),
+            "업종포화도": round(float(cat_agg["업종포화도"] or 0), 4),
+            "20대매출비율": round(float(cat_agg["매출_20대비율"] or 0) * 100, 1),
+            "성장확률": round(float(avg_성장확률), 1) if avg_성장확률 else None,
+        }
+
+    ai_descriptions = {}
+    try:
+        import requests as http_requests
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if api_key:
+            if category and data.get("category_data"):
+                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
+            else:
+                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"..."}'
+            prompt = (
+                "다음 서울 구(區) 단위 상권 데이터를 분석해서 보고서 형식으로 설명해줘. "
+                "각 섹션마다 2~3문장으로 자연스럽게 설명하고, JSON 형식으로만 반환해줘. "
+                "코드 블록이나 다른 텍스트는 절대 포함하지 마. JSON만 반환해.\n\n"
+                f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                f"반환 형식: {fmt}"
+            )
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+            resp = http_requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
+            if resp.status_code == 200:
+                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if "```" in text:
+                    for part in text.split("```"):
+                        part = part.strip().lstrip("json").strip()
+                        if part.startswith("{"):
+                            text = part
+                            break
+                ai_descriptions = json.loads(text)
+    except Exception as e:
+        ai_descriptions = {"error": str(e)}
+
+    return JsonResponse({
+        "data": data,
+        "ai_descriptions": ai_descriptions,
+        "quarter": target,
+        "gu": gu,
+        "category": category,
+    })

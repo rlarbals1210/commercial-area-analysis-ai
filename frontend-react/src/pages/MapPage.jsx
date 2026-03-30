@@ -56,7 +56,6 @@ const STARTUP_COSTS = {
   "스포츠 강습":            { "인테리어_만원per평": 60,  "설비_집기_만원": 1500, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 20, "특이사항": "강사 인건비·운동기구 비중 높음" },
   "골프연습장":             { "인테리어_만원per평": 80,  "설비_집기_만원": 5000, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 50, "원가율_%": 15, "특이사항": "타석·시뮬레이터 등 설비 매우 큼" },
   "스포츠클럽":             { "인테리어_만원per평": 80,  "설비_집기_만원": 3000, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 40, "원가율_%": 20, "특이사항": "운동기구·샤워시설 비중 높음" },
-  "일반학원":      { "인테리어_만원per평": 50,  "설비_집기_만원": 800,  "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "강사 인건비 비중 높음" },
   "예술학원":      { "인테리어_만원per평": 60,  "설비_집기_만원": 1200, "초기재고_만원": 100,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 15, "특이사항": "악기·미술 도구 등 설비 비중 높음" },
   "애완동물":      { "인테리어_만원per평": 80,  "설비_집기_만원": 1500, "초기재고_만원": 500,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 25, "원가율_%": 35, "특이사항": "동물 관련 위생 설비 포함" },
   "숙박":          { "인테리어_만원per평": 100, "설비_집기_만원": 3000, "초기재고_만원": 200,  "보증금_임대료배수": 12, "관리비_공과금_만원per월": 60, "원가율_%": 25, "특이사항": "초기 투자 규모 매우 큼" },
@@ -137,6 +136,10 @@ export default function MapPage() {
   const [dongLoading, setDongLoading] = useState(false);  // 로딩 상태
   const [rankModalOpen, setRankModalOpen] = useState(false); // 전체 보기 모달
   const [dongStatsOpen, setDongStatsOpen] = useState(false); // 상세 통계 패널
+  const [reportOpen, setReportOpen] = useState(false);        // 보고서 패널
+  const [reportData, setReportData] = useState(null);         // 보고서 데이터
+  const [reportLoading, setReportLoading] = useState(false);  // 보고서 로딩
+  const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
   const [rankType, setRankType] = useState(null); // "revenue" | "stores"
   const [availableQuarters, setAvailableQuarters] = useState([]); // 선택 가능한 분기 목록
   const [selectedQuarter, setSelectedQuarter] = useState(null);   // 선택된 분기 코드 (null=최신)
@@ -174,6 +177,7 @@ export default function MapPage() {
   const [aiGu, setAiGu] = useState("");            // gu 모드: 선택한 구
   const [aiGuResultTab, setAiGuResultTab] = useState("dong"); // "dong" | "street"
   const [aiGuStreetResults, setAiGuStreetResults] = useState(null); // 길단위 상권 결과
+  const [aiGuDongError, setAiGuDongError] = useState(null); // 행정동 추천 실패 메시지
   const [aiResults, setAiResults] = useState(null);
   const [showIndustryPicker, setShowIndustryPicker] = useState(false);
   const [aiSubIndustry, setAiSubIndustry] = useState("");       // dong 모드: 소분류 입력값
@@ -944,6 +948,9 @@ export default function MapPage() {
     if (!selectedDong) return;
     setDongData(null);
     setDongStatsOpen(false);
+    setReportOpen(false);
+    setReportData(null);
+    setReportCategory("");
     setDongLoading(true);
     const url = selectedQuarter
       ? `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&quarter=${selectedQuarter}`
@@ -1491,6 +1498,7 @@ export default function MapPage() {
     if (aiMode === "gu") {
       setAiGuResultTab("dong");
       setAiGuStreetResults(null);
+      setAiGuDongError(null);
       Promise.all([
         fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
         fetch(`http://localhost:8000/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
@@ -1502,13 +1510,17 @@ export default function MapPage() {
             setAiStep("form");
             return;
           }
-          const dongResults = (dongData.results || []).map((r) => ({
-            ...r,
-            revenue: r.당월매출합,
-            stores: r.소분류_점포수,
-            통합카테고리: dongData.통합카테고리,
-          }));
-          setAiResults(dongResults);
+          if (dongData.error) {
+            setAiGuDongError(dongData.error);
+            setAiResults([]);
+          } else {
+            setAiResults((dongData.results || []).map((r) => ({
+              ...r,
+              revenue: r.당월매출합,
+              stores: r.소분류_점포수,
+              통합카테고리: dongData.통합카테고리,
+            })));
+          }
           setAiGuStreetResults(streetData.results || []);
           setAiStep("result");
         })
@@ -1706,11 +1718,11 @@ export default function MapPage() {
           사이드바가 열려 있고 + 선택된 항목이 있을 때만 표시
           → 검색만 활성화된 빈 사이드바 상태에선 버튼 숨김 */}
       <button
-        onClick={() => { setSidebarCollapsed(true); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
+        onClick={() => { setSidebarCollapsed(true); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); setReportOpen(false); }}
         style={{
           position: "absolute",
           top: "50%",
-          left: (rankModalOpen || guRankModalOpen || dongStatsOpen) ? 660 : 320,
+          left: (rankModalOpen || guRankModalOpen || dongStatsOpen || reportOpen) ? 660 : 320,
           transform: sidebarCollapsed ? "translate(-320px, -50%)" : "translateY(-50%)",
           transition: "transform 0.22s ease-out, opacity 0.15s, left 0.22s ease-out",
           // 사이드바가 열려 있어도 선택된 항목이 없으면(검색만 활성화) 버튼 숨김
@@ -1756,357 +1768,113 @@ export default function MapPage() {
         }),
       }}>
 
-        {/* ── 스크롤 콘텐츠 영역 (선택된 항목 있을 때만 표시) ── */}
+        {/* ── 스크롤 콘텐츠 영역 ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", display: (selectedDong || selectedGu) ? "block" : "none" }}>
 
-          {/* 행정동 상세 */}
-          {selectedDong && (
-            <div className="anim-slide-in-left">
-              <div style={{ marginBottom: 16, paddingTop: 24 }}>
-                <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
-              </div>
+          {/* ── 보고서 생성 UI ── */}
+          {(selectedDong || selectedGu) && (
+            <div className="anim-slide-in-left" style={{ paddingTop: 24 }}>
+              {/* 지역명 헤더 */}
+              {selectedDong && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
+                </div>
+              )}
+              {selectedGu && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
+                </div>
+              )}
 
+              <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 20 }} />
 
-              {availableQuarters.length > 0 && (() => {
-                const years = [...new Set(availableQuarters.map((q) => Math.floor(q / 10)))];
-                const activeQ = selectedQuarter || availableQuarters[0];
-                const activeYear = Math.floor(activeQ / 10);
-                const quartersOfYear = availableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
-                const label = `${activeYear}년 ${activeQ % 10}분기`;
-                return (
-                  <div data-popup style={{ position: "relative", marginBottom: 12 }}>
-                    <button
-                      data-popup
-                      onClick={() => setQuarterPopupOpen((v) => !v)}
-                      style={quarterTriggerStyle}
-                    >
-                      📅 {label} <span style={{ fontSize: 10, marginLeft: 2 }}>▾</span>
-                    </button>
-                    {quarterPopupOpen && (
-                      <div data-popup className="anim-slide-down" style={quarterDropdownStyle}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
-                          {years.map((y) => (
-                            <button key={y} data-popup onClick={() => { const first = availableQuarters.find((q) => Math.floor(q / 10) === y); setSelectedQuarter(first === availableQuarters[0] ? null : first); }} style={{ padding: "5px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", textAlign: "left" }}>{y}</button>
-                          ))}
-                        </div>
-                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                          {quartersOfYear.map((q) => {
-                            const isLatest = q === availableQuarters[0];
-                            const isActive = selectedQuarter === q || (!selectedQuarter && isLatest);
-                            return (<button key={q} data-popup onClick={() => { setSelectedQuarter(isLatest ? null : q); setQuarterPopupOpen(false); }} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.2)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E" }}>{q % 10}분기</button>);
-                          })}
-                        </div>
-                      </div>
-                    )}
+              {/* 업종 선택 */}
+              {(selectedDong || selectedGu) && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 8 }}>
+                    업종 선택 <span style={{ fontSize: 11, color: "#6B7280" }}>(선택사항 · 업종 선택 시 심화 분석 포함)</span>
                   </div>
-                );
-              })()}
+                  <select
+                    value={reportCategory}
+                    onChange={(e) => setReportCategory(e.target.value)}
+                    style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#E0E0E0", fontSize: 13, cursor: "pointer", outline: "none" }}
+                  >
+                    <option value="" style={{ background: "#1E1E2E" }}>전체 상권 분석</option>
+                    {Object.keys(STARTUP_COSTS).map((cat) => (
+                      <option key={cat} value={cat} style={{ background: "#1E1E2E" }}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-              <div style={{ borderTop: "1px solid #4A4A4A", paddingTop: 14 }}>
-                {dongLoading && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>}
-                {!dongLoading && !dongData && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>}
-                {!dongLoading && dongData && (() => {
-                  const industries = dongData.industries || [];
-                  const top6Rev   = industries.slice(0, 5);
-                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 5);
-                  const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
-                  const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
-                  return (
-                    <>
-                      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                        <div style={statCardStyle}>
-                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>총 매출</div>
-                          <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>{fmtRevenue(dongData.총매출)}</div>
-                        </div>
-                        <div style={statCardStyle}>
-                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 4 }}>전체 순위</div>
-                          <div style={{ fontSize: 17, fontWeight: 700, color: "#93B8EE" }}>
-                            {dongData.순위}위<span style={{ fontSize: 13, color: "#9E9E9E", fontWeight: 400, marginLeft: 4 }}>/ {dongData.전체동수}동</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 매출 TOP 5</div>
-                        <button onClick={() => { if (rankModalOpen && rankType === "revenue") { setRankModalOpen(false); } else { setRankType("revenue"); setRankModalOpen(true); setDongStatsOpen(false); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "revenue" ? "접기 ↑" : "전체 보기 →"}</button>
-                      </div>
-                      <div>
-                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
-                          {top6Rev.map((item) => {
-                            const pct = (item["당월매출합"] / maxRevenue) * 100;
-                            return (
-                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
-                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
-                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
-                              >
-                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{fmtRevenue(item["당월매출합"])}</div>
-                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #60A5FA, #3B82F6)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
-                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
-                          {top6Rev.map((item) => (
-                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 상가 수 TOP 5</div>
-                        <button onClick={() => { if (rankModalOpen && rankType === "stores") { setRankModalOpen(false); } else { setRankType("stores"); setRankModalOpen(true); setDongStatsOpen(false); } }} style={inlineViewAllBtnStyle}>{rankModalOpen && rankType === "stores" ? "접기 ↑" : "전체 보기 →"}</button>
-                      </div>
-                      <div>
-                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
-                          {top6Store.map((item) => {
-                            const pct = (item["점포수"] / maxStores) * 100;
-                            return (
-                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
-                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
-                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
-                              >
-                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{item["점포수"]}개</div>
-                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #34D399, #10B981)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
-                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
-                          {top6Store.map((item) => (
-                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 8 }}></div>
-                      <button
-                        onClick={() => openAiDongRecommend(selectedDong.dongName, selectedDong.guName)}
-                        style={{ width: "100%", marginTop: 8, padding: "9px 0", background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", color: "#93B8EE", border: "1px solid rgba(139,92,246,0.4)", borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: "pointer", letterSpacing: "0.02em" }}
-                      >✨ 이 지역에서 AI 추천 받기</button>
+              {/* 보고서 생성 버튼 */}
+              <button
+                onClick={() => {
+                  setReportOpen(true);
+                  setReportData(null);
+                  setReportLoading(true);
+                  setRankModalOpen(false);
+                  setDongStatsOpen(false);
+                  if (selectedDong) {
+                    const url = reportCategory
+                      ? `http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(reportCategory)}`
+                      : `http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
+                    fetch(url)
+                      .then((r) => r.json())
+                      .then((d) => { setReportData({ ...d, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
+                      .catch(() => setReportLoading(false));
+                  } else if (selectedGu) {
+                    const dongs = guToDongsRef.current[selectedGu] || [];
+                    fetch("http://localhost:8001/api/gu-report/", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
+                    })
+                      .then((r) => r.json())
+                      .then((d) => { setReportData({ ...d, _gu: selectedGu }); setReportLoading(false); })
+                      .catch(() => setReportLoading(false));
+                  }
+                }}
+                style={{ width: "100%", padding: "14px 0", background: "linear-gradient(135deg, #10B981, #059669)", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "opacity 0.2s" }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = "0.85"}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
+              >
+                📋 보고서 생성하기
+              </button>
 
-                      {/* 길단위 상권 추천 패널 */}
-                      {streetCount > 0 && (
-                        <div style={{ marginTop: 14, borderTop: "1px solid #3A3A3A", paddingTop: 12 }}>
-                          <div style={{ fontSize: 13, color: "#F59E0B", fontWeight: 600, marginBottom: 8 }}>
-                            🏪 길단위 상권 {streetCount}개 표시됨<br/>
-                            <span style={{ fontWeight: 400, color: "#9E9E9E" }}>지도 위 주황색 구역을 클릭해 업종 추천을 받아보세요</span>
-                          </div>
-                          {selectedStreet && (
-                            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "10px 12px" }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: "#FCD34D", marginBottom: 6 }}>
-                                📍 {selectedStreet.상권명}
-                              </div>
-                              {streetLoading && <div style={{ color: "#9E9E9E", fontSize: 13 }}>분석 중...</div>}
-                              {!streetLoading && streetResults?.results && (
-                                <div>
-                                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 6 }}>유망 업종 Top 5 · 업종 클릭 시 상권 내 입지 추천</div>
-                                  {streetResults.results.map((r, i) => (
-                                    <div key={r.category} style={{ borderBottom: i < streetResults.results.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
-                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0" }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                          <span style={{ fontSize: 12, color: "#6B7280", minWidth: 16 }}>{r.rank}</span>
-                                          <span style={{ fontSize: 13, color: "#E8E8E8" }}>{r.category}</span>
-                                          <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: r.등급 === "A" ? "rgba(34,197,94,0.2)" : r.등급 === "B" ? "rgba(59,130,246,0.2)" : "rgba(107,114,128,0.2)", color: r.등급 === "A" ? "#4ADE80" : r.등급 === "B" ? "#93B8EE" : "#9E9E9E" }}>{r.등급}</span>
-                                        </div>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                          <span style={{ fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>{r.성장확률}%</span>
-                                          <button
-                                            onClick={() => {
-                                              if (streetSpotCategory === r.category && streetSpotResults) {
-                                                clearStreetSpotMarkers();
-                                                setStreetSpotResults(null);
-                                                setStreetSpotCategory(null);
-                                              } else {
-                                                handleStreetSpotRecommend(selectedStreet.상권코드, r.category);
-                                              }
-                                            }}
-                                            style={{ fontSize: 11, padding: "2px 7px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.4)", background: streetSpotCategory === r.category ? "rgba(245,158,11,0.25)" : "rgba(245,158,11,0.08)", color: "#F59E0B", cursor: "pointer" }}
-                                          >📍 입지</button>
-                                        </div>
-                                      </div>
-
-                                      {/* 입지 추천 결과 인라인 */}
-                                      {streetSpotCategory === r.category && (
-                                        <div style={{ marginBottom: 8 }}>
-                                          {streetSpotLoading && (
-                                            <div style={{ fontSize: 12, color: "#9E9E9E", padding: "6px 0" }}>입지 분석 중...</div>
-                                          )}
-                                          {!streetSpotLoading && streetSpotResults && (
-                                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                              {streetSpotResults.map((spot) => {
-                                                const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
-                                                const color = colors[spot.rank - 1] || "#6B7280";
-                                                return (
-                                                  <div key={spot.rank} style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "10px 12px", border: `1px solid ${color}30` }}>
-                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                                        <div style={{ background: color, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>{spot.rank}</div>
-                                                        <span style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>추천 위치 {spot.rank}순위</span>
-                                                      </div>
-                                                      <span style={{ fontSize: 18, fontWeight: 800, color }}>{spot.score}</span>
-                                                    </div>
-                                                    <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                                                      <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 6px", textAlign: "center" }}>
-                                                        <div style={{ fontSize: 10, color: "#9E9E9E" }}>생존율</div>
-                                                        <div style={{ fontSize: 13, fontWeight: 600, color: spot.생존율 >= 60 ? "#34D399" : spot.생존율 >= 40 ? "#FBBF24" : "#F87171" }}>{spot.생존율}%</div>
-                                                      </div>
-                                                      <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 6px", textAlign: "center" }}>
-                                                        <div style={{ fontSize: 10, color: "#9E9E9E" }}>경쟁</div>
-                                                        <div style={{ fontSize: 13, fontWeight: 600, color: spot.경쟁밀도 <= 2 ? "#34D399" : spot.경쟁밀도 <= 5 ? "#FBBF24" : "#F87171" }}>{spot.경쟁밀도}개</div>
-                                                      </div>
-                                                      <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 6px", textAlign: "center" }}>
-                                                        <div style={{ fontSize: 10, color: "#9E9E9E" }}>시너지</div>
-                                                        <div style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>{spot.보완밀도}개</div>
-                                                      </div>
-                                                    </div>
-                                                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                                                      {spot.reasons.map((reason, ri) => (
-                                                        <div key={ri} style={{ fontSize: 11, color: "#C8C8C8", display: "flex", gap: 4 }}>
-                                                          <span style={{ color, flexShrink: 0 }}>•</span>{reason}
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
-
-          {/* 구 상세 */}
-          {selectedGu && (
-            <div className="anim-slide-in-left">
-              <div style={{ marginBottom: 16, paddingTop: 24 }}>
-                <div style={{ fontSize: 15, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
+              <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center", marginTop: 10, lineHeight: 1.6 }}>
+                AI가 상권 데이터를 분석하여<br />보고서를 작성해 드립니다
               </div>
 
-              {guAvailableQuarters.length > 0 && (() => {
-                const years = [...new Set(guAvailableQuarters.map((q) => Math.floor(q / 10)))];
-                const activeQ = guSelectedQuarter || guAvailableQuarters[0];
-                const activeYear = Math.floor(activeQ / 10);
-                const quartersOfYear = guAvailableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
-                const label = `${activeYear}년 ${activeQ % 10}분기`;
-                return (
-                  <div data-popup style={{ position: "relative", marginBottom: 12 }}>
-                    <button
-                      data-popup
-                      onClick={() => setGuQuarterPopupOpen((v) => !v)}
-                      style={quarterTriggerStyle}
-                    >
-                      📅 {label} <span style={{ fontSize: 10, marginLeft: 2 }}>▾</span>
-                    </button>
-                    {guQuarterPopupOpen && (
-                      <div data-popup className="anim-slide-down" style={quarterDropdownStyle}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8 }}>
-                          {years.map((y) => (
-                            <button key={y} data-popup onClick={() => { const first = guAvailableQuarters.find((q) => Math.floor(q / 10) === y); setGuSelectedQuarter(first === guAvailableQuarters[0] ? null : first); }} style={{ padding: "5px 10px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", textAlign: "left" }}>{y}</button>
-                          ))}
-                        </div>
-                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                          {quartersOfYear.map((q) => {
-                            const isLatest = q === guAvailableQuarters[0];
-                            const isActive = guSelectedQuarter === q || (!guSelectedQuarter && isLatest);
-                            return (<button key={q} data-popup onClick={() => { setGuSelectedQuarter(isLatest ? null : q); setGuQuarterPopupOpen(false); }} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.2)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E" }}>{q % 10}분기</button>);
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              {/* 구 선택 시 — 행정동 보기 버튼 */}
+              {selectedGu && (
+                <button
+                  style={{ width: "100%", marginTop: 12, padding: "11px 0", background: "rgba(59,130,246,0.2)", color: "#93B8EE", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+                  onClick={() => {
+                    const map = mapInstanceRef.current;
+                    if (!map) return;
+                    const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
+                    if (group) smoothZoom(map, 6, () => map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng)));
+                  }}
+                >행정동 보기</button>
+              )}
 
-              <div style={{ borderTop: "1px solid #4A4A4A", paddingTop: 14 }}>
-                {guLoading && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>}
-                {!guLoading && !guData && <p style={{ color: "#9E9E9E", fontSize: 16, textAlign: "center", padding: "24px 0" }}>데이터가 없습니다</p>}
-                {!guLoading && guData && (() => {
-                  const industries = guData.industries || [];
-                  const top6Rev   = industries.slice(0, 5);
-                  const top6Store = [...industries].sort((a, b) => b["점포수"] - a["점포수"]).slice(0, 5);
-                  const maxRevenue = Math.max(...top6Rev.map((d) => d["당월매출합"]), 1);
-                  const maxStores  = Math.max(...top6Store.map((d) => d["점포수"]), 1);
-                  return (
-                    <>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 매출 TOP 5</div>
-                        <button onClick={() => { if (guRankModalOpen && guRankType === "revenue") { setGuRankModalOpen(false); } else { setGuRankType("revenue"); setGuRankModalOpen(true); } }} style={inlineViewAllBtnStyle}>{guRankModalOpen && guRankType === "revenue" ? "접기 ↑" : "전체 보기 →"}</button>
-                      </div>
-                      <div>
-                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
-                          {top6Rev.map((item) => {
-                            const pct = (item["당월매출합"] / maxRevenue) * 100;
-                            return (
-                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
-                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
-                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
-                              >
-                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{fmtRevenue(item["당월매출합"])}</div>
-                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #60A5FA, #3B82F6)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
-                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
-                          {top6Rev.map((item) => (
-                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                        <div style={{ fontSize: 14, color: "#9E9E9E" }}>업종별 상가 수 TOP 5</div>
-                        <button onClick={() => { if (guRankModalOpen && guRankType === "stores") { setGuRankModalOpen(false); } else { setGuRankType("stores"); setGuRankModalOpen(true); } }} style={inlineViewAllBtnStyle}>{guRankModalOpen && guRankType === "stores" ? "접기 ↑" : "전체 보기 →"}</button>
-                      </div>
-                      <div>
-                        <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 75 }}>
-                          {top6Store.map((item) => {
-                            const pct = (item["점포수"] / maxStores) * 100;
-                            return (
-                              <div key={item["통합카테고리"]} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative" }}
-                                onMouseEnter={(e) => { e.currentTarget.firstChild.style.display = "block"; }}
-                                onMouseLeave={(e) => { e.currentTarget.firstChild.style.display = "none"; }}
-                              >
-                                <div style={{ display: "none", position: "absolute", bottom: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: "#1E1E1E", color: "#E8E8E8", padding: "5px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.15)", zIndex: 100, pointerEvents: "none" }}>{item["점포수"]}개</div>
-                                <div style={{ width: "100%", height: `${pct}%`, background: "linear-gradient(180deg, #34D399, #10B981)", borderRadius: "3px 3px 0 0", minHeight: 2 }} />
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ height: 1, background: "rgba(255,255,255,0.2)", marginBottom: 4 }} />
-                        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
-                          {top6Store.map((item) => (
-                            <div key={item["통합카테고리"]} style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontSize: 11, color: "#C8C8C8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textAlign: "center", lineHeight: 1.3, wordBreak: "keep-all" }}>{item["통합카테고리"]}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-
+              {/* 행정동 선택 시 — 구 보기 버튼 */}
+              {selectedDong && (
+                <button
+                  style={{ width: "100%", marginTop: 12, padding: "11px 0", background: "rgba(255,255,255,0.05)", color: "#9E9E9E", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: "pointer" }}
+                  onClick={() => {
+                    const map = mapInstanceRef.current;
+                    if (!map) return;
+                    setSelectedGu(selectedDong.guName);
+                    const panSeoul = () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
+                    if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, panSeoul);
+                    else panSeoul();
+                  }}
+                >구 보기</button>
+              )}
             </div>
           )}
 
@@ -2135,43 +1903,6 @@ export default function MapPage() {
 
         </div>
 
-        {/* 하단 고정: 버튼 영역 (선택된 항목 있을 때만 표시) */}
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, display: (selectedDong || selectedGu) && !searchExpanded ? "flex" : "none", flexDirection: "column", gap: 8 }}>
-          {selectedDong && !selectedGu && (
-            <button
-              style={{ width: "100%", height: 42, background: dongStatsOpen ? "rgba(59,130,246,0.5)" : "rgba(59,130,246,0.35)", color: "#fff", border: "1.5px solid rgba(59,130,246,0.7)", borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: "pointer", transition: "background 0.2s" }}
-              onClick={() => { setDongStatsOpen((v) => !v); setRankModalOpen(false); }}
-            >상세 통계</button>
-          )}
-          {selectedGu && (
-            <button
-              style={{ width: "100%", height: 42, background: "rgba(59,130,246,0.35)", color: "#fff", border: "1.5px solid rgba(59,130,246,0.7)", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, border-color 0.2s, color 0.2s" }}
-              onClick={() => {
-                const map = mapInstanceRef.current;
-                if (!map) return;
-                const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
-                if (group) {
-                  smoothZoom(map, 6, () => {
-                    map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng));
-                  });
-                }
-              }}
-            >행정동 보기</button>
-          )}
-          <button
-            style={{ width: "100%", height: 42, background: "#3B82F6", color: "#fff", border: "none", borderRadius: 10, fontSize: 16, fontWeight: 600, cursor: "pointer", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s" }}
-            onClick={() => {
-              const map = mapInstanceRef.current;
-              if (!map) return;
-              setDongStatsOpen(false);
-              // 현재 선택된 행정동의 구를 selectedGu로 설정 → 행정동 보기 버튼 표시
-              if (selectedDong) setSelectedGu(selectedDong.guName);
-              const panSeoul = () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
-              if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, panSeoul);
-              else panSeoul();
-            }}
-          >구 보기</button>
-        </div>
       </div>
 
       {/* ── 구 매출 순위 패널 (사이드바 비활성 시 플로팅) ── */}
@@ -2868,6 +2599,237 @@ export default function MapPage() {
         );
       })()}
 
+      {/* ── 상권 보고서 패널 ── */}
+      {reportOpen && (
+        <div
+          className="anim-panel-slide-in"
+          style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out", overflowY: "auto" }}
+        >
+          {/* 헤더 */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexShrink: 0 }}>
+            <div>
+              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong?.guName}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8" }}>📋 상권 보고서</div>
+            </div>
+            <button onClick={() => setReportOpen(false)} style={closeBtnStyle}>✕</button>
+          </div>
+
+          {reportLoading ? (
+            <div style={{ textAlign: "center", padding: "60px 0", color: "#9E9E9E" }}>
+              <div style={{ fontSize: 28, marginBottom: 12 }}>✨</div>
+              <div style={{ fontSize: 14 }}>AI가 보고서를 작성하는 중...</div>
+            </div>
+          ) : reportData ? (() => {
+            const ai = reportData.ai_descriptions || {};
+            const d = reportData.data || {};
+            const cat = d.category_data;
+            const fmtEok = (v) => !v ? "0" : v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : `${Math.round(v / 10_000)}만`;
+            const fmtNum = (v) => v ? v.toLocaleString() : "0";
+            const SECTION_COLOR = "#10B981";
+
+            const SectionTitle = ({ icon, title }) => (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 16 }}>{icon}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: SECTION_COLOR }}>{title}</span>
+              </div>
+            );
+
+            const AiText = ({ text }) => text ? (
+              <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.7, background: "rgba(16,185,129,0.06)", borderLeft: "3px solid rgba(16,185,129,0.5)", padding: "10px 12px", borderRadius: "0 8px 8px 0", marginBottom: 16 }}>
+                {text}
+              </div>
+            ) : null;
+
+            const Stat = ({ label, value, sub }) => (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                <span style={{ fontSize: 12, color: "#9E9E9E" }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#E0E0E0" }}>{value}{sub && <span style={{ fontSize: 11, color: "#9E9E9E", marginLeft: 4 }}>{sub}</span>}</span>
+              </div>
+            );
+
+            const Bar = ({ label, ratio, color }) => (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                  <span style={{ fontSize: 12, color: "#9E9E9E" }}>{label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color }}>{ratio}%</span>
+                </div>
+                <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
+                  <div style={{ height: "100%", width: `${ratio}%`, background: color, borderRadius: 3, transition: "width 0.4s" }} />
+                </div>
+              </div>
+            );
+
+            return (
+              <div>
+                {/* 분기 배지 */}
+                {reportData.quarter && (
+                  <div style={{ fontSize: 11, color: "#6B7280", background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "4px 10px", display: "inline-block", marginBottom: 20 }}>
+                    {String(reportData.quarter).slice(0,4)}년 {String(reportData.quarter).slice(4)}분기 기준
+                  </div>
+                )}
+
+                {/* 섹션 1: 상권 개요 */}
+                <SectionTitle icon="🏙️" title="상권 개요 및 입지 특성" />
+                <AiText text={ai["상권_개요"]} />
+                <Stat label="총매출" value={fmtEok(d.총매출)} sub={`서울 ${d.전체동수}개 동 중 ${d.순위}위`} />
+                <Stat label="총유동인구" value={`${fmtNum(d.총유동인구)}명`} />
+                <Stat label="주거인구" value={`${fmtNum(d.주거인구)}명`} />
+                <Stat label="직장인구" value={`${fmtNum(d.직장인구)}명`} />
+
+                <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "16px 0" }} />
+
+                {/* 섹션 2: 인기 업종 */}
+                <SectionTitle icon="🏆" title="인기 업종" />
+                <AiText text={ai["인기_업종"]} />
+                {(d.top_업종 || []).map((item, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: i < 3 ? "#F59E0B" : "#6B7280", minWidth: 20 }}>{i + 1}위</span>
+                      <span style={{ fontSize: 13, color: "#E0E0E0" }}>{item.업종}</span>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#E0E0E0" }}>{fmtEok(item.매출)}</div>
+                      {item.점포수 > 0 && <div style={{ fontSize: 11, color: "#6B7280" }}>{fmtNum(item.점포수)}개 점포</div>}
+                    </div>
+                  </div>
+                ))}
+
+                <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "16px 0" }} />
+
+                {/* 섹션 3: 유동인구 분석 */}
+                <SectionTitle icon="👥" title="유동인구 · 결제고객 분석" />
+                <AiText text={ai["유동인구_분석"]} />
+                <Bar label="남성 결제" ratio={d.성별?.남성비율 || 0} color="#3B82F6" />
+                <Bar label="여성 결제" ratio={d.성별?.여성비율 || 0} color="#EC4899" />
+                <div style={{ marginTop: 12 }}>
+                  <Bar label="주중 매출" ratio={d.주중주말?.주중비율 || 0} color="#6366F1" />
+                  <Bar label="주말 매출" ratio={d.주중주말?.주말비율 || 0} color="#F59E0B" />
+                </div>
+
+                {/* 업종 선택 (2단계) */}
+                {!cat && (
+                  <>
+                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "20px 0 14px" }} />
+                    <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 8 }}>업종을 선택하면 심화 분석을 볼 수 있습니다</div>
+                    <select
+                      value={reportCategory}
+                      onChange={(e) => {
+                        const cat = e.target.value;
+                        if (!cat) return;
+                        setReportCategory(cat);
+                        setReportLoading(true);
+                        fetch(`http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
+                          .then((r) => r.json())
+                          .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
+                          .catch(() => setReportLoading(false));
+                      }}
+                      style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "#E0E0E0", fontSize: 13, cursor: "pointer" }}
+                    >
+                      <option value="">업종 선택...</option>
+                      {(d.top_업종 || []).map((item) => (
+                        <option key={item.업종} value={item.업종}>{item.업종}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+
+                {/* 2단계: 업종 선택 시 추가 섹션 */}
+                {cat && (
+                  <>
+                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "16px 0" }} />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B" }}>📌 {cat.category} 심화 분석</div>
+                      <button onClick={() => {
+                        setReportCategory("");
+                        setReportLoading(true);
+                        if (selectedDong) {
+                          fetch(`http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+                            .then((r) => r.json())
+                            .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
+                            .catch(() => setReportLoading(false));
+                        } else if (selectedGu) {
+                          const dongs = guToDongsRef.current[selectedGu] || [];
+                          fetch("http://localhost:8001/api/gu-report/", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ gu: selectedGu, dongs }),
+                          })
+                            .then((r) => r.json())
+                            .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportLoading(false); })
+                            .catch(() => setReportLoading(false));
+                        }
+                      }} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 초기화</button>
+                    </div>
+
+                    {/* 섹션 4: 소비 패턴 */}
+                    <SectionTitle icon="⏰" title="시간대 · 소비 패턴" />
+                    <AiText text={ai["소비_패턴"]} />
+                    {(() => {
+                      const 시간대 = d.시간대 || {};
+                      const items = [
+                        { label: "새벽", key: "새벽(0~6시)" },
+                        { label: "오전", key: "오전(6~11시)" },
+                        { label: "점심", key: "점심(11~14시)" },
+                        { label: "오후", key: "오후(14~17시)" },
+                        { label: "저녁", key: "저녁(17~21시)" },
+                        { label: "심야", key: "심야(21~24시)" },
+                      ];
+                      const max = Math.max(...items.map((t) => 시간대[t.key] || 0), 1);
+                      return (
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 80, marginBottom: 8 }}>
+                          {items.map(({ label, key }) => {
+                            const v = 시간대[key] || 0;
+                            const h = Math.round((v / max) * 100);
+                            const isTop = v === max;
+                            return (
+                              <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                                <div style={{ width: "100%", height: 60, display: "flex", alignItems: "flex-end" }}>
+                                  <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#10B981" : "rgba(16,185,129,0.35)", borderRadius: "3px 3px 0 0" }} />
+                                </div>
+                                <div style={{ fontSize: 10, color: "#9E9E9E", textAlign: "center" }}>{label}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    <Stat label="20대 매출 비율" value={`${cat["20대매출비율"]}%`} />
+
+                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "14px 0" }} />
+
+                    {/* 섹션 5: 비용과 수익 */}
+                    <SectionTitle icon="💰" title="비용과 수익 통계" />
+                    <AiText text={ai["비용_수익"]} />
+                    <Stat label="점포당 월 평균 매출" value={fmtEok(cat.점포당매출)} />
+                    <Stat label="점포 수" value={`${fmtNum(cat.점포수)}개`} />
+                    <Stat label="프랜차이즈 비율" value={`${cat.프랜차이즈비율}%`} />
+                    <Stat label="개업률" value={`${cat.개업률}%`} />
+                    <Stat label="폐업률" value={`${cat.폐업률}%`} />
+
+                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "14px 0" }} />
+
+                    {/* 섹션 6: 기타 통계 */}
+                    <SectionTitle icon="📊" title="기타 통계" />
+                    <AiText text={ai["기타_통계"]} />
+                    {cat.AI등급 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                        <span style={{ fontSize: 12, color: "#9E9E9E" }}>AI 등급</span>
+                        <span style={{ fontSize: 18, fontWeight: 800, color: cat.AI등급 === "A" ? "#10B981" : cat.AI등급 === "B" ? "#F59E0B" : "#9E9E9E" }}>{cat.AI등급}</span>
+                        {cat.성장확률 != null && <span style={{ fontSize: 12, color: "#9E9E9E" }}>성장확률 {cat.성장확률}%</span>}
+                      </div>
+                    )}
+                    {cat.업종내순위 && <Stat label="업종 내 순위" value={`${cat.업종내순위}위`} sub={`/ 전체 ${cat.업종내전체동수}개 동`} />}
+                    <Stat label="경쟁 강도" value={`${fmtNum(Math.round(cat.경쟁강도))}개 점포`} />
+                    <Stat label="업종 포화도" value={`${(cat.업종포화도 * 100).toFixed(1)}%`} />
+                  </>
+                )}
+                <div style={{ height: 40 }} />
+              </div>
+            );
+          })() : null}
+        </div>
+      )}
+
       {/* ── AI 추천 사이드 패널 ── */}
       {/* 사이드바 상태와 무관하게 항상 오른쪽에 고정 */}
       {aiModalOpen && (
@@ -3233,6 +3195,13 @@ export default function MapPage() {
                       {/* 행정동 탭 */}
                       {aiGuResultTab === "dong" && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          {aiGuDongError && (
+                            <div style={{ textAlign: "center", padding: "24px 0", color: "#9E9E9E", fontSize: 13 }}>
+                              <div style={{ fontSize: 22, marginBottom: 8 }}>📭</div>
+                              {aiGu} 내 <b style={{ color: "#E8E8E8" }}>{aiIndustry}</b> 데이터가 없습니다.<br />
+                              <span style={{ fontSize: 11, color: "#6B7280" }}>길단위 상권 탭을 확인해보세요.</span>
+                            </div>
+                          )}
                           {aiResults.map((item) => (
                             <div key={item.rank} style={aiResultCardStyle(item.rank === 1)}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
