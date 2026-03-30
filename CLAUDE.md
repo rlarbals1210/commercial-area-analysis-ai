@@ -146,8 +146,35 @@ text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 ## 알려진 버그 및 미해결 이슈
 
-### 1. 포트 불일치 (미해결)
-`MapPage.jsx`에서 일부 API 호출이 8000, 일부가 8001을 사용 중.
+### 1. 행정동 추천 빈 결과 4케이스 ⚠️ AI 파이프라인 재실행 필요
+**현상**: "구·업종 → 상권 추천"에서 아래 4가지 조합을 선택하면 행정동 탭에 결과가 없고 길단위 상권 탭에만 결과가 뜸.
+
+**원인**: `ScoreData`(AI 성장확률 테이블)에 해당 행정동이 누락되어 있음.
+`recommend_location()` 내부에서 `ScoreData × CommercialData` 교집합을 구하는데, ScoreData에 행정동이 없으면 교집합이 0이 됨.
+
+| 구 | 업종 | CommercialData | ScoreData |
+|----|------|----------------|-----------|
+| 종로구 | 기타 B2B서비스 | `숭인2동` 1건 있음 | `숭인2동` 없음 |
+| 금천구 | 외국어학원 | 1건 있음 | 해당 행정동 없음 |
+| 금천구 | 컴퓨터및주변장치판매 | 1건 있음 | 해당 행정동 없음 |
+| 강동구 | 가방 | 1건 있음 | 해당 행정동 없음 |
+
+**수정 방법**: 코드 수정으로 해결 불가. AI 스코어링 파이프라인을 재실행해서 ScoreData를 재생성해야 함.
+```bash
+# 행정동 데이터 재보강 후 점수 재계산
+cd ai
+python enrich_dong_dataset.py   # CommercialData 기반으로 피처 재생성
+python retrain_scores.py        # LightGBM 재학습 → scores.csv 생성
+# 이후 scores.csv를 DB에 다시 임포트
+```
+> 재실행 전 `ai/` 폴더의 README 및 스크립트 상단 주석 확인 필요.
+
+현재는 빈 결과 대신 안내 메시지가 표시되도록 프론트 처리는 되어 있음 (`aiGuDongError` state, MapPage.jsx:180).
+
+---
+
+### 2. 포트 불일치 (행정동 추천 empty 문제와 무관한 별개 버그)
+`MapPage.jsx`에서 일부 API 호출이 8000, 일부가 8001을 사용 중. 행정동 추천 empty 문제와는 **완전히 별개**의 오래된 버그임.
 ```
 8000 사용 (잘못됨):
   - recommend/location/ (line ~1502)
@@ -166,19 +193,6 @@ grep -n "localhost:8000" frontend-react/src/pages/MapPage.jsx | wc -l
 # 치환
 sed -i '' 's|http://localhost:8000/|http://localhost:8001/|g' frontend-react/src/pages/MapPage.jsx
 ```
-
-### 2. 행정동 추천 빈 결과 4케이스 (데이터 이슈)
-아래 4가지 구×업종 조합은 ScoreData와 CommercialData의 행정동명이 불일치하여 교집합이 0이 됨.
-코드 버그가 아닌 학습 데이터 누락이므로 데이터 재학습 시 해결됨.
-
-| 구 | 업종 | 상태 |
-|----|------|------|
-| 종로구 | 기타 B2B서비스 | CommercialData에 `숭인2동`만 있으나 ScoreData에 없음 |
-| 금천구 | 외국어학원 | CommercialData 1건, ScoreData에 해당 행정동 없음 |
-| 금천구 | 컴퓨터및주변장치판매 | 동일 패턴 |
-| 강동구 | 가방 | 동일 패턴 |
-
-이 케이스에서 행정동 탭은 빈 결과 대신 안내 메시지가 표시됨 (이미 처리됨).
 
 ### 3. StreetScoreData에만 있는 업종
 `전자상거래업`이 StreetScoreData에만 존재하고 STARTUP_COSTS에는 없음. 프론트 UI에서 선택 불가이므로 현재는 무해.
