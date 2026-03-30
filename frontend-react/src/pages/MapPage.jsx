@@ -1819,15 +1819,15 @@ export default function MapPage() {
                   setDongStatsOpen(false);
                   if (selectedDong) {
                     const url = reportCategory
-                      ? `http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(reportCategory)}`
-                      : `http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
+                      ? `http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(reportCategory)}`
+                      : `http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
                     fetch(url)
                       .then((r) => r.json())
                       .then((d) => { setReportData({ ...d, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
                       .catch(() => setReportLoading(false));
                   } else if (selectedGu) {
                     const dongs = guToDongsRef.current[selectedGu] || [];
-                    fetch("http://localhost:8001/api/gu-report/", {
+                    fetch("http://localhost:8000/api/gu-report/", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
@@ -2718,7 +2718,7 @@ export default function MapPage() {
                         if (!cat) return;
                         setReportCategory(cat);
                         setReportLoading(true);
-                        fetch(`http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
+                        fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
                           .then((r) => r.json())
                           .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
                           .catch(() => setReportLoading(false));
@@ -2743,13 +2743,13 @@ export default function MapPage() {
                         setReportCategory("");
                         setReportLoading(true);
                         if (selectedDong) {
-                          fetch(`http://localhost:8001/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+                          fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
                             .then((r) => r.json())
                             .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
                             .catch(() => setReportLoading(false));
                         } else if (selectedGu) {
                           const dongs = guToDongsRef.current[selectedGu] || [];
-                          fetch("http://localhost:8001/api/gu-report/", {
+                          fetch("http://localhost:8000/api/gu-report/", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ gu: selectedGu, dongs }),
