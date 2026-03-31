@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 const DRILL_GROUPS = ["음식", "소매", "서비스"];
@@ -95,6 +95,39 @@ const POLYGON_STREET_DEFAULT  = { fillColor: "#F59E0B", fillOpacity: 0.12, strok
 const POLYGON_STREET_HOVER    = { fillColor: "#F59E0B", fillOpacity: 0.40, strokeColor: "#B45309", strokeOpacity: 1,   strokeWeight: 2 };
 const POLYGON_STREET_SELECTED = { fillColor: "#EF4444", fillOpacity: 0.45, strokeColor: "#DC2626", strokeOpacity: 1,   strokeWeight: 2 };
 
+
+function GuRankTicker({ items }) {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % items.length);
+        setVisible(true);
+      }, 300);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [items.length]);
+
+  const item = items[idx];
+  const fmtEok = (v) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : `${Math.round(v / 10_000)}만`;
+
+  return (
+    <div style={{
+      fontSize: 13, fontWeight: 500, color: "#374151",
+      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      transition: "opacity 0.3s, transform 0.3s",
+      opacity: visible ? 1 : 0,
+      transform: visible ? "translateY(0)" : "translateY(-6px)",
+    }}>
+      <span style={{ color: "#6B9FE4", fontWeight: 700, marginRight: 4 }}>{idx + 1}위</span>
+      {item.gu}
+      <span style={{ color: "#9CA3AF", fontSize: 12, marginLeft: 6 }}>{fmtEok(item.총매출)}원</span>
+    </div>
+  );
+}
 
 export default function MapPage() {
   const navigate = useNavigate();
@@ -437,11 +470,6 @@ export default function MapPage() {
     });
     dongLabelsRef.current.forEach((label) => label.setMap(guMode ? null : map));
     guLabelsRef.current.forEach((label) => label.setMap(guMode ? map : null));
-    // 구 모드 전환 시 뱃지 표시/숨김
-    if (guBadgeOverlayRef.current)
-      guBadgeOverlayRef.current.setMap(guMode ? map : null);
-    if (dongBadgeOverlayRef.current)
-      dongBadgeOverlayRef.current.setMap(guMode || level < DONG_BADGE_HIDE_LEVEL ? null : map);
     setHoveredDong(null);
   }
 
@@ -1052,110 +1080,6 @@ export default function MapPage() {
       .finally(() => setGuLoading(false));
   }, [selectedGu, guSelectedQuarter]);
 
-  // ── 구 선택 시 지도 위 매출 뱃지 오버레이 ──
-  useEffect(() => {
-    const { kakao } = window;
-    if (!kakao || !mapInstanceRef.current) return;
-
-    // 이전 오버레이 제거
-    if (guBadgeOverlayRef.current) {
-      guBadgeOverlayRef.current.setMap(null);
-      guBadgeOverlayRef.current = null;
-    }
-    if (!selectedGu || !guData) return;
-
-    const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
-    if (!group?.centroid) return;
-
-    const { lat, lng } = group.centroid;
-    const 변동률 = guData.매출변동률;
-    const 변동색 = 변동률 == null ? "#9E9E9E" : 변동률 >= 0 ? "#34D399" : "#F87171";
-    const 변동텍스트 = 변동률 == null ? "" : `${변동률 >= 0 ? "+" : ""}${변동률}%`;
-
-    const eok = guData.총매출 / 100_000_000;
-    const 매출텍스트 = eok >= 1 ? `${eok.toFixed(0)}억` : `${Math.round(guData.총매출 / 10_000).toLocaleString()}만`;
-
-    const content = `
-      <div style="
-        background: rgba(18,18,18,0.62);
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 12px;
-        padding: 10px 14px;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        text-align: center;
-        pointer-events: none;
-        font-family: 'Pretendard', sans-serif;
-        min-width: 90px;
-        transform: translateX(-50%);
-      ">
-        <div style="font-size: 13px; font-weight: 700; color: #E8E8E8; margin-bottom: 3px;">${selectedGu}</div>
-        <div style="font-size: 17px; font-weight: 800; color: #fff; line-height: 1.2;">${매출텍스트}</div>
-        ${변동텍스트 ? `<div style="font-size: 11px; color: #9E9E9E; margin-top: 4px; margin-bottom: 1px;">전년 동분기 대비</div><div style="font-size: 14px; font-weight: 700; color: ${변동색};">${변동텍스트}</div>` : ""}
-      </div>`;
-
-    const overlay = new kakao.maps.CustomOverlay({
-      position: new kakao.maps.LatLng(lat, lng),
-      content,
-      zIndex: 5,
-    });
-    overlay.setMap(mapInstanceRef.current);
-    guBadgeOverlayRef.current = overlay;
-  }, [selectedGu, guData]);
-
-  // ── 행정동 선택 시 지도 위 매출 뱃지 오버레이 ──
-  useEffect(() => {
-    const { kakao } = window;
-    if (!kakao || !mapInstanceRef.current) return;
-
-    if (dongBadgeOverlayRef.current) {
-      dongBadgeOverlayRef.current.setMap(null);
-      dongBadgeOverlayRef.current = null;
-    }
-    if (!selectedDong || !dongData) return;
-
-    const group = polygonGroupsRef.current.find(
-      (g) => g.dongName === selectedDong.dongName && g.guName === selectedDong.guName
-    );
-    if (!group?.centroid) return;
-
-    const { lat, lng } = group.centroid;
-    const 변동률 = dongData.매출변동률;
-    const 변동색 = 변동률 == null ? "#9E9E9E" : 변동률 >= 0 ? "#34D399" : "#F87171";
-    const 변동텍스트 = 변동률 == null ? "" : `${변동률 >= 0 ? "+" : ""}${변동률}%`;
-
-    const eok = dongData.총매출 / 100_000_000;
-    const 매출텍스트 = eok >= 1 ? `${eok.toFixed(0)}억` : `${Math.round(dongData.총매출 / 10_000).toLocaleString()}만`;
-
-    const content = `
-      <div style="
-        background: rgba(18,18,18,0.62);
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 12px;
-        padding: 10px 14px;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        text-align: center;
-        pointer-events: none;
-        font-family: 'Pretendard', sans-serif;
-        min-width: 90px;
-        transform: translateX(-50%);
-      ">
-        <div style="font-size: 13px; font-weight: 700; color: #E8E8E8; margin-bottom: 3px;">${selectedDong.dongName}</div>
-        <div style="font-size: 17px; font-weight: 800; color: #fff; line-height: 1.2;">${매출텍스트}</div>
-        ${변동텍스트 ? `<div style="font-size: 11px; color: #9E9E9E; margin-top: 4px; margin-bottom: 1px;">전년 동분기 대비</div><div style="font-size: 14px; font-weight: 700; color: ${변동색};">${변동텍스트}</div>` : ""}
-      </div>`;
-
-    const overlay = new kakao.maps.CustomOverlay({
-      position: new kakao.maps.LatLng(lat, lng),
-      content,
-      zIndex: 5,
-    });
-    overlay.setMap(mapInstanceRef.current);
-    dongBadgeOverlayRef.current = overlay;
-  }, [selectedDong, dongData]);
-
-
   // ── 위치추천 마커 제거 ──
   function clearSpotMarkers() {
     spotMarkersRef.current.forEach((m) => m.setMap(null));
@@ -1602,9 +1526,9 @@ export default function MapPage() {
     }
   }
 
-  // ── 줌 >= 7 시 전체 구 매출 순위 fetch ──
+  // ── 구 매출 순위 1회 fetch (데이터 없을 때만) ──
   useEffect(() => {
-    if (zoomLevel < GU_MODE_LEVEL) { setGuAllRanking([]); return; }
+    if (guAllRanking.length > 0) return;
     const guDongsMap = guToDongsRef.current;
     if (!guDongsMap || Object.keys(guDongsMap).length === 0) return;
     fetch("http://localhost:8000/api/gu-all-ranking/", {
@@ -1615,7 +1539,7 @@ export default function MapPage() {
       .then((r) => r.json())
       .then((d) => setGuAllRanking(d.rankings || []))
       .catch(() => {});
-  }, [zoomLevel]);
+  }, [zoomLevel, guAllRanking.length]);
 
   // ── 구 패널에서 행정동 선택 → 줌인 + 선택 ──
   function handleSelectDongFromGu(dongName) {
@@ -1805,14 +1729,34 @@ export default function MapPage() {
           {/* 카드 헤더 */}
           <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #F3F4F6" }}>
             {(selectedDong || selectedGu) ? (
-              <div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 3 }}>
-                  {selectedDong ? `서울특별시 ${selectedDong.guName}` : "서울특별시"}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 3 }}>
+                    {selectedDong ? `서울특별시 ${selectedDong.guName}` : "서울특별시"}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>
+                    {selectedDong?.dongName || selectedGu}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>전체 상권 분석</div>
                 </div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>
-                  {selectedDong?.dongName || selectedGu}
-                </div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>전체 상권 분석</div>
+                {(() => {
+                  const data = selectedDong ? dongData : guData;
+                  if (!data?.총매출) return null;
+                  const 변동률 = data.매출변동률;
+                  const 매출 = data.총매출;
+                  const 매출텍스트 = 매출 >= 100_000_000 ? `${(매출 / 100_000_000).toFixed(0)}억` : `${Math.round(매출 / 10_000)}만`;
+                  return (
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: "#2563EB" }}>{매출텍스트}</div>
+                      {변동률 != null && (
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 변동률 >= 0 ? "#10B981" : "#F87171", marginTop: 2 }}>
+                          {변동률 >= 0 ? "+" : ""}{변동률}%
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1 }}>전년 동분기 대비</div>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div>
@@ -1939,38 +1883,6 @@ export default function MapPage() {
       )}
 
       {/* ── 구 매출 순위 패널 (플로팅) ── */}
-      {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && !selectedDong && !selectedGu && guAllRanking.length > 0 && (
-        <div style={{
-          position: "absolute", top: NAV_HEIGHT + 16, left: 24,
-          width: 280,
-          maxHeight: `calc(100vh - ${NAV_HEIGHT + 120}px)`,
-          overflowY: "auto",
-          background: "rgba(18,18,22,0.92)", backdropFilter: "blur(12px)",
-          borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-          zIndex: 200,
-        }}>
-          <div style={{ padding: "10px 14px 8px", fontSize: 13, fontWeight: 700, color: "#9E9E9E", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            구별 매출 순위
-          </div>
-          {guAllRanking.slice(0, 10).map((item, i) => (
-            <div
-              key={item.gu}
-              onClick={() => {
-                const group = guPolygonGroupsRef.current.find((g) => g.guName === item.gu);
-                if (group) handleSelectResult({ type: "gu", guName: item.gu, dongName: null, centroid: group.centroid });
-              }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px", cursor: "pointer", borderBottom: i < 9 ? "1px solid rgba(255,255,255,0.05)" : "none", transition: "background 0.15s" }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.1)"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-            >
-              <span style={{ fontSize: 12, fontWeight: 700, color: i < 3 ? ["#FBBF24","#9CA3AF","#CD7C54"][i] : "#6B7280", width: 18, textAlign: "center" }}>{i + 1}</span>
-              <span style={{ flex: 1, fontSize: 13, color: "#E8E8E8", fontWeight: 500 }}>{item.gu}</span>
-              <span style={{ fontSize: 12, color: "#9E9E9E" }}>{(item.총매출 / 100_000_000).toFixed(0)}억</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* ── 현재위치 버튼 ── */}
       {/* ── 상가 마커 토스트 ── */}
@@ -4473,6 +4385,22 @@ export default function MapPage() {
           </div>
         </div>
       </div>
+
+      {/* ── 구별 매출 순위 티커 바 ── */}
+      {guAllRanking.length > 0 && (
+        <div style={{
+          position: "absolute", top: NAV_HEIGHT, right: 0,
+          width: 260, height: 28,
+          background: "rgba(255,255,255,0.75)", backdropFilter: "blur(8px)",
+          borderBottom: "1px solid rgba(229,231,235,0.6)", borderLeft: "1px solid rgba(229,231,235,0.6)",
+          borderBottomLeftRadius: 8,
+          display: "flex", alignItems: "center", gap: 8, padding: "0 12px",
+          zIndex: 19,
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "#6B9FE4", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>매출 TOP</span>
+          <GuRankTicker items={guAllRanking.slice(0, 10)} />
+        </div>
+      )}
 
       {/* ── 상권 직접 그리기 결과 패널 ── */}
       {(drawingMode || customPolygonDone) && (
