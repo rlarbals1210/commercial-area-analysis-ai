@@ -2773,10 +2773,22 @@ export default function MapPage() {
                         if (!cat) return;
                         setReportCategory(cat);
                         setReportLoading(true);
-                        fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
-                          .then((r) => r.json())
-                          .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
-                          .catch(() => setReportLoading(false));
+                        if (selectedDong) {
+                          fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
+                            .then((r) => r.json())
+                            .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
+                            .catch(() => setReportLoading(false));
+                        } else if (selectedGu) {
+                          const dongs = guToDongsRef.current[selectedGu] || [];
+                          fetch("http://localhost:8000/api/gu-report/", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
+                          })
+                            .then((r) => r.json())
+                            .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportLoading(false); })
+                            .catch(() => setReportLoading(false));
+                        }
                       }}
                       style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "#E0E0E0", fontSize: 13, cursor: "pointer" }}
                     >
