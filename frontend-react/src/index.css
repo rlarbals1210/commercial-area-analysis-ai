@@ -1,3 +1,10 @@
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .gu-dropdown-list {
   scrollbar-width: thin;
   scrollbar-color: #E5E7EB transparent;
@@ -85,7 +92,7 @@ button:active {
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: none;
 }
 
 /* ── 페이지 전환 애니메이션 ── */

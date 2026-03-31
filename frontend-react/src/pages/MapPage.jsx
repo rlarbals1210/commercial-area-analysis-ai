@@ -141,6 +141,10 @@ export default function MapPage() {
   const [reportLoading, setReportLoading] = useState(false);  // 보고서 로딩
   const [reportCategoryLoading, setReportCategoryLoading] = useState(false); // 업종 심화 분석 로딩
   const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
+  const [reportRegion, setReportRegion] = useState(null);     // 보고서 생성 시점의 지역 { name, subName }
+  const reportMapStateRef = useRef(null);                      // 보고서 생성 시점의 지도 상태 { lat, lng, level }
+  const restoringReportRef = useRef(false);                    // 이전 분석 복원 중 플래그
+  const returnToReportRef = useRef(false);                     // 창업비용/AI모달 닫힐 때 보고서 복원 플래그
   const [rankType, setRankType] = useState(null); // "revenue" | "stores"
   const [availableQuarters, setAvailableQuarters] = useState([]); // 선택 가능한 분기 목록
   const [selectedQuarter, setSelectedQuarter] = useState(null);   // 선택된 분기 코드 (null=최신)
@@ -221,6 +225,7 @@ export default function MapPage() {
   // 창업비용 계산기 드릴다운 (calcActiveTab → drillGroup으로 전환)
   const [calcDrillGroup, setCalcDrillGroup] = useState(null);
   const [startupCalcOpen, setStartupCalcOpen] = useState(false); // 창업 비용 계산기
+  const [toolMenuOpen, setToolMenuOpen] = useState(false); // 상권 분석 도구 드롭다운
   const [calcIndustry, setCalcIndustry] = useState(null);       // 계산기 선택 업종
   const [calcArea, setCalcArea] = useState(33);                  // 면적(㎡)
   const [calcFloor, setCalcFloor] = useState("1층");             // 층수
@@ -275,6 +280,27 @@ export default function MapPage() {
     if (selectedDong || selectedGu) setSidebarCollapsed(false);
     if (!selectedDong) clearStreetPolygons();
   }, [selectedDong, selectedGu]);
+
+  // ── 구/동 변경 시 보고서 패널 닫기 (복원 중엔 스킵) ──
+  useEffect(() => {
+    if (restoringReportRef.current) { restoringReportRef.current = false; return; }
+    if (reportOpen) setReportOpen(false);
+  }, [selectedDong, selectedGu]);
+
+  // ── 창업비용/AI모달 닫힐 때 보고서 복원 ──
+  useEffect(() => {
+    if (!startupCalcOpen && returnToReportRef.current) {
+      returnToReportRef.current = false;
+      setReportOpen(true);
+    }
+  }, [startupCalcOpen]);
+
+  useEffect(() => {
+    if (!aiModalOpen && returnToReportRef.current) {
+      returnToReportRef.current = false;
+      setReportOpen(true);
+    }
+  }, [aiModalOpen]);
 
   // ── 줌 레벨 또는 구 선택 변경 시 구 딤처리 재적용 ──
   // applyMode의 폴리곤 옵션이 호버 등으로 덮어써질 수 있으므로 React effect에서 확실히 유지
@@ -500,7 +526,6 @@ export default function MapPage() {
           setSelectedGu(null);
           setSidebarCollapsed(false);
           setSelectedDong({ dongName, guName });
-          drawStreetPolygons(map, kakao, normalizeDongName(dongName));
         });
       });
 
@@ -587,10 +612,10 @@ export default function MapPage() {
           setSidebarCollapsed(false);
           setSelectedGu(guName);
           setSelectedDong(null); // 행정동 패널 닫기
-          // 선택한 구 중심으로 이동
+          // 선택한 구 중심으로 이동 + 구 모드 유지하면서 줌인
           const map = mapInstanceRef.current;
           if (map) {
-            map.panTo(new kakao.maps.LatLng(guCLat, guCLng));
+            smoothZoom(map, GU_MODE_LEVEL, () => map.panTo(new kakao.maps.LatLng(guCLat, guCLng)));
           }
         });
       });
@@ -835,14 +860,6 @@ export default function MapPage() {
           });
           polygon.setZIndex(10);
 
-          kakao.maps.event.addListener(polygon, "mouseover", () => {
-            if (selectedStreetRef.current?.상권코드 !== 상권_코드)
-              polygon.setOptions(POLYGON_STREET_HOVER);
-          });
-          kakao.maps.event.addListener(polygon, "mouseout", () => {
-            if (selectedStreetRef.current?.상권코드 !== 상권_코드)
-              polygon.setOptions(POLYGON_STREET_DEFAULT);
-          });
           kakao.maps.event.addListener(polygon, "click", () => {
             if (drawingModeRef.current) return;
             // 이전 선택 해제
@@ -1694,10 +1711,9 @@ export default function MapPage() {
     setSearchResults([]);
 
     if (type === "gu") {
-      // 구 모드 유지, 구 선택
+      // 구 선택 시 구 모드 유지하면서 줌인
       const doPan = () => map.panTo(new window.kakao.maps.LatLng(centroid.lat, centroid.lng));
-      if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, doPan);
-      else doPan();
+      smoothZoom(map, GU_MODE_LEVEL, doPan);
       const group = guPolygonGroupsRef.current.find((g) => g.guName === guName);
       if (group) {
         guPolygonGroupsRef.current.forEach(({ guName: gn, polygons: ps }) => {
@@ -1769,204 +1785,165 @@ export default function MapPage() {
       }} />
 
 
-      {/* ── 사이드바 접기 탭 ──
-          위치는 원래대로 (top: 50%, left: 320).
-          사이드바가 열려 있고 + 선택된 항목이 있을 때만 표시
-          → 검색만 활성화된 빈 사이드바 상태에선 버튼 숨김 */}
-      <button
-        onClick={() => { setSidebarCollapsed(true); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); setReportOpen(false); }}
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: (rankModalOpen || guRankModalOpen || dongStatsOpen || reportOpen) ? 660 : 320,
-          transform: sidebarCollapsed ? "translate(-320px, -50%)" : "translateY(-50%)",
-          transition: "transform 0.22s ease-out, opacity 0.15s, left 0.22s ease-out",
-          // 사이드바가 열려 있어도 선택된 항목이 없으면(검색만 활성화) 버튼 숨김
-          opacity: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && !searchExpanded) ? 1 : 0,
-          pointerEvents: (!sidebarCollapsed && (selectedDong || selectedGu || selectedIndustry) && !searchExpanded) ? "auto" : "none",
-          zIndex: 15,
-          width: 24,
-          height: 56,
-          background: "rgba(42,42,52,0.92)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          borderLeft: "none",
-          borderRadius: "0 10px 10px 0",
-          color: "#9E9E9E",
-          fontSize: 13,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backdropFilter: "blur(10px)",
-        }}
-        title="사이드바 접기"
-      >«</button>
-
-
-      {/* ── 왼쪽 사이드바 ── */}
-      <div data-sidebar style={{
-        ...leftSidebarStyle,
-        // 선택된 항목이 있을 때만 슬라이드 애니메이션 사용.
-        // 검색만 활성화된 경우(선택 없음)는 애니메이션 없이 즉시 표시/숨김.
-        transform: (sidebarCollapsed && (selectedDong || selectedGu))
-          ? "translateX(-320px)" : "translateX(0)",
-        opacity: (sidebarCollapsed && !selectedDong && !selectedGu) ? 0 : 1,
-        transition: (selectedDong || selectedGu)
-          ? "transform 0.22s ease-out, opacity 0.15s"
-          : "none",
-        pointerEvents: drawingMode ? "none" : undefined,
-        ...((!selectedDong && !selectedGu) && {
-          background: "transparent",
-          borderRight: "none",
-          backdropFilter: "none",
-          boxShadow: "none",
-          overflow: sidebarCollapsed ? "hidden" : "visible",
-        }),
-      }}>
-
-        {/* ── 스크롤 콘텐츠 영역 ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", display: (selectedDong || selectedGu) ? "block" : "none" }}>
-
-          {/* ── 보고서 생성 UI ── */}
-          {(selectedDong || selectedGu) && (
-            <div className="anim-slide-in-left" style={{ paddingTop: 24 }}>
-              {/* 지역명 헤더 */}
-              {selectedDong && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong.guName}</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong.dongName}</div>
+      {/* ── 플로팅 보고서 카드 (항상 표시, 보고서 열리면 숨김) ── */}
+      {!reportOpen && (
+        <div
+          className="anim-pop-in"
+          style={{
+            position: "absolute",
+            top: NAV_HEIGHT + 16,
+            left: 16,
+            width: 300,
+            background: "#fff",
+            borderRadius: 14,
+            boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
+            border: "1px solid #E5E7EB",
+            zIndex: 14,
+            overflow: "hidden",
+          }}
+        >
+          {/* 카드 헤더 */}
+          <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #F3F4F6" }}>
+            {(selectedDong || selectedGu) ? (
+              <div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 3 }}>
+                  {selectedDong ? `서울특별시 ${selectedDong.guName}` : "서울특별시"}
                 </div>
-              )}
-              {selectedGu && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>
+                  {selectedDong?.dongName || selectedGu}
                 </div>
-              )}
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>전체 상권 분석</div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 4 }}>상권분석</div>
+                <div style={{ fontSize: 12, color: "#9CA3AF" }}>지도에서 구 또는 행정동을 선택하세요</div>
+              </div>
+            )}
+          </div>
 
-              <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 20 }} />
+          {/* 보고서 생성 버튼 */}
+          <div style={{ padding: "12px 18px 16px" }}>
+            <button
+              disabled={!selectedDong && !selectedGu}
+              onClick={() => {
+                setReportOpen(true);
+                setReportData(null);
+                setReportLoading(true);
+                setReportCategory("");
+                if (selectedDong) {
+                  setReportRegion({ name: selectedDong.dongName, subName: `서울특별시 ${selectedDong.guName}` });
+                } else if (selectedGu) {
+                  setReportRegion({ name: selectedGu, subName: "서울특별시" });
+                }
+                const map = mapInstanceRef.current;
+                if (map) {
+                  const c = map.getCenter();
+                  reportMapStateRef.current = {
+                    lat: c.getLat(), lng: c.getLng(), level: map.getLevel(),
+                    selectedGu: selectedGu || null,
+                    selectedDong: selectedDong || null,
+                    dongGroup: selectedGroupRef.current || null,
+                    guGroup: selectedGuGroupRef.current || null,
+                  };
+                }
+                if (selectedDong) {
+                  const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
+                  fetch(url)
+                    .then((r) => r.json())
+                    .then((d) => { setReportData({ ...d, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
+                    .catch(() => setReportLoading(false));
+                } else if (selectedGu) {
+                  const dongs = guToDongsRef.current[selectedGu] || [];
+                  fetch("http://localhost:8000/api/gu-report/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
+                  })
+                    .then((r) => r.json())
+                    .then((d) => { setReportData({ ...d, _gu: selectedGu }); setReportLoading(false); })
+                    .catch(() => setReportLoading(false));
+                }
+              }}
+              style={{
+                width: "100%", padding: "11px 0",
+                background: (selectedDong || selectedGu) ? "#111827" : "#E5E7EB",
+                color: (selectedDong || selectedGu) ? "#fff" : "#9CA3AF",
+                border: "none", borderRadius: 9,
+                fontSize: 14, fontWeight: 700,
+                cursor: (selectedDong || selectedGu) ? "pointer" : "default",
+              }}
+              onMouseEnter={(e) => { if (selectedDong || selectedGu) e.currentTarget.style.background = "#374151"; }}
+              onMouseLeave={(e) => { if (selectedDong || selectedGu) e.currentTarget.style.background = "#111827"; }}
+            >
+              상권분석 하기
+            </button>
 
-              {/* 업종 선택 */}
-              {(selectedDong || selectedGu) && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 8 }}>
-                    업종 선택 <span style={{ fontSize: 11, color: "#6B7280" }}>(선택사항 · 업종 선택 시 심화 분석 포함)</span>
-                  </div>
-                  <select
-                    value={reportCategory}
-                    onChange={(e) => setReportCategory(e.target.value)}
-                    style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#E0E0E0", fontSize: 13, cursor: "pointer", outline: "none" }}
-                  >
-                    <option value="" style={{ background: "#1E1E2E" }}>전체 상권 분석</option>
-                    {Object.keys(STARTUP_COSTS).map((cat) => (
-                      <option key={cat} value={cat} style={{ background: "#1E1E2E" }}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* 보고서 생성 버튼 */}
+            {/* 구 선택 시 행정동 보기 버튼 (행정동 선택 안 된 경우만) */}
+            {selectedGu && !selectedDong && (
               <button
+                style={{ width: "100%", marginTop: 8, padding: "8px 0", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
                 onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (!map) return;
+                  const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
+                  if (group) smoothZoom(map, 6, () => map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng)));
+                }}
+              >행정동 보기</button>
+            )}
+
+            {/* 구 보기 버튼 (행정동 선택 시만) */}
+            {selectedDong && (
+              <button
+                style={{ width: "100%", marginTop: 8, padding: "8px 0", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (!map) return;
+                  setSelectedGu(selectedDong.guName);
+                  const panSeoul = () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
+                  if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, panSeoul);
+                  else panSeoul();
+                }}
+              >구 보기</button>
+            )}
+
+            {/* 이전 분석 보기 버튼 (reportData가 있을 때만) */}
+            {reportData && (
+              <button
+                style={{ width: "100%", marginTop: 8, padding: "8px 0", background: "none", color: "#6B7280", border: "1px solid #E5E7EB", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#F9FAFB"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                onClick={() => {
+                  const s = reportMapStateRef.current;
+                  if (!s) { setReportOpen(true); return; }
+                  // 선택 상태 복원 (effect가 reportOpen 닫지 않도록 플래그)
+                  restoringReportRef.current = true;
+                  setSelectedGu(s.selectedGu);
+                  setSelectedDong(s.selectedDong);
+                  selectedGroupRef.current = s.dongGroup;
+                  selectedGuGroupRef.current = s.guGroup;
                   setReportOpen(true);
-                  setReportData(null);
-                  setReportLoading(true);
-                  setRankModalOpen(false);
-                  setDongStatsOpen(false);
-                  if (selectedDong) {
-                    const url = reportCategory
-                      ? `http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(reportCategory)}`
-                      : `http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
-                    fetch(url)
-                      .then((r) => r.json())
-                      .then((d) => { setReportData({ ...d, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
-                      .catch(() => setReportLoading(false));
-                  } else if (selectedGu) {
-                    const dongs = guToDongsRef.current[selectedGu] || [];
-                    fetch("http://localhost:8000/api/gu-report/", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
-                    })
-                      .then((r) => r.json())
-                      .then((d) => { setReportData({ ...d, _gu: selectedGu }); setReportLoading(false); })
-                      .catch(() => setReportLoading(false));
+                  const map = mapInstanceRef.current;
+                  if (map) {
+                    smoothZoom(map, s.level, () => map.panTo(new window.kakao.maps.LatLng(s.lat, s.lng)));
                   }
                 }}
-                style={{ width: "100%", padding: "14px 0", background: "linear-gradient(135deg, #10B981, #059669)", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "opacity 0.2s" }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = "0.85"}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
-              >
-                📋 보고서 생성하기
-              </button>
-
-              <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center", marginTop: 10, lineHeight: 1.6 }}>
-                AI가 상권 데이터를 분석하여<br />보고서를 작성해 드립니다
-              </div>
-
-              {/* 구 선택 시 — 행정동 보기 버튼 */}
-              {selectedGu && (
-                <button
-                  style={{ width: "100%", marginTop: 12, padding: "11px 0", background: "rgba(59,130,246,0.2)", color: "#93B8EE", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
-                  onClick={() => {
-                    const map = mapInstanceRef.current;
-                    if (!map) return;
-                    const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
-                    if (group) smoothZoom(map, 6, () => map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng)));
-                  }}
-                >행정동 보기</button>
-              )}
-
-              {/* 행정동 선택 시 — 구 보기 버튼 */}
-              {selectedDong && (
-                <button
-                  style={{ width: "100%", marginTop: 12, padding: "11px 0", background: "rgba(255,255,255,0.05)", color: "#9E9E9E", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: "pointer" }}
-                  onClick={() => {
-                    const map = mapInstanceRef.current;
-                    if (!map) return;
-                    setSelectedGu(selectedDong.guName);
-                    const panSeoul = () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
-                    if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, panSeoul);
-                    else panSeoul();
-                  }}
-                >구 보기</button>
-              )}
-            </div>
-          )}
-
-          {/* 구별 매출 순위 - 선택 없을 때만 표시 */}
-          {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && guAllRanking.length > 0 && !selectedGu && !selectedDong && (
-            <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 8 }}>구별 매출 순위</div>
-              {guAllRanking.slice(0, 10).map((item, i) => (
-                <div
-                  key={item.gu}
-                  onClick={() => {
-                    const group = guPolygonGroupsRef.current.find((g) => g.guName === item.gu);
-                    if (group) handleSelectResult({ type: "gu", guName: item.gu, dongName: null, centroid: group.centroid });
-                  }}
-                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px", cursor: "pointer", borderBottom: i < 9 ? "1px solid rgba(255,255,255,0.05)" : "none", borderRadius: 6, transition: "background 0.15s" }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.1)"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                >
-                  <span style={{ fontSize: 12, fontWeight: 700, color: i < 3 ? ["#FBBF24","#9CA3AF","#CD7C54"][i] : "#6B7280", width: 18, textAlign: "center" }}>{i + 1}</span>
-                  <span style={{ flex: 1, fontSize: 13, color: "#E8E8E8", fontWeight: 500 }}>{item.gu}</span>
-                  <span style={{ fontSize: 12, color: "#9E9E9E" }}>{(item.총매출 / 100_000_000).toFixed(0)}억</span>
-                </div>
-              ))}
-            </div>
-          )}
-
+              >← 이전 분석 보기</button>
+            )}
+          </div>
         </div>
+      )}
 
-      </div>
-
-      {/* ── 구 매출 순위 패널 (사이드바 비활성 시 플로팅) ── */}
-      {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && sidebarCollapsed && guAllRanking.length > 0 && (
+      {/* ── 구 매출 순위 패널 (플로팅) ── */}
+      {zoomLevel >= GU_MODE_LEVEL && !searchExpanded && !selectedDong && !selectedGu && guAllRanking.length > 0 && (
         <div style={{
-          position: "absolute", top: 16, left: 24,
+          position: "absolute", top: NAV_HEIGHT + 16, left: 24,
           width: 280,
-          maxHeight: "calc(100vh - 120px)",
+          maxHeight: `calc(100vh - ${NAV_HEIGHT + 120}px)`,
           overflowY: "auto",
           background: "rgba(18,18,22,0.92)", backdropFilter: "blur(12px)",
           borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)",
@@ -2376,7 +2353,7 @@ export default function MapPage() {
 
       {/* ── 호버 툴팁 (사이드바 오른쪽 하단) ── */}
       {hoveredDong && (
-        <div className="anim-slide-up" style={{ ...tooltipStyle, left: sidebarCollapsed ? 16 : 340 }}>
+        <div className="anim-slide-up" style={{ ...tooltipStyle, left: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hoveredDong.dongName ? 6 : 0 }}>
             <span style={tooltipLabel}>구</span>
             <span style={{ fontWeight: 700, color: "#E8E8E8", fontSize: 17 }}>{hoveredDong.guName}</span>
@@ -2403,7 +2380,7 @@ export default function MapPage() {
         return (
           <div
             className="anim-panel-slide-in"
-            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out" }}
+            style={{ ...secondPanelStyle, left: 0 }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
               <div>
@@ -2465,7 +2442,7 @@ export default function MapPage() {
         return (
           <div
             className="anim-panel-slide-in"
-            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out" }}
+            style={{ ...secondPanelStyle, left: 0 }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
               <div>
@@ -2579,7 +2556,7 @@ export default function MapPage() {
         return (
           <div
             className="anim-panel-slide-in"
-            style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out", overflowY: "auto" }}
+            style={{ ...secondPanelStyle, left: 0, overflowY: "auto" }}
           >
             {/* 헤더 */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexShrink: 0 }}>
@@ -2655,253 +2632,342 @@ export default function MapPage() {
         );
       })()}
 
-      {/* ── 상권 보고서 패널 ── */}
+      {/* ── 상권 보고서 패널 (왼쪽, 카드 확장 느낌) ── */}
       {reportOpen && (
         <div
-          className="anim-panel-slide-in"
-          style={{ ...secondPanelStyle, transform: sidebarCollapsed ? "translateX(-320px)" : "translateX(0)", transition: "transform 0.22s ease-out", overflowY: "auto" }}
+          className="anim-panel-slide-in no-scrollbar"
+          style={{
+            position: "absolute",
+            top: NAV_HEIGHT,
+            left: 0,
+            width: 400,
+            height: `calc(100vh - ${NAV_HEIGHT}px)`,
+            background: "#F8F9FA",
+            borderRight: "1px solid #E5E7EB",
+            boxShadow: "4px 0 24px rgba(0,0,0,0.10)",
+            overflowY: "auto",
+            zIndex: 14,
+            display: "flex",
+            flexDirection: "column",
+          }}
         >
-          {/* 헤더 */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexShrink: 0 }}>
-            <div>
-              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong?.guName}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8" }}>📋 상권 보고서</div>
+          {/* 문서 헤더 */}
+          <div style={{
+            padding: "20px 28px 16px",
+            borderBottom: "2px solid #111827",
+            background: "#fff",
+            flexShrink: 0,
+          }}>
+            {/* 뒤로가기 */}
+            <button
+              onClick={() => setReportOpen(false)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "none", border: "none", cursor: "pointer",
+                color: "#6B7280", fontSize: 12, fontWeight: 600,
+                padding: 0, marginBottom: 12,
+              }}
+            >
+              ← 돌아가기
+            </button>
+            <div style={{ fontSize: 11, color: "#9CA3AF", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
+              상권분석 결과
+              {reportData?.quarter && (
+                <span style={{ marginLeft: 10, color: "#9CA3AF" }}>
+                  {String(reportData.quarter).slice(0, 4)}년 {String(reportData.quarter).slice(4)}분기
+                </span>
+              )}
             </div>
-            <button onClick={() => setReportOpen(false)} style={closeBtnStyle}>✕</button>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>
+              {reportRegion?.name}
+            </div>
+            <div style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>{reportRegion?.subName}</div>
           </div>
 
-          {reportLoading ? (
-            <div style={{ textAlign: "center", padding: "60px 0", color: "#9E9E9E" }}>
-              <div style={{ fontSize: 28, marginBottom: 12 }}>✨</div>
-              <div style={{ fontSize: 14 }}>AI가 보고서를 작성하는 중...</div>
-            </div>
-          ) : reportData ? (() => {
-            const ai = reportData.ai_descriptions || {};
-            const d = reportData.data || {};
-            const cat = d.category_data;
-            const fmtEok = (v) => !v ? "0" : v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : `${Math.round(v / 10_000)}만`;
-            const fmtNum = (v) => v ? v.toLocaleString() : "0";
-            const SECTION_COLOR = "#10B981";
-
-            const SectionTitle = ({ icon, title }) => (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 16 }}>{icon}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: SECTION_COLOR }}>{title}</span>
+          {/* 본문 */}
+          <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "24px 28px 48px" }}>
+            {reportLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 300, gap: 16 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: "50%",
+                  border: "3px solid #E5E7EB",
+                  borderTop: "3px solid #111827",
+                  animation: "spin 0.8s linear infinite",
+                }} />
+                <div style={{ fontSize: 14, color: "#6B7280" }}>AI가 보고서를 작성하는 중입니다...</div>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
               </div>
-            );
+            ) : reportData ? (() => {
+              const ai = reportData.ai_descriptions || {};
+              const d = reportData.data || {};
+              const cat = d.category_data;
+              const fmtEok = (v) => !v ? "0" : v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : `${Math.round(v / 10_000)}만`;
+              const fmtNum = (v) => v ? v.toLocaleString() : "0";
+              const fmtPop = (v) => !v ? "0" : v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}억명` : v >= 10_000 ? `${Math.round(v / 10_000)}만명` : `${v.toLocaleString()}명`;
 
-            const AiText = ({ text }) => text ? (
-              <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.7, background: "rgba(16,185,129,0.06)", borderLeft: "3px solid rgba(16,185,129,0.5)", padding: "10px 12px", borderRadius: "0 8px 8px 0", marginBottom: 16 }}>
-                {text}
-              </div>
-            ) : null;
-
-            const Stat = ({ label, value, sub }) => (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                <span style={{ fontSize: 12, color: "#9E9E9E" }}>{label}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#E0E0E0" }}>{value}{sub && <span style={{ fontSize: 11, color: "#9E9E9E", marginLeft: 4 }}>{sub}</span>}</span>
-              </div>
-            );
-
-            const Bar = ({ label, ratio, color }) => (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                  <span style={{ fontSize: 12, color: "#9E9E9E" }}>{label}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color }}>{ratio}%</span>
+              const SectionLabel = ({ num, title }) => (
+                <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", letterSpacing: "0.05em", minWidth: 24 }}>{num}</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{title}</span>
                 </div>
-                <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
-                  <div style={{ height: "100%", width: `${ratio}%`, background: color, borderRadius: 3, transition: "width 0.4s" }} />
-                </div>
-              </div>
-            );
+              );
 
-            return (
-              <div>
-                {/* 분기 배지 */}
-                {reportData.quarter && (
-                  <div style={{ fontSize: 11, color: "#6B7280", background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "4px 10px", display: "inline-block", marginBottom: 20 }}>
-                    {String(reportData.quarter).slice(0,4)}년 {String(reportData.quarter).slice(4)}분기 기준
+              const AiText = ({ text }) => text ? (
+                <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 20px 36px", wordBreak: "keep-all" }}>
+                  {text}
+                </p>
+              ) : null;
+
+              const KeyFigure = ({ label, value, sub, accent, exact }) => (
+                <div style={{ marginBottom: 0, minWidth: 0 }} title={exact ? `${label}: ${exact}` : undefined}>
+                  <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: accent || "#111827", lineHeight: 1.2, wordBreak: "break-all" }}>{value}</div>
+                  {sub && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{sub}</div>}
+                </div>
+              );
+
+              const InlineBar = ({ label, ratio, color, valueLabel }) => (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, color: "#6B7280", width: 64, flexShrink: 0 }}>{label}</span>
+                  <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${ratio}%`, background: color, borderRadius: 3, transition: "width 0.5s" }} />
                   </div>
-                )}
-
-                {/* 섹션 1: 상권 개요 */}
-                <SectionTitle icon="🏙️" title="상권 개요 및 입지 특성" />
-                <AiText text={ai["상권_개요"]} />
-                <Stat label="총매출" value={fmtEok(d.총매출)} sub={`서울 ${d.전체동수}개 동 중 ${d.순위}위`} />
-                <Stat label="총유동인구" value={`${fmtNum(d.총유동인구)}명`} />
-                <Stat label="주거인구" value={`${fmtNum(d.주거인구)}명`} />
-                <Stat label="직장인구" value={`${fmtNum(d.직장인구)}명`} />
-
-                <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "16px 0" }} />
-
-                {/* 섹션 2: 인기 업종 */}
-                <SectionTitle icon="🏆" title="인기 업종" />
-                <AiText text={ai["인기_업종"]} />
-                {(d.top_업종 || []).map((item, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: i < 3 ? "#F59E0B" : "#6B7280", minWidth: 20 }}>{i + 1}위</span>
-                      <span style={{ fontSize: 13, color: "#E0E0E0" }}>{item.업종}</span>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#E0E0E0" }}>{fmtEok(item.매출)}</div>
-                      {item.점포수 > 0 && <div style={{ fontSize: 11, color: "#6B7280" }}>{fmtNum(item.점포수)}개 점포</div>}
-                    </div>
-                  </div>
-                ))}
-
-                <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "16px 0" }} />
-
-                {/* 섹션 3: 유동인구 분석 */}
-                <SectionTitle icon="👥" title="유동인구 · 결제고객 분석" />
-                <AiText text={ai["유동인구_분석"]} />
-                <Bar label="남성 결제" ratio={d.성별?.남성비율 || 0} color="#3B82F6" />
-                <Bar label="여성 결제" ratio={d.성별?.여성비율 || 0} color="#EC4899" />
-                <div style={{ marginTop: 12 }}>
-                  <Bar label="주중 매출" ratio={d.주중주말?.주중비율 || 0} color="#6366F1" />
-                  <Bar label="주말 매출" ratio={d.주중주말?.주말비율 || 0} color="#F59E0B" />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", width: 36, textAlign: "right" }}>{valueLabel}</span>
                 </div>
+              );
 
-                {/* 업종 선택 (2단계) */}
-                {!cat && (
-                  <>
-                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "20px 0 14px" }} />
-                    <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 8 }}>업종을 선택하면 심화 분석을 볼 수 있습니다</div>
-                    {reportCategoryLoading ? (
-                      <div style={{ textAlign: "center", padding: "24px 0", color: "#9E9E9E" }}>
-                        <div style={{ fontSize: 20, marginBottom: 8 }}>✨</div>
-                        <div style={{ fontSize: 13 }}>업종 심화 분석 중...</div>
+              const Divider = () => (
+                <div style={{ borderTop: "1px solid #E5E7EB", margin: "28px 0" }} />
+              );
+
+              return (
+                <div>
+                  {/* 섹션 01: 상권 개요 */}
+                  <SectionLabel num="01" title="상권 개요 및 입지 특성" />
+                  <AiText text={ai["상권_개요"]} />
+
+                  {/* 핵심 지표 그리드 */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 24px", marginLeft: 24, marginBottom: 20, padding: "20px 20px", background: "#fff", borderRadius: 10, border: "1px solid #E5E7EB" }}>
+                    <KeyFigure label="총매출" value={fmtEok(d.총매출)} sub={d.순위 ? `서울 ${d.전체동수}개 동 중 ${d.순위}위` : undefined} accent="#111827" />
+                    <KeyFigure label="총유동인구" value={fmtPop(d.총유동인구)} exact={d.총유동인구?.toLocaleString()} />
+                    <KeyFigure label="주거인구" value={fmtPop(d.주거인구)} exact={d.주거인구?.toLocaleString()} />
+                    <KeyFigure label="직장인구" value={fmtPop(d.직장인구)} exact={d.직장인구?.toLocaleString()} />
+                  </div>
+
+                  <Divider />
+
+                  {/* 섹션 02: 인기 업종 */}
+                  <SectionLabel num="02" title="인기 업종 현황" />
+                  <AiText text={ai["인기_업종"]} />
+                  <div style={{ marginLeft: 24, marginBottom: 20 }}>
+                    {(d.top_업종 || []).map((item, i) => (
+                      <div key={i} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "10px 0",
+                        borderBottom: i < (d.top_업종.length - 1) ? "1px solid #F3F4F6" : "none",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, minWidth: 22, height: 22,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            borderRadius: "50%",
+                            background: i === 0 ? "#111827" : i === 1 ? "#6B7280" : i === 2 ? "#D1A05C" : "#F3F4F6",
+                            color: i < 3 ? "#fff" : "#9CA3AF",
+                          }}>{i + 1}</span>
+                          <span style={{ fontSize: 14, color: "#111827", fontWeight: 500 }}>{item.업종}</span>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{fmtEok(item.매출)}</div>
+                          {item.점포수 > 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>{fmtNum(item.점포수)}개 점포</div>}
+                        </div>
                       </div>
-                    ) : (
-                    <select
-                      value={reportCategory}
-                      onChange={(e) => {
-                        const cat = e.target.value;
-                        if (!cat) return;
-                        setReportCategory(cat);
-                        setReportCategoryLoading(true);
-                        if (selectedDong) {
-                          fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
-                            .then((r) => r.json())
-                            .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportCategoryLoading(false); })
-                            .catch(() => setReportCategoryLoading(false));
-                        } else if (selectedGu) {
-                          const dongs = guToDongsRef.current[selectedGu] || [];
-                          fetch("http://localhost:8000/api/gu-report/", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
-                          })
-                            .then((r) => r.json())
-                            .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportCategoryLoading(false); })
-                            .catch(() => setReportCategoryLoading(false));
-                        }
-                      }}
-                      style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "#E0E0E0", fontSize: 13, cursor: "pointer" }}
-                    >
-                      <option value="">업종 선택...</option>
-                      {(d.top_업종 || []).map((item) => (
-                        <option key={item.업종} value={item.업종}>{item.업종}</option>
-                      ))}
-                    </select>
-                    )}
-                  </>
-                )}
+                    ))}
+                  </div>
 
-                {/* 2단계: 업종 선택 시 추가 섹션 */}
-                {cat && (
-                  <>
-                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "16px 0" }} />
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B" }}>📌 {cat.category} 심화 분석</div>
-                      <button onClick={() => {
-                        setReportCategory("");
-                        setReportLoading(true);
-                        if (selectedDong) {
-                          fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+                  <Divider />
+
+                  {/* 섹션 03: 유동인구·소비 분석 */}
+                  <SectionLabel num="03" title="유동인구 · 소비 분석" />
+                  <AiText text={ai["유동인구_분석"]} />
+                  <div style={{ marginLeft: 24, marginBottom: 20 }}>
+                    <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 10 }}>결제 고객 성별</div>
+                    <InlineBar label="남성" ratio={d.성별?.남성비율 || 0} color="#3B82F6" valueLabel={`${d.성별?.남성비율 || 0}%`} />
+                    <InlineBar label="여성" ratio={d.성별?.여성비율 || 0} color="#EC4899" valueLabel={`${d.성별?.여성비율 || 0}%`} />
+                    <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginTop: 16, marginBottom: 10 }}>주중 / 주말 매출</div>
+                    <InlineBar label="주중 (월~금)" ratio={d.주중주말?.주중비율 || 0} color="#6366F1" valueLabel={`${d.주중주말?.주중비율 || 0}%`} />
+                    <InlineBar label="주말 (토~일)" ratio={d.주중주말?.주말비율 || 0} color="#0EA5E9" valueLabel={`${d.주중주말?.주말비율 || 0}%`} />
+                  </div>
+
+                  {/* 업종 심화 분석 선택 */}
+                  {!cat && (
+                    <>
+                      <Divider />
+                      <SectionLabel num="04" title="업종별 심화 분석" />
+                      <p style={{ fontSize: 13, color: "#6B7280", marginLeft: 24, marginBottom: 14 }}>
+                        업종을 선택하면 소비 패턴, 비용·수익 통계, AI 등급을 확인할 수 있습니다.
+                      </p>
+                      <select
+                        value={reportCategory}
+                        onChange={(e) => {
+                          const cat = e.target.value;
+                          if (!cat) return;
+                          setReportCategory(cat);
+                          setReportLoading(true);
+                          fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
                             .then((r) => r.json())
                             .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
                             .catch(() => setReportLoading(false));
-                        } else if (selectedGu) {
-                          const dongs = guToDongsRef.current[selectedGu] || [];
-                          fetch("http://localhost:8000/api/gu-report/", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ gu: selectedGu, dongs }),
-                          })
-                            .then((r) => r.json())
-                            .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportLoading(false); })
-                            .catch(() => setReportLoading(false));
-                        }
-                      }} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 초기화</button>
-                    </div>
+                        }}
+                        style={{ marginLeft: 24, width: "calc(100% - 24px)", padding: "10px 12px", background: "#fff", border: "1px solid #D1D5DB", borderRadius: 8, color: "#374151", fontSize: 13, cursor: "pointer", outline: "none" }}
+                      >
+                        <option value="">업종 선택...</option>
+                        {(d.top_업종 || []).map((item) => (
+                          <option key={item.업종} value={item.업종}>{item.업종}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
 
-                    {/* 섹션 4: 소비 패턴 */}
-                    <SectionTitle icon="⏰" title="시간대 · 소비 패턴" />
-                    <AiText text={ai["소비_패턴"]} />
-                    {(() => {
-                      const 시간대 = d.시간대 || {};
-                      const items = [
-                        { label: "새벽", key: "새벽(0~6시)" },
-                        { label: "오전", key: "오전(6~11시)" },
-                        { label: "점심", key: "점심(11~14시)" },
-                        { label: "오후", key: "오후(14~17시)" },
-                        { label: "저녁", key: "저녁(17~21시)" },
-                        { label: "심야", key: "심야(21~24시)" },
-                      ];
-                      const max = Math.max(...items.map((t) => 시간대[t.key] || 0), 1);
-                      return (
-                        <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 80, marginBottom: 8 }}>
-                          {items.map(({ label, key }) => {
-                            const v = 시간대[key] || 0;
-                            const h = Math.round((v / max) * 100);
-                            const isTop = v === max;
-                            return (
-                              <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                                <div style={{ width: "100%", height: 60, display: "flex", alignItems: "flex-end" }}>
-                                  <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#10B981" : "rgba(16,185,129,0.35)", borderRadius: "3px 3px 0 0" }} />
-                                </div>
-                                <div style={{ fontSize: 10, color: "#9E9E9E", textAlign: "center" }}>{label}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                    <Stat label="20대 매출 비율" value={`${cat["20대매출비율"]}%`} />
-
-                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "14px 0" }} />
-
-                    {/* 섹션 5: 비용과 수익 */}
-                    <SectionTitle icon="💰" title="비용과 수익 통계" />
-                    <AiText text={ai["비용_수익"]} />
-                    <Stat label="점포당 월 평균 매출" value={fmtEok(cat.점포당매출)} />
-                    <Stat label="점포 수" value={`${fmtNum(cat.점포수)}개`} />
-                    <Stat label="프랜차이즈 비율" value={`${cat.프랜차이즈비율}%`} />
-                    <Stat label="개업률" value={`${cat.개업률}%`} />
-                    <Stat label="폐업률" value={`${cat.폐업률}%`} />
-
-                    <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "14px 0" }} />
-
-                    {/* 섹션 6: 기타 통계 */}
-                    <SectionTitle icon="📊" title="기타 통계" />
-                    <AiText text={ai["기타_통계"]} />
-                    {cat.AI등급 && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                        <span style={{ fontSize: 12, color: "#9E9E9E" }}>AI 등급</span>
-                        <span style={{ fontSize: 18, fontWeight: 800, color: cat.AI등급 === "A" ? "#10B981" : cat.AI등급 === "B" ? "#F59E0B" : "#9E9E9E" }}>{cat.AI등급}</span>
-                        {cat.성장확률 != null && <span style={{ fontSize: 12, color: "#9E9E9E" }}>성장확률 {cat.성장확률}%</span>}
+                  {/* 심화 분석 섹션 */}
+                  {cat && (
+                    <>
+                      <Divider />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                        <SectionLabel num="04" title={`${cat.category} 심화 분석`} />
+                        <button onClick={() => {
+                          setReportCategory("");
+                          setReportLoading(true);
+                          if (selectedDong) {
+                            fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+                              .then((r) => r.json())
+                              .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
+                              .catch(() => setReportLoading(false));
+                          } else if (selectedGu) {
+                            const dongs = guToDongsRef.current[selectedGu] || [];
+                            fetch("http://localhost:8000/api/gu-report/", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ gu: selectedGu, dongs }),
+                            })
+                              .then((r) => r.json())
+                              .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportLoading(false); })
+                              .catch(() => setReportLoading(false));
+                          }
+                        }} style={{ fontSize: 11, color: "#9CA3AF", background: "none", border: "none", cursor: "pointer", marginBottom: 14, flexShrink: 0 }}>업종 초기화</button>
                       </div>
-                    )}
-                    {cat.업종내순위 && <Stat label="업종 내 순위" value={`${cat.업종내순위}위`} sub={`/ 전체 ${cat.업종내전체동수}개 동`} />}
-                    <Stat label="경쟁 강도" value={`${fmtNum(Math.round(cat.경쟁강도))}개 점포`} />
-                    <Stat label="업종 포화도" value={`${(cat.업종포화도 * 100).toFixed(1)}%`} />
-                  </>
-                )}
-                <div style={{ height: 40 }} />
-              </div>
-            );
-          })() : null}
+                      <AiText text={ai["소비_패턴"]} />
+
+                      {/* 시간대 바 차트 */}
+                      {(() => {
+                        const 시간대 = d.시간대 || {};
+                        const items = [
+                          { label: "새벽", key: "새벽(0~6시)" },
+                          { label: "오전", key: "오전(6~11시)" },
+                          { label: "점심", key: "점심(11~14시)" },
+                          { label: "오후", key: "오후(14~17시)" },
+                          { label: "저녁", key: "저녁(17~21시)" },
+                          { label: "심야", key: "심야(21~24시)" },
+                        ];
+                        const max = Math.max(...items.map((t) => 시간대[t.key] || 0), 1);
+                        return (
+                          <div style={{ marginLeft: 24, marginBottom: 24 }}>
+                            <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 12 }}>시간대별 매출</div>
+                            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 90 }}>
+                              {items.map(({ label, key }) => {
+                                const v = 시간대[key] || 0;
+                                const h = Math.round((v / max) * 100);
+                                const isTop = v === max;
+                                return (
+                                  <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                                    <div style={{ width: "100%", height: 68, display: "flex", alignItems: "flex-end" }}>
+                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#111827" : "#D1D5DB", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                    </div>
+                                    <div style={{ fontSize: 10, color: "#9CA3AF", textAlign: "center" }}>{label}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      <Divider />
+                      <SectionLabel num="05" title="비용 · 수익 통계" />
+                      <AiText text={ai["비용_수익"]} />
+                      <div style={{ marginLeft: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 16, padding: "20px", background: "#fff", borderRadius: 10, border: "1px solid #E5E7EB" }}>
+                        <KeyFigure label="점포당 월 평균 매출" value={fmtEok(cat.점포당매출)} />
+                        <KeyFigure label="점포 수" value={`${fmtNum(cat.점포수)}개`} />
+                        <KeyFigure label="프랜차이즈 비율" value={`${cat.프랜차이즈비율}%`} />
+                        <KeyFigure label="개업률 / 폐업률" value={`${cat.개업률}% / ${cat.폐업률}%`} />
+                      </div>
+                      <div style={{ marginLeft: 24, marginBottom: 20 }}>
+                        <button
+                          onClick={() => { setReportOpen(false); setStartupCalcOpen(true); }}
+                          style={{ width: "100%", padding: "10px 0", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                        >창업비용 계산하러가기 →</button>
+                      </div>
+
+                      <Divider />
+                      <SectionLabel num="06" title="AI 분석 종합" />
+                      <AiText text={ai["기타_통계"]} />
+                      <div style={{ marginLeft: 24, display: "flex", alignItems: "center", gap: 20, padding: "20px", background: "#fff", borderRadius: 10, border: "1px solid #E5E7EB", marginBottom: 20 }}>
+                        {cat.AI등급 && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>AI 등급</div>
+                            <div style={{
+                              fontSize: 36, fontWeight: 900, lineHeight: 1,
+                              color: cat.AI등급 === "A" ? "#059669" : cat.AI등급 === "B" ? "#D97706" : "#6B7280"
+                            }}>{cat.AI등급}</div>
+                            {cat.성장확률 != null && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>성장확률 {cat.성장확률}%</div>}
+                          </div>
+                        )}
+                        <div style={{ flex: 1, borderLeft: "1px solid #E5E7EB", paddingLeft: 20 }}>
+                          {cat.업종내순위 && (
+                            <div style={{ marginBottom: 8 }}>
+                              <div style={{ fontSize: 11, color: "#9CA3AF" }}>업종 내 순위</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{cat.업종내순위}위 <span style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 400 }}>/ 전체 {cat.업종내전체동수}개 동</span></div>
+                            </div>
+                          )}
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 11, color: "#9CA3AF" }}>경쟁 강도</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{fmtNum(Math.round(cat.경쟁강도))}개 점포</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: "#9CA3AF" }}>업종 포화도</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{(cat.업종포화도 * 100).toFixed(1)}%</div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <Divider />
+                  <SectionLabel num="05" title="창업비용 계산기" />
+                  <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 12px 36px", wordBreak: "keep-all" }}>
+                    업종·면적·층수·직원 수를 입력하면 초기 창업비용과 월 운영비용을 자동으로 계산해드립니다.
+                  </p>
+                  <div style={{ marginLeft: 24, marginBottom: 20 }}>
+                    <button
+                      onClick={() => { returnToReportRef.current = true; setReportOpen(false); setStartupCalcOpen(true); }}
+                      style={{ width: "100%", padding: "10px 0", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                    >창업비용 계산하러가기 →</button>
+                  </div>
+
+                  <Divider />
+                  <SectionLabel num="06" title="AI 입지 추천" />
+                  <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 12px 36px", wordBreak: "keep-all" }}>
+                    AI가 서울 전체 상권 데이터를 분석해 최적의 창업 위치와 업종을 추천해드립니다.
+                  </p>
+                  <div style={{ marginLeft: 24, marginBottom: 20 }}>
+                    <button
+                      onClick={() => { returnToReportRef.current = true; setReportOpen(false); setAiModalOpen(true); }}
+                      style={{ width: "100%", padding: "10px 0", background: "#6B9FE4", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                    >AI 추천 받기 →</button>
+                  </div>
+                  <div style={{ height: 40 }} />
+                </div>
+              );
+            })() : null}
+          </div>
         </div>
       )}
 
@@ -4327,71 +4393,115 @@ export default function MapPage() {
       )}
 
       {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
-      {/* AI 패널(380px)이 열리면 버튼들을 왼쪽으로 밀어서 가려지지 않게 함 */}
-      <div style={{ position: "absolute", top: 20, right: aiModalOpen ? 400 : 20, display: "flex", gap: 10, zIndex: 10, transition: "right 0.22s ease-out" }}>
+      {/* ── 상단 네비게이션 바 ── */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0,
+        height: NAV_HEIGHT,
+        background: "#fff",
+        borderBottom: "1px solid #E5E7EB",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        display: "flex", alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 20px",
+        zIndex: 20,
+      }}>
+        {/* 로고 */}
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#111827", letterSpacing: "-0.5px" }}>
+          노다지
+        </div>
 
-        {/* 상권 직접 그리기 버튼 */}
-        <button
-          onClick={() => {
-            if (drawingMode) {
-              drawingModeRef.current = false;
-              setDrawingMode(false);
-              clearCustomDrawing();
-            } else {
-              startDrawing();
-            }
-          }}
-          style={{
-            height: 40, padding: "0 16px", borderRadius: 10, border: "none",
-            background: drawingMode ? "#F59E0B" : "rgba(30,30,34,0.85)",
-            color: drawingMode ? "#000" : "#E8E8E8",
-            fontSize: 14, fontWeight: 600, cursor: "pointer",
-            backdropFilter: "blur(8px)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-          }}
-        >
-          {drawingMode ? "✏️ 그리기 중... (취소)" : "✏️ 상권 그리기"}
-        </button>
+        {/* 버튼 그룹 - 우측 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, transition: "margin-right 0.22s ease-out", marginRight: aiModalOpen ? 390 : 0 }}>
 
-        {/* 상권 트렌드 버튼 */}
-        <button
-          onClick={() => navigate("/trend")}
-          disabled={drawingMode}
-          style={{
-            height: 40, padding: "0 16px", borderRadius: 10, border: "none",
-            background: "rgba(30,30,34,0.85)", color: "#E8E8E8",
-            fontSize: 14, fontWeight: 600, cursor: "pointer",
-            backdropFilter: "blur(8px)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            opacity: drawingMode ? 0.3 : 1,
-            pointerEvents: drawingMode ? "none" : "auto",
-          }}
-        >
-          📈 상권 트렌드
-        </button>
+          {/* 상권 분석 도구 드롭다운 */}
+          <div data-popup style={{ position: "relative", opacity: drawingMode ? 0.4 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
+            <button
+              onClick={() => setToolMenuOpen((v) => !v)}
+              style={{
+                height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
+                color: "#444", fontSize: 14, fontWeight: toolMenuOpen ? 700 : 500,
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                borderBottom: "none",
+              }}
+            >
+              상권 분석 도구 <span style={{ fontSize: 10, color: "#9CA3AF" }}>▼</span>
+            </button>
+            {toolMenuOpen && (
+              <div data-popup className="anim-slide-down" style={{ ...popupStyle({ left: 0, width: 200 }), background: "#fff", border: "1px solid #E5E7EB", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}>
+                <button
+                  style={{ ...menuItemStyle, color: "#374151" }}
+                  onClick={() => {
+                    setToolMenuOpen(false);
+                    if (drawingMode) { drawingModeRef.current = false; setDrawingMode(false); clearCustomDrawing(); }
+                    else { startDrawing(); }
+                  }}
+                >
+                  {drawingMode ? "✏️ 그리기 중... (취소)" : "✏️ 상권 그리기"}
+                </button>
+                <div style={{ borderTop: "1px solid #F3F4F6", margin: "4px 0" }} />
+                <button
+                  style={{ ...menuItemStyle, color: "#374151" }}
+                  onClick={() => { setToolMenuOpen(false); setStartupCalcOpen((v) => !v); }}
+                >
+                  💰 창업비용 계산기
+                </button>
+              </div>
+            )}
+          </div>
 
-        {/* 창업 비용 계산기 버튼 */}
-        <button onClick={() => setStartupCalcOpen((v) => !v)} disabled={drawingMode} style={{ ...startupCalcBtnStyle, opacity: drawingMode ? 0.3 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
-          💰 창업비용 계산기
-        </button>
-
-        {/* AI 추천 버튼 */}
-        <button onClick={openAiModal} disabled={drawingMode} style={{ ...aiBtnStyle, opacity: drawingMode ? 0.3 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
-          ✨ AI 추천
-        </button>
-
-        {/* 메뉴 버튼 */}
-        <div data-popup style={{ position: "relative", opacity: drawingMode ? 0.3 : 1, pointerEvents: drawingMode ? "none" : "auto" }}>
-          <button onClick={() => { setMenuOpen((v) => !v); setSearchExpanded(false); }} style={btnStyle(menuOpen)}>
-            ☰ 메뉴
+          {/* 상권 트렌드 */}
+          <button
+            onClick={() => navigate("/trend")}
+            style={{
+              height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
+              color: "#444", fontSize: 14, fontWeight: 500, cursor: "pointer",
+              borderBottom: "none",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#111827"; e.currentTarget.style.fontWeight = "700"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#444"; e.currentTarget.style.fontWeight = "500"; }}
+          >
+            트렌드
           </button>
-          {menuOpen && (
-            <div data-popup className="anim-slide-down" style={popupStyle({ right: 0, width: 180 })}>
-              <button style={menuItemStyle} onClick={() => navigate("/login")}>🔐 로그인</button>
-              <div style={{ borderTop: "1px solid #4A4A4A", margin: "4px 0" }} />
-              <button style={menuItemStyle} onClick={() => navigate("/signup")}>📝 회원가입</button>
-            </div>
-          )}
+
+          {/* AI 추천 */}
+          <button
+            onClick={openAiModal}
+            style={{
+              height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
+              color: aiModalOpen ? "#111827" : "#444", fontSize: 14,
+              fontWeight: aiModalOpen ? 700 : 500, cursor: "pointer",
+              borderBottom: "none",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#111827"; e.currentTarget.style.fontWeight = "700"; }}
+            onMouseLeave={(e) => { if (!aiModalOpen) { e.currentTarget.style.color = "#444"; e.currentTarget.style.fontWeight = "500"; } }}
+          >
+            AI 추천
+          </button>
+
+          {/* 구분선 */}
+          <div style={{ width: 1, height: 20, background: "#E5E7EB", margin: "0 8px" }} />
+
+          {/* 메뉴 */}
+          <div data-popup style={{ position: "relative" }}>
+            <button
+              onClick={() => { setMenuOpen((v) => !v); setSearchExpanded(false); }}
+              style={{
+                height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
+                color: menuOpen ? "#111827" : "#444", fontSize: 14,
+                fontWeight: menuOpen ? 700 : 500, cursor: "pointer",
+                borderBottom: "none",
+              }}
+            >
+              메뉴
+            </button>
+            {menuOpen && (
+              <div data-popup className="anim-slide-down" style={popupStyle({ right: 0, width: 180 })}>
+                <button style={menuItemStyle} onClick={() => navigate("/login")}>🔐 로그인</button>
+                <div style={{ borderTop: "1px solid #4A4A4A", margin: "4px 0" }} />
+                <button style={menuItemStyle} onClick={() => navigate("/signup")}>📝 회원가입</button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -4787,12 +4897,14 @@ const dongChipStyle = {
   whiteSpace: "nowrap",
 };
 
+const NAV_HEIGHT = 52;
+
 const leftSidebarStyle = {
   position: "absolute",
-  top: 0,
+  top: NAV_HEIGHT,
   left: 0,
   width: 320,
-  height: "100vh",
+  height: `calc(100vh - ${NAV_HEIGHT}px)`,
   background: "rgba(42,42,52,0.88)",
   borderRight: "1px solid rgba(255,255,255,0.07)",
   backdropFilter: "blur(10px)",
@@ -4832,10 +4944,10 @@ const quarterDropdownStyle = {
 
 const secondPanelStyle = {
   position: "absolute",
-  top: 0,
-  left: 320,
+  top: NAV_HEIGHT,
+  left: 0,
   width: 340,
-  height: "100vh",
+  height: `calc(100vh - ${NAV_HEIGHT}px)`,
   background: "rgba(42,42,52,0.88)",
   borderRight: "1px solid rgba(255,255,255,0.07)",
   backdropFilter: "blur(10px)",
