@@ -16,8 +16,6 @@
 cd backend
 python manage.py runserver 8001
 ```
-> **주의**: 포트는 반드시 8001. 8000으로 실행 시 AI 추천 기능 중 일부만 작동함.
-> 프론트에서 8000을 쓰는 엔드포인트가 일부 남아있음 (아래 미해결 이슈 참고).
 
 ### 프론트엔드 (포트 5173)
 ```bash
@@ -42,8 +40,8 @@ Django는 `backend/config/settings.py` 안에서 `load_dotenv(Path(__file__).res
 
 | 파일 | 역할 |
 |------|------|
-| `frontend-react/src/pages/MapPage.jsx` | 메인 지도 페이지 (약 4600줄, 모든 UI 포함) |
-| `backend/analysis/views.py` | 모든 API 뷰 (약 2100줄) |
+| `frontend-react/src/pages/MapPage.jsx` | 메인 지도 페이지 (모든 UI 포함) |
+| `backend/analysis/views.py` | 모든 API 뷰 |
 | `backend/config/urls.py` | URL 라우팅 |
 | `backend/analysis/models.py` | DB 모델 5개 |
 
@@ -77,10 +75,9 @@ PC방, 가방, 가전제품, 가전제품수리, 골프연습장, 기타 B2B서�
 피부관리실, 한식, 한의원, 핸드폰, 화장품
 ```
 
-### 프론트엔드 `STARTUP_COSTS` (MapPage.jsx 18번째 줄)
+### 프론트엔드 `STARTUP_COSTS` (MapPage.jsx line 18)
 - 창업비용 계산기 + 업종 선택 드롭다운에서 사용하는 키
 - **반드시 위 DB 통합카테고리 이름과 정확히 일치해야 함**
-- 이전에 `일반학원`이 잘못 들어가 있었고 제거 완료 (`일반교습학원`이 정확한 이름)
 
 ---
 
@@ -97,7 +94,7 @@ PC방, 가방, 가전제품, 가전제품수리, 골프연습장, 기타 B2B서�
 | `GET /api/recommend/score/` | GET | 행정동×업종 적합도 점수 |
 | `GET /api/recommend/spot/` | GET | 위치 추천 (지도 핀) |
 | `GET /api/recommend/gu-streets/` | GET | 구×업종 → 길단위 상권 추천 |
-| `POST /api/report/` | GET | 행정동 AI 보고서 생성 |
+| `POST /api/report/` | POST | 행정동 AI 보고서 생성 |
 | `POST /api/gu-report/` | POST | 구 AI 보고서 생성 |
 | `GET /api/trend/categories/` | GET | 트렌드 카테고리 |
 
@@ -109,7 +106,7 @@ PC방, 가방, 가전제품, 가전제품수리, 골프연습장, 기타 B2B서�
 ```
 사용자: 구 선택(강남구) + 업종 선택(카페)
     ↓
-프론트 handleAiRecommend() — MapPage.jsx:1498
+프론트 handleAiRecommend()
     ↓ 병렬 호출
   ① GET /api/recommend/location/?업종=카페&gu=강남구
        ScoreData[카페] × CommercialData[카페, 강남구 행정동코드 범위]
@@ -138,8 +135,52 @@ PC방, 가방, 가전제품, 가전제품수리, 골프연습장, 기타 B2B서�
 ```python
 import requests as http_requests
 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-resp = http_requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
-text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+resp = http_requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=60)
+# ⚠️ gemini-2.5-flash는 thinking 모델: parts[]에 thought 파트가 먼저 올 수 있음
+# parts[0]으로 읽으면 thought(내부추론) 텍스트를 가져오는 경우 있음 → reversed()로 마지막 non-thought 파트를 읽어야 함
+parts = resp.json()["candidates"][0]["content"]["parts"]
+text = next((p["text"] for p in reversed(parts) if not p.get("thought", False)), "").strip()
+```
+
+**Gemini 재시도 로직** (`views.py` `report()` / `gu_report()` 공통):
+- 무료 티어 rate limit(분당 2~10 요청) 때문에 재시도는 **최대 3회**만 수행
+- 키 누락 시 5초 대기, 429(rate limit) 시 10초 대기
+- 10회 이상 재시도하면 rate limit에 반드시 걸림 — 절대 늘리지 말 것
+- 백엔드가 실패해도 프론트에서 최대 10회 재시도(3초 간격)하므로 전체 시도 횟수는 충분
+
+---
+
+## 보고서 패널 주요 구현
+
+### 숫자 표시 포맷
+매출·인구 수치는 조/억/만 단위 + 쉼표로 표시. `fmtEok` (매출), `fmtPop` (인구) 함수 사용.
+- 1조 이상: `1조 2,345억`
+- 1억 이상: `1,234억`
+- 그 미만: `5,678만`
+
+### 플로팅 패널 업종 선택기
+보고서 생성 버튼 위에 업종 선택 드롭다운이 있음 (`reportCategory` state).
+- 업종 선택 후 보고서 생성 → `&category=카페` 파라미터가 API에 자동 전달됨
+- 보고서 패널 내부 드롭다운도 이 값으로 pre-populate됨
+- 보고서 패널 내 드롭다운은 전체 51개 업종을 선택 가능 (`Object.keys(STARTUP_COSTS)`)
+
+### AI 설명 재시도 로직 (프론트엔드)
+보고서 fetch 후 필수 키가 없으면 자동 재시도 (`tryFetch(left)` 재귀 패턴):
+- 초기 `left = 9` (최대 10회 시도), 3초 간격
+- 재시도 소진 후에도 실패 시 `ai_descriptions.error` 주입 → "AI 설명을 불러오지 못했습니다" 메시지 + **다시 시도** 버튼 표시
+- **다시 시도** 버튼:
+  - `reportCategory`가 있으면 업종 분석만 재시도 (`setReportCategoryLoading`) — 기본 보고서 데이터 유지
+  - `reportCategory`가 없으면 전체 보고서 재시도 (`setReportLoading`)
+  - 로딩 중에는 버튼 → 스피너 + "재시도 중..." 으로 교체
+
+### 로딩 단계별 문구 (`reportLoadingStep` state)
+로딩 시간이 길어질수록 5초마다 문구 전환:
+```
+0: AI가 보고서를 작성하는 중입니다...
+1: AI가 상권을 분석 중입니다...
+2: AI가 데이터를 꼼꼼히 분석하고 있어요...
+3: AI가 보고서를 정리 중입니다...
+4: 곧 완성됩니다...
 ```
 
 ---
@@ -147,76 +188,25 @@ text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 ## 알려진 버그 및 미해결 이슈
 
 ### 1. 행정동 추천 빈 결과 4케이스 ⚠️ AI 파이프라인 재실행 필요
-**현상**: "구·업종 → 상권 추천"에서 아래 4가지 조합을 선택하면 행정동 탭에 결과가 없고 길단위 상권 탭에만 결과가 뜸.
+**원인**: `ScoreData`에 해당 행정동이 누락되어 교집합이 0이 됨.
 
-**원인**: `ScoreData`(AI 성장확률 테이블)에 해당 행정동이 누락되어 있음.
-`recommend_location()` 내부에서 `ScoreData × CommercialData` 교집합을 구하는데, ScoreData에 행정동이 없으면 교집합이 0이 됨.
+| 구 | 업종 |
+|----|------|
+| 종로구 | 기타 B2B서비스 |
+| 금천구 | 외국어학원 |
+| 금천구 | 컴퓨터및주변장치판매 |
+| 강동구 | 가방 |
 
-| 구 | 업종 | CommercialData | ScoreData |
-|----|------|----------------|-----------|
-| 종로구 | 기타 B2B서비스 | `숭인2동` 1건 있음 | `숭인2동` 없음 |
-| 금천구 | 외국어학원 | 1건 있음 | 해당 행정동 없음 |
-| 금천구 | 컴퓨터및주변장치판매 | 1건 있음 | 해당 행정동 없음 |
-| 강동구 | 가방 | 1건 있음 | 해당 행정동 없음 |
-
-**수정 방법**: 코드 수정으로 해결 불가. AI 스코어링 파이프라인을 재실행해서 ScoreData를 재생성해야 함.
+**수정 방법**: 코드 수정으로 해결 불가. AI 스코어링 파이프라인 재실행 필요.
 ```bash
-# 행정동 데이터 재보강 후 점수 재계산
 cd ai
-python enrich_dong_dataset.py   # CommercialData 기반으로 피처 재생성
-python retrain_scores.py        # LightGBM 재학습 → scores.csv 생성
+python enrich_dong_dataset.py
+python retrain_scores.py
 # 이후 scores.csv를 DB에 다시 임포트
 ```
-> 재실행 전 `ai/` 폴더의 README 및 스크립트 상단 주석 확인 필요.
 
-현재는 빈 결과 대신 안내 메시지가 표시되도록 프론트 처리는 되어 있음 (`aiGuDongError` state, MapPage.jsx:180).
-
----
-
-### 2. 포트 불일치 (행정동 추천 empty 문제와 무관한 별개 버그)
-`MapPage.jsx`에서 일부 API 호출이 8000, 일부가 8001을 사용 중. 행정동 추천 empty 문제와는 **완전히 별개**의 오래된 버그임.
-```
-8000 사용 (잘못됨):
-  - recommend/location/ (line ~1502)
-  - recommend/gu-streets/ (line ~1503)
-  - suggest/industries-with-category/ (line ~2937)
-  - 기타 여러 곳
-
-8001 사용 (올바름):
-  - report/ API
-  - gu-report/ API
-```
-**수정 방법**: `MapPage.jsx` 전체에서 `http://localhost:8000/` → `http://localhost:8001/`로 일괄 치환.
-```bash
-# 확인
-grep -n "localhost:8000" frontend-react/src/pages/MapPage.jsx | wc -l
-# 치환
-sed -i '' 's|http://localhost:8000/|http://localhost:8001/|g' frontend-react/src/pages/MapPage.jsx
-```
-
-### 3. StreetScoreData에만 있는 업종
+### 2. StreetScoreData에만 있는 업종
 `전자상거래업`이 StreetScoreData에만 존재하고 STARTUP_COSTS에는 없음. 프론트 UI에서 선택 불가이므로 현재는 무해.
-
----
-
-## 최근 완료된 작업 (인계 전)
-
-1. **보고서 생성 기능 추가** (`/api/report/`, `/api/gu-report/`)
-   - 사이드바를 차트 UI 대신 "보고서 생성하기" 인터페이스로 교체
-   - Gemini 2.5 Flash API로 AI 텍스트 생성
-   - 행정동/구 모두 지원, 업종 선택 시 심화 분석(6섹션) 포함
-
-2. **구 단위 업종 선택 지원**
-   - 보고서와 구 추천 모두 업종 선택 가능하게 수정
-   - `gu-report` API에 `category` 파라미터 추가
-
-3. **`일반학원` 카테고리 오류 수정**
-   - `STARTUP_COSTS`에 DB에 없는 `일반학원`이 있었음 → 제거
-   - `일반교습학원`(DB 실제 이름)이 이미 있었으므로 중복 제거로 해결
-
-4. **에러 처리 개선**
-   - 행정동 추천 실패 시 조용히 빈 탭 표시하던 문제 → 안내 메시지 표시로 변경
-   - `aiGuDongError` state 추가 (MapPage.jsx:180)
 
 ---
 
@@ -225,18 +215,62 @@ sed -i '' 's|http://localhost:8000/|http://localhost:8001/|g' frontend-react/src
 ### 프론트엔드 주요 위치 (MapPage.jsx)
 - `STARTUP_COSTS` 업종 목록: line 18
 - `CATEGORY_GROUPS` 드릴다운 그룹: line 74
-- State 선언부: line 130~230
-- 보고서 생성 UI (사이드바): line 1769
-- AI 추천 handleAiRecommend(): line 1435
-- AI 모달 gu 모드 실행 로직: line 1498
-- 보고서 패널 렌더링: line 2597
-- AI 모달 업종 선택 UI: line 2917
-- 행정동 추천 결과 탭: line 3190
+- State 선언부: line ~130
+- `reportCategory` / `reportLoadingStep` state: line ~175
+- 보고서 생성 UI + 업종 선택기 (플로팅 패널): line ~1790
+- 보고서 생성 버튼 onClick (tryFetch 재시도 포함): line ~1820
+- AI 추천 handleAiRecommend(): line ~1435
+- 보고서 패널 렌더링 시작: line ~2632
+- `retryReport` 함수 (다시 시도 버튼 핸들러): line ~2650
+- `AiText` 컴포넌트 + 다시 시도 버튼: line ~2710
+- 업종 심화분석 드롭다운 (전체 51개): line ~2850
+- AI 모달 업종 선택 UI: line ~2980
 
 ### 백엔드 주요 위치 (views.py)
 - `recommend_location()` (행정동 추천 핵심): line 560
 - `recommend_gu_streets()` (길단위 상권 추천): line 1138
-- `report()` (행정동 AI 보고서): line 1865
-- `gu_report()` (구 AI 보고서): line 2011
-- `_GU_CODE_MAP` (구명 ↔ 코드 매핑): line ~60 근처
-- `STORE_TO_COMMERCIAL_CAT` (빈 dict, 현재 미사용): line 107
+- `report()` (행정동 AI 보고서): line ~1850
+- `gu_report()` (구 AI 보고서): line ~2025
+- `_GU_CODE_MAP` (구명 ↔ 코드 매핑): line ~60
+
+---
+
+## 삭제된 컴포넌트 복원 코드
+
+### 행정동 보기 / 구 보기 버튼
+사이드바 하단에 있던 버튼 2개. 삭제 전 위치: MapPage.jsx 보고서 생성 버튼 바로 위.
+복원 시 `{/* 이전 분석 보기 버튼 */}` 블록 바로 위에 삽입할 것.
+
+```jsx
+{/* 구 선택 시 행정동 보기 버튼 (행정동 선택 안 된 경우만) */}
+{selectedGu && !selectedDong && (
+  <button
+    style={{ width: "100%", marginTop: 8, padding: "8px 0", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+    onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+    onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+    onClick={() => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+      const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
+      if (group) smoothZoom(map, 6, () => map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng)));
+    }}
+  >행정동 보기</button>
+)}
+
+{/* 구 보기 버튼 (행정동 선택 시만) */}
+{selectedDong && (
+  <button
+    style={{ width: "100%", marginTop: 8, padding: "8px 0", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+    onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+    onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+    onClick={() => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+      setSelectedGu(selectedDong.guName);
+      const panSeoul = () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
+      if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, panSeoul);
+      else panSeoul();
+    }}
+  >구 보기</button>
+)}
+```

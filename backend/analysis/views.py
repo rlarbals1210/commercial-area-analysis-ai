@@ -1967,29 +1967,49 @@ def report(request):
         import requests as http_requests
         api_key = os.environ.get("GEMINI_API_KEY", "")
         if api_key:
-            if category and data.get("category_data"):
-                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
+            has_category = bool(category and data.get("category_data"))
+            if has_category:
+                required_keys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"]
+                prompt = (
+                    "다음 서울 행정동 상권 데이터를 분석해서 아래 JSON 형식으로만 반환해줘. "
+                    "반드시 6개 키를 모두 포함하고, 각 항목마다 2~3문장으로 설명해줘. "
+                    "다른 텍스트나 코드 블록 없이 JSON만 반환해.\n\n"
+                    f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                    '형식: {"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
+                )
             else:
-                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"..."}'
-            prompt = (
-                "다음 서울 행정동 상권 데이터를 분석해서 보고서 형식으로 설명해줘. "
-                "각 섹션마다 2~3문장으로 자연스럽게 설명하고, JSON 형식으로만 반환해줘. "
-                "코드 블록이나 다른 텍스트는 절대 포함하지 마. JSON만 반환해.\n\n"
-                f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
-                f"반환 형식: {fmt}"
-            )
+                required_keys = ["상권_개요", "인기_업종", "유동인구_분석"]
+                prompt = (
+                    "다음 서울 행정동 상권 데이터를 분석해서 아래 JSON 형식으로만 반환해줘. "
+                    "반드시 3개 키를 모두 포함하고, 각 항목마다 2~3문장으로 설명해줘. "
+                    "다른 텍스트나 코드 블록 없이 JSON만 반환해.\n\n"
+                    f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                    '형식: {"상권_개요":"...","인기_업종":"...","유동인구_분석":"..."}'
+                )
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
             body = {"contents": [{"parts": [{"text": prompt}]}]}
-            resp = http_requests.post(url, json=body, timeout=30)
-            if resp.status_code == 200:
-                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if "```" in text:
-                    for part in text.split("```"):
-                        part = part.strip().lstrip("json").strip()
-                        if part.startswith("{"):
-                            text = part
-                            break
-                ai_descriptions = json.loads(text)
+            import time
+            for attempt in range(3):
+                resp = http_requests.post(url, json=body, timeout=60)
+                if resp.status_code == 200:
+                    parts = resp.json()["candidates"][0]["content"]["parts"]
+                    text = next((p["text"] for p in reversed(parts) if not p.get("thought", False)), "").strip()
+                    if "```" in text:
+                        for part in text.split("```"):
+                            part = part.strip().lstrip("json").strip()
+                            if part.startswith("{"):
+                                text = part
+                                break
+                    parsed = json.loads(text)
+                    if all(k in parsed and parsed[k] for k in required_keys):
+                        ai_descriptions = parsed
+                        break
+                    elif attempt < 2:
+                        time.sleep(5)
+                elif resp.status_code == 429 and attempt < 2:
+                    time.sleep(10)
+                else:
+                    break
     except Exception as e:
         ai_descriptions = {"error": str(e)}
 
@@ -2123,28 +2143,49 @@ def gu_report(request):
         import requests as http_requests
         api_key = os.environ.get("GEMINI_API_KEY", "")
         if api_key:
-            if category and data.get("category_data"):
-                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
+            has_category = bool(category and data.get("category_data"))
+            if has_category:
+                required_keys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"]
+                prompt = (
+                    "다음 서울 구(區) 단위 상권 데이터를 분석해서 아래 JSON 형식으로만 반환해줘. "
+                    "반드시 6개 키를 모두 포함하고, 각 항목마다 2~3문장으로 설명해줘. "
+                    "다른 텍스트나 코드 블록 없이 JSON만 반환해.\n\n"
+                    f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                    '형식: {"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
+                )
             else:
-                fmt = '{"상권_개요":"...","인기_업종":"...","유동인구_분석":"..."}'
-            prompt = (
-                "다음 서울 구(區) 단위 상권 데이터를 분석해서 보고서 형식으로 설명해줘. "
-                "각 섹션마다 2~3문장으로 자연스럽게 설명하고, JSON 형식으로만 반환해줘. "
-                "코드 블록이나 다른 텍스트는 절대 포함하지 마. JSON만 반환해.\n\n"
-                f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
-                f"반환 형식: {fmt}"
-            )
+                required_keys = ["상권_개요", "인기_업종", "유동인구_분석"]
+                prompt = (
+                    "다음 서울 구(區) 단위 상권 데이터를 분석해서 아래 JSON 형식으로만 반환해줘. "
+                    "반드시 3개 키를 모두 포함하고, 각 항목마다 2~3문장으로 설명해줘. "
+                    "다른 텍스트나 코드 블록 없이 JSON만 반환해.\n\n"
+                    f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                    '형식: {"상권_개요":"...","인기_업종":"...","유동인구_분석":"..."}'
+                )
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-            resp = http_requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
-            if resp.status_code == 200:
-                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if "```" in text:
-                    for part in text.split("```"):
-                        part = part.strip().lstrip("json").strip()
-                        if part.startswith("{"):
-                            text = part
-                            break
-                ai_descriptions = json.loads(text)
+            body = {"contents": [{"parts": [{"text": prompt}]}]}
+            import time
+            for attempt in range(3):
+                resp = http_requests.post(url, json=body, timeout=60)
+                if resp.status_code == 200:
+                    parts = resp.json()["candidates"][0]["content"]["parts"]
+                    text = next((p["text"] for p in reversed(parts) if not p.get("thought", False)), "").strip()
+                    if "```" in text:
+                        for part in text.split("```"):
+                            part = part.strip().lstrip("json").strip()
+                            if part.startswith("{"):
+                                text = part
+                                break
+                    parsed = json.loads(text)
+                    if all(k in parsed and parsed[k] for k in required_keys):
+                        ai_descriptions = parsed
+                        break
+                    elif attempt < 2:
+                        time.sleep(5)
+                elif resp.status_code == 429 and attempt < 2:
+                    time.sleep(10)
+                else:
+                    break
     except Exception as e:
         ai_descriptions = {"error": str(e)}
 

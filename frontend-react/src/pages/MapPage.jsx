@@ -112,7 +112,7 @@ function GuRankTicker({ items }) {
   }, [items.length]);
 
   const item = items[idx];
-  const fmtEok = (v) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : `${Math.round(v / 10_000)}만`;
+  const fmtEok = (v) => v >= 1_000_000_000_000 ? `${Math.floor(v / 1_000_000_000_000)}조${Math.round((v % 1_000_000_000_000) / 100_000_000) > 0 ? ` ${Math.round((v % 1_000_000_000_000) / 100_000_000).toLocaleString()}억` : ""}` : v >= 100_000_000 ? `${Math.round(v / 100_000_000).toLocaleString()}억` : `${Math.round(v / 10_000)}만`;
 
   return (
     <div style={{
@@ -173,6 +173,7 @@ export default function MapPage() {
   const [reportData, setReportData] = useState(null);         // 보고서 데이터
   const [reportLoading, setReportLoading] = useState(false);  // 보고서 로딩
   const [reportCategoryLoading, setReportCategoryLoading] = useState(false); // 업종 심화 분석 로딩
+  const [reportLoadingStep, setReportLoadingStep] = useState(0); // 로딩 문구 단계
   const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
   const [reportRegion, setReportRegion] = useState(null);     // 보고서 생성 시점의 지역 { name, subName }
   const reportMapStateRef = useRef(null);                      // 보고서 생성 시점의 지도 상태 { lat, lng, level }
@@ -313,6 +314,15 @@ export default function MapPage() {
     if (selectedDong || selectedGu) setSidebarCollapsed(false);
     if (!selectedDong) clearStreetPolygons();
   }, [selectedDong, selectedGu]);
+
+  // ── 보고서 로딩 중 단계별 문구 전환 ──
+  useEffect(() => {
+    const isLoading = reportLoading || reportCategoryLoading;
+    if (!isLoading) { setReportLoadingStep(0); return; }
+    setReportLoadingStep(0);
+    const id = setInterval(() => setReportLoadingStep((s) => Math.min(s + 1, 4)), 5000);
+    return () => clearInterval(id);
+  }, [reportLoading, reportCategoryLoading]);
 
   // ── 구/동 변경 시 보고서 패널 닫기 (복원 중엔 스킵) ──
   useEffect(() => {
@@ -1744,7 +1754,7 @@ export default function MapPage() {
                   if (!data?.총매출) return null;
                   const 변동률 = data.매출변동률;
                   const 매출 = data.총매출;
-                  const 매출텍스트 = 매출 >= 100_000_000 ? `${(매출 / 100_000_000).toFixed(0)}억` : `${Math.round(매출 / 10_000)}만`;
+                  const 매출텍스트 = 매출 >= 1_000_000_000_000 ? `${Math.floor(매출 / 1_000_000_000_000)}조${Math.round((매출 % 1_000_000_000_000) / 100_000_000) > 0 ? ` ${Math.round((매출 % 1_000_000_000_000) / 100_000_000).toLocaleString()}억` : ""}` : 매출 >= 100_000_000 ? `${Math.round(매출 / 100_000_000).toLocaleString()}억` : `${Math.round(매출 / 10_000)}만`;
                   return (
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontSize: 22, fontWeight: 800, color: "#2563EB" }}>{매출텍스트}</div>
@@ -1766,6 +1776,23 @@ export default function MapPage() {
             )}
           </div>
 
+          {/* 업종 선택 */}
+          {(selectedDong || selectedGu) && (
+            <div style={{ padding: "10px 18px 0" }}>
+              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 6 }}>업종 선택 (선택사항)</div>
+              <select
+                value={reportCategory}
+                onChange={(e) => setReportCategory(e.target.value)}
+                style={{ width: "100%", padding: "8px 10px", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, color: reportCategory ? "#111827" : "#9CA3AF", fontSize: 13, cursor: "pointer", outline: "none" }}
+              >
+                <option value="">전체 업종</option>
+                {Object.keys(STARTUP_COSTS).map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* 보고서 생성 버튼 */}
           <div style={{ padding: "12px 18px 16px" }}>
             <button
@@ -1774,7 +1801,6 @@ export default function MapPage() {
                 setReportOpen(true);
                 setReportData(null);
                 setReportLoading(true);
-                setReportCategory("");
                 if (selectedDong) {
                   setReportRegion({ name: selectedDong.dongName, subName: `서울특별시 ${selectedDong.guName}` });
                 } else if (selectedGu) {
@@ -1791,22 +1817,41 @@ export default function MapPage() {
                     guGroup: selectedGuGroupRef.current || null,
                   };
                 }
+                const baseKeys = ["상권_개요", "인기_업종", "유동인구_분석"];
+                const catKeys = [...baseKeys, "소비_패턴", "비용_수익", "기타_통계"];
                 if (selectedDong) {
-                  const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
-                  fetch(url)
-                    .then((r) => r.json())
-                    .then((d) => { setReportData({ ...d, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
-                    .catch(() => setReportLoading(false));
+                  const dong = normalizeDongName(selectedDong.dongName);
+                  const categoryParam = reportCategory ? `&category=${encodeURIComponent(reportCategory)}` : "";
+                  const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}${categoryParam}`;
+                  const reqKeys = reportCategory ? catKeys : baseKeys;
+                  const tryFetch = (left) => {
+                    fetch(url).then((r) => r.json()).then((d) => {
+                      const ai = d.ai_descriptions || {};
+                      if (reqKeys.every((k) => ai[k])) {
+                        setReportData({ ...d, _dong: dong }); setReportLoading(false);
+                      } else if (left === 0) {
+                        setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportLoading(false);
+                      } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                    }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                  };
+                  tryFetch(9);
                 } else if (selectedGu) {
                   const dongs = guToDongsRef.current[selectedGu] || [];
-                  fetch("http://localhost:8000/api/gu-report/", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
-                  })
-                    .then((r) => r.json())
-                    .then((d) => { setReportData({ ...d, _gu: selectedGu }); setReportLoading(false); })
-                    .catch(() => setReportLoading(false));
+                  const reqKeys = reportCategory ? catKeys : baseKeys;
+                  const tryFetch = (left) => {
+                    fetch("http://localhost:8000/api/gu-report/", {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
+                    }).then((r) => r.json()).then((d) => {
+                      const ai = d.ai_descriptions || {};
+                      if (reqKeys.every((k) => ai[k])) {
+                        setReportData({ ...d, _gu: selectedGu }); setReportLoading(false);
+                      } else if (left === 0) {
+                        setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _gu: selectedGu }); setReportLoading(false);
+                      } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                    }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                  };
+                  tryFetch(9);
                 }
               }}
               style={{
@@ -1823,37 +1868,6 @@ export default function MapPage() {
               상권분석 하기
             </button>
 
-            {/* 구 선택 시 행정동 보기 버튼 (행정동 선택 안 된 경우만) */}
-            {selectedGu && !selectedDong && (
-              <button
-                style={{ width: "100%", marginTop: 8, padding: "8px 0", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
-                onClick={() => {
-                  const map = mapInstanceRef.current;
-                  if (!map) return;
-                  const group = guPolygonGroupsRef.current.find((g) => g.guName === selectedGu);
-                  if (group) smoothZoom(map, 6, () => map.panTo(new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng)));
-                }}
-              >행정동 보기</button>
-            )}
-
-            {/* 구 보기 버튼 (행정동 선택 시만) */}
-            {selectedDong && (
-              <button
-                style={{ width: "100%", marginTop: 8, padding: "8px 0", background: "#F3F4F6", color: "#374151", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
-                onClick={() => {
-                  const map = mapInstanceRef.current;
-                  if (!map) return;
-                  setSelectedGu(selectedDong.guName);
-                  const panSeoul = () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780));
-                  if (map.getLevel() < GU_MODE_LEVEL) smoothZoom(map, 8, panSeoul);
-                  else panSeoul();
-                }}
-              >구 보기</button>
-            )}
 
             {/* 이전 분석 보기 버튼 (reportData가 있을 때만) */}
             {reportData && (
@@ -2463,7 +2477,7 @@ export default function MapPage() {
           { label: "심야\n21~24", value: 시간대["21~24"] || 0 },
         ];
         const 시간대최대 = Math.max(...시간대목록.map((t) => t.value), 1);
-        const fmtEok = (v) => v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : v >= 10_000 ? `${Math.round(v / 10_000)}만` : `${v}`;
+        const fmtEok = (v) => v >= 1_000_000_000_000 ? `${Math.floor(v / 1_000_000_000_000)}조${Math.round((v % 1_000_000_000_000) / 100_000_000) > 0 ? ` ${Math.round((v % 1_000_000_000_000) / 100_000_000).toLocaleString()}억` : ""}` : v >= 100_000_000 ? `${Math.round(v / 100_000_000).toLocaleString()}억` : v >= 10_000 ? `${Math.round(v / 10_000)}만` : `${v}`;
 
         return (
           <div
@@ -2606,16 +2620,22 @@ export default function MapPage() {
                   borderTop: "3px solid #111827",
                   animation: "spin 0.8s linear infinite",
                 }} />
-                <div style={{ fontSize: 14, color: "#6B7280" }}>AI가 보고서를 작성하는 중입니다...</div>
+                <div style={{ fontSize: 14, color: "#6B7280" }}>{[
+                  "AI가 보고서를 작성하는 중입니다...",
+                  "AI가 상권을 분석 중입니다...",
+                  "AI가 데이터를 꼼꼼히 분석하고 있어요...",
+                  "AI가 보고서를 정리 중입니다...",
+                  "곧 완성됩니다...",
+                ][reportLoadingStep]}</div>
                 <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
               </div>
             ) : reportData ? (() => {
-              const ai = reportData.ai_descriptions || {};
+              const ai = reportData.ai_descriptions?.error ? {} : (reportData.ai_descriptions || {});
               const d = reportData.data || {};
               const cat = d.category_data;
-              const fmtEok = (v) => !v ? "0" : v >= 100_000_000 ? `${(v / 100_000_000).toFixed(0)}억` : `${Math.round(v / 10_000)}만`;
+              const fmtEok = (v) => !v ? "0" : v >= 1_000_000_000_000 ? `${Math.floor(v / 1_000_000_000_000)}조${Math.round((v % 1_000_000_000_000) / 100_000_000) > 0 ? ` ${Math.round((v % 1_000_000_000_000) / 100_000_000).toLocaleString()}억` : ""}` : v >= 100_000_000 ? `${Math.round(v / 100_000_000).toLocaleString()}억` : `${Math.round(v / 10_000)}만`;
               const fmtNum = (v) => v ? v.toLocaleString() : "0";
-              const fmtPop = (v) => !v ? "0" : v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}억명` : v >= 10_000 ? `${Math.round(v / 10_000)}만명` : `${v.toLocaleString()}명`;
+              const fmtPop = (v) => !v ? "0" : v >= 1_000_000_000_000 ? `${Math.floor(v / 1_000_000_000_000)}조${Math.round((v % 1_000_000_000_000) / 100_000_000) > 0 ? ` ${Math.round((v % 1_000_000_000_000) / 100_000_000).toLocaleString()}억` : ""}명` : v >= 100_000_000 ? `${Number((v / 100_000_000).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억명` : v >= 10_000 ? `${Math.round(v / 10_000).toLocaleString()}만명` : `${v.toLocaleString()}명`;
 
               const SectionLabel = ({ num, title }) => (
                 <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
@@ -2624,10 +2644,114 @@ export default function MapPage() {
                 </div>
               );
 
+              const aiError = reportData.ai_descriptions?.error;
+
+              const retryReport = () => {
+                const baseKeys = ["상권_개요", "인기_업종", "유동인구_분석"];
+                const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
+
+                if (reportCategory) {
+                  // 업종분석만 재시도 — 기본 보고서 데이터는 유지
+                  setReportCategoryLoading(true);
+                  if (reportData._dong) {
+                    const dong = reportData._dong;
+                    const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
+                    const tryFetch = (left) => {
+                      fetch(url).then((r) => r.json()).then((d) => {
+                        const ai = d.ai_descriptions || {};
+                        if (catKeys.every((k) => ai[k])) {
+                          setReportData((prev) => ({ ...prev, ai_descriptions: ai, data: { ...prev.data, category_data: d.data?.category_data } }));
+                          setReportCategoryLoading(false);
+                        } else if (left === 0) {
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." } }));
+                          setReportCategoryLoading(false);
+                        } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
+                    };
+                    tryFetch(9);
+                  } else if (reportData._gu) {
+                    const gu = reportData._gu;
+                    const dongs = guToDongsRef.current[gu] || [];
+                    const tryFetch = (left) => {
+                      fetch("http://localhost:8000/api/gu-report/", {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ gu, dongs, category: reportCategory }),
+                      }).then((r) => r.json()).then((d) => {
+                        const ai = d.ai_descriptions || {};
+                        if (catKeys.every((k) => ai[k])) {
+                          setReportData((prev) => ({ ...prev, ai_descriptions: ai, data: { ...prev.data, category_data: d.data?.category_data } }));
+                          setReportCategoryLoading(false);
+                        } else if (left === 0) {
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." } }));
+                          setReportCategoryLoading(false);
+                        } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
+                    };
+                    tryFetch(9);
+                  }
+                } else {
+                  // 기본 보고서 전체 재시도
+                  setReportLoading(true);
+                  if (reportData._dong) {
+                    const dong = reportData._dong;
+                    const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}`;
+                    const tryFetch = (left) => {
+                      fetch(url).then((r) => r.json()).then((d) => {
+                        const ai = d.ai_descriptions || {};
+                        if (baseKeys.every((k) => ai[k])) {
+                          setReportData({ ...d, _dong: dong }); setReportLoading(false);
+                        } else if (left === 0) {
+                          setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportLoading(false);
+                        } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                    };
+                    tryFetch(9);
+                  } else if (reportData._gu) {
+                    const gu = reportData._gu;
+                    const dongs = guToDongsRef.current[gu] || [];
+                    const tryFetch = (left) => {
+                      fetch("http://localhost:8000/api/gu-report/", {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ gu, dongs, category: "" }),
+                      }).then((r) => r.json()).then((d) => {
+                        const ai = d.ai_descriptions || {};
+                        if (baseKeys.every((k) => ai[k])) {
+                          setReportData({ ...d, _gu: gu }); setReportLoading(false);
+                        } else if (left === 0) {
+                          setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _gu: gu }); setReportLoading(false);
+                        } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                    };
+                    tryFetch(9);
+                  }
+                }
+              };
+
               const AiText = ({ text }) => text ? (
                 <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 20px 36px", wordBreak: "keep-all" }}>
                   {text}
                 </p>
+              ) : aiError ? (
+                <div style={{ margin: "0 0 20px 36px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <p style={{ fontSize: 13, color: "#9CA3AF", margin: "0 0 12px 0", textAlign: "center" }}>
+                    AI 설명을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+                  </p>
+                  {(reportCategoryLoading || reportLoading) ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, color: "#9CA3AF", fontSize: 13 }}>
+                      <div style={{ width: 15, height: 15, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                      재시도 중...
+                    </div>
+                  ) : (
+                    <button
+                      onClick={retryReport}
+                      style={{ fontSize: 13, fontWeight: 600, color: "#374151", background: "#F3F4F6", border: "none", borderRadius: 8, padding: "8px 20px", cursor: "pointer" }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                    >
+                      다시 시도
+                    </button>
+                  )}
+                </div>
               ) : null;
 
               const KeyFigure = ({ label, value, sub, accent, exact }) => (
@@ -2719,7 +2843,13 @@ export default function MapPage() {
                         업종을 선택하면 소비 패턴, 비용·수익 통계, AI 등급을 확인할 수 있습니다.
                       </p>
                       {reportCategoryLoading ? (
-                        <div style={{ marginLeft: 24, textAlign: "center", padding: "20px 0", color: "#9CA3AF", fontSize: 13 }}>업종 심화 분석 중...</div>
+                        <div style={{ marginLeft: 24, textAlign: "center", padding: "20px 0", color: "#9CA3AF", fontSize: 13 }}>{[
+                          "AI가 보고서를 작성하는 중입니다...",
+                          "AI가 상권을 분석 중입니다...",
+                          "AI가 데이터를 꼼꼼히 분석하고 있어요...",
+                          "AI가 보고서를 정리 중입니다...",
+                          "곧 완성됩니다...",
+                        ][reportLoadingStep]}</div>
                       ) : (
                       <select
                         value={reportCategory}
@@ -2728,28 +2858,44 @@ export default function MapPage() {
                           if (!cat) return;
                           setReportCategory(cat);
                           setReportCategoryLoading(true);
+                          const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
                           if (selectedDong) {
-                            fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
-                              .then((r) => r.json())
-                              .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportCategoryLoading(false); })
-                              .catch(() => setReportCategoryLoading(false));
+                            const dong = normalizeDongName(selectedDong.dongName);
+                            const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(cat)}`;
+                            const tryFetch = (left) => {
+                              fetch(url).then((r) => r.json()).then((data) => {
+                                const ai = data.ai_descriptions || {};
+                                if (catKeys.every((k) => ai[k])) {
+                                  setReportData({ ...data, _dong: dong }); setReportCategoryLoading(false);
+                                } else if (left === 0) {
+                                  setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportCategoryLoading(false);
+                                } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                              }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
+                            };
+                            tryFetch(9);
                           } else if (selectedGu) {
                             const dongs = guToDongsRef.current[selectedGu] || [];
-                            fetch("http://localhost:8000/api/gu-report/", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
-                            })
-                              .then((r) => r.json())
-                              .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportCategoryLoading(false); })
-                              .catch(() => setReportCategoryLoading(false));
+                            const tryFetch = (left) => {
+                              fetch("http://localhost:8000/api/gu-report/", {
+                                method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
+                              }).then((r) => r.json()).then((data) => {
+                                const ai = data.ai_descriptions || {};
+                                if (catKeys.every((k) => ai[k])) {
+                                  setReportData({ ...data, _gu: selectedGu }); setReportCategoryLoading(false);
+                                } else if (left === 0) {
+                                  setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _gu: selectedGu }); setReportCategoryLoading(false);
+                                } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                              }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
+                            };
+                            tryFetch(9);
                           }
                         }}
                         style={{ marginLeft: 24, width: "calc(100% - 24px)", padding: "10px 12px", background: "#fff", border: "1px solid #D1D5DB", borderRadius: 8, color: "#374151", fontSize: 13, cursor: "pointer", outline: "none" }}
                       >
                         <option value="">업종 선택...</option>
-                        {(d.top_업종 || []).map((item) => (
-                          <option key={item.업종} value={item.업종}>{item.업종}</option>
+                        {Object.keys(STARTUP_COSTS).map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
                         ))}
                       </select>
                       )}
@@ -2764,23 +2910,7 @@ export default function MapPage() {
                         <SectionLabel num="04" title={`${cat.category} 심화 분석`} />
                         <button onClick={() => {
                           setReportCategory("");
-                          setReportLoading(true);
-                          if (selectedDong) {
-                            fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
-                              .then((r) => r.json())
-                              .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
-                              .catch(() => setReportLoading(false));
-                          } else if (selectedGu) {
-                            const dongs = guToDongsRef.current[selectedGu] || [];
-                            fetch("http://localhost:8000/api/gu-report/", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ gu: selectedGu, dongs }),
-                            })
-                              .then((r) => r.json())
-                              .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportLoading(false); })
-                              .catch(() => setReportLoading(false));
-                          }
+                          setReportData((prev) => { const { category_data, ...restData } = prev.data || {}; return { ...prev, data: restData }; });
                         }} style={{ fontSize: 11, color: "#9CA3AF", background: "none", border: "none", cursor: "pointer", marginBottom: 14, flexShrink: 0 }}>업종 초기화</button>
                       </div>
                       <AiText text={ai["소비_패턴"]} />
@@ -3639,8 +3769,8 @@ export default function MapPage() {
                     const { a, b, type, category } = aiResults;
                     const METRICS = [
                       { key: "점포수",         label: "점포수",       fmt: v => `${v}개` },
-                      { key: "월매출",          label: "월 매출합",    fmt: v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억` : `${(v/1e4).toFixed(0)}만` },
-                      { key: "점포당매출",      label: "점포당 매출",  fmt: v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억` : `${Math.round(v/1e4)}만` },
+                      { key: "월매출",          label: "월 매출합",    fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${(v/1e4).toFixed(0)}만` },
+                      { key: "점포당매출",      label: "점포당 매출",  fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${Math.round(v/1e4)}만` },
                       { key: "경쟁강도",        label: "경쟁강도",     fmt: v => `${v}` },
                       { key: "업종_포화도",     label: "업종 포화도",  fmt: v => `${v}%` },
                       { key: "업종_매출점유율", label: "매출 점유율",  fmt: v => `${v}%` },
@@ -3705,7 +3835,7 @@ export default function MapPage() {
                           const winner = scoreA >= scoreB ? a : b;
                           const loser  = scoreA >= scoreB ? b : a;
                           const winColor = scoreA >= scoreB ? "#34D399" : "#60A5FA";
-                          const fmtMoney = v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억원` : `${Math.round(v/1e4)}만원`;
+                          const fmtMoney = v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}원` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원` : `${Math.round(v/1e4)}만원`;
                           const reasons = [];
                           if (winner.성장확률 > loser.성장확률)
                             reasons.push(`AI 성장확률(${winner.성장확률}%)이 ${loser.name}(${loser.성장확률}%)보다 높아 향후 성장 가능성이 큽니다.`);
@@ -3747,8 +3877,8 @@ export default function MapPage() {
                     const { a, b, region, region_type } = aiResults;
                     const METRICS = [
                       { key: "점포수",          label: "점포수",        fmt: v => `${v}개` },
-                      { key: "월매출",           label: "월 매출합",     fmt: v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억` : `${(v/1e4).toFixed(0)}만` },
-                      { key: "점포당매출",       label: "점포당 매출",   fmt: v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억` : `${Math.round(v/1e4)}만` },
+                      { key: "월매출",           label: "월 매출합",     fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${(v/1e4).toFixed(0)}만` },
+                      { key: "점포당매출",       label: "점포당 매출",   fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${Math.round(v/1e4)}만` },
                       { key: "경쟁강도",         label: "경쟁강도",      fmt: v => `${v}` },
                       { key: "업종_포화도",      label: "업종 포화도",   fmt: v => `${v}%` },
                       { key: "업종_매출점유율",  label: "매출 점유율",   fmt: v => `${v}%` },
@@ -3808,7 +3938,7 @@ export default function MapPage() {
                           const loser  = sA >= sB ? b : a;
                           const winColor = sA >= sB ? "#34D399" : "#F87171";
 
-                          const fmtMoney = v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억원` : `${Math.round(v/1e4)}만원`;
+                          const fmtMoney = v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}원` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원` : `${Math.round(v/1e4)}만원`;
                           const reasons = [];
 
                           if ((winner.성장확률??0) > (loser.성장확률??0)) {
@@ -5169,7 +5299,12 @@ function getLargestRingCentroid(coordinates) {
 function fmtRevenue(won) {
   if (!won) return "0원";
   const eok = won / 100_000_000;
-  if (eok >= 1) return `${eok.toFixed(1)}억원`;
+  if (won >= 1_000_000_000_000) {
+    const jo = Math.floor(won / 1_000_000_000_000);
+    const rem = Math.round((won % 1_000_000_000_000) / 100_000_000);
+    return rem > 0 ? `${jo}조 ${rem.toLocaleString()}억원` : `${jo}조원`;
+  }
+  if (eok >= 1) return `${Number(eok.toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원`;
   return `${Math.round(won / 10_000).toLocaleString()}만원`;
 }
 
