@@ -139,6 +139,7 @@ export default function MapPage() {
   const [reportOpen, setReportOpen] = useState(false);        // 보고서 패널
   const [reportData, setReportData] = useState(null);         // 보고서 데이터
   const [reportLoading, setReportLoading] = useState(false);  // 보고서 로딩
+  const [reportCategoryLoading, setReportCategoryLoading] = useState(false); // 업종 심화 분석 로딩
   const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
   const [rankType, setRankType] = useState(null); // "revenue" | "stores"
   const [availableQuarters, setAvailableQuarters] = useState([]); // 선택 가능한 분기 목록
@@ -2766,18 +2767,24 @@ export default function MapPage() {
                   <>
                     <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "20px 0 14px" }} />
                     <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 8 }}>업종을 선택하면 심화 분석을 볼 수 있습니다</div>
+                    {reportCategoryLoading ? (
+                      <div style={{ textAlign: "center", padding: "24px 0", color: "#9E9E9E" }}>
+                        <div style={{ fontSize: 20, marginBottom: 8 }}>✨</div>
+                        <div style={{ fontSize: 13 }}>업종 심화 분석 중...</div>
+                      </div>
+                    ) : (
                     <select
                       value={reportCategory}
                       onChange={(e) => {
                         const cat = e.target.value;
                         if (!cat) return;
                         setReportCategory(cat);
-                        setReportLoading(true);
+                        setReportCategoryLoading(true);
                         if (selectedDong) {
                           fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
                             .then((r) => r.json())
-                            .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
-                            .catch(() => setReportLoading(false));
+                            .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportCategoryLoading(false); })
+                            .catch(() => setReportCategoryLoading(false));
                         } else if (selectedGu) {
                           const dongs = guToDongsRef.current[selectedGu] || [];
                           fetch("http://localhost:8000/api/gu-report/", {
@@ -2786,8 +2793,8 @@ export default function MapPage() {
                             body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
                           })
                             .then((r) => r.json())
-                            .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportLoading(false); })
-                            .catch(() => setReportLoading(false));
+                            .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportCategoryLoading(false); })
+                            .catch(() => setReportCategoryLoading(false));
                         }
                       }}
                       style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "#E0E0E0", fontSize: 13, cursor: "pointer" }}
@@ -2797,6 +2804,7 @@ export default function MapPage() {
                         <option key={item.업종} value={item.업종}>{item.업종}</option>
                       ))}
                     </select>
+                    )}
                   </>
                 )}
 
