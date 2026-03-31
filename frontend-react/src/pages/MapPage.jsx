@@ -2806,17 +2806,32 @@ export default function MapPage() {
                       <p style={{ fontSize: 13, color: "#6B7280", marginLeft: 24, marginBottom: 14 }}>
                         업종을 선택하면 소비 패턴, 비용·수익 통계, AI 등급을 확인할 수 있습니다.
                       </p>
+                      {reportCategoryLoading ? (
+                        <div style={{ marginLeft: 24, textAlign: "center", padding: "20px 0", color: "#9CA3AF", fontSize: 13 }}>업종 심화 분석 중...</div>
+                      ) : (
                       <select
                         value={reportCategory}
                         onChange={(e) => {
                           const cat = e.target.value;
                           if (!cat) return;
                           setReportCategory(cat);
-                          setReportLoading(true);
-                          fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
-                            .then((r) => r.json())
-                            .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportLoading(false); })
-                            .catch(() => setReportLoading(false));
+                          setReportCategoryLoading(true);
+                          if (selectedDong) {
+                            fetch(`http://localhost:8000/api/report/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&category=${encodeURIComponent(cat)}`)
+                              .then((r) => r.json())
+                              .then((data) => { setReportData({ ...data, _dong: normalizeDongName(selectedDong.dongName) }); setReportCategoryLoading(false); })
+                              .catch(() => setReportCategoryLoading(false));
+                          } else if (selectedGu) {
+                            const dongs = guToDongsRef.current[selectedGu] || [];
+                            fetch("http://localhost:8000/api/gu-report/", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
+                            })
+                              .then((r) => r.json())
+                              .then((data) => { setReportData({ ...data, _gu: selectedGu }); setReportCategoryLoading(false); })
+                              .catch(() => setReportCategoryLoading(false));
+                          }
                         }}
                         style={{ marginLeft: 24, width: "calc(100% - 24px)", padding: "10px 12px", background: "#fff", border: "1px solid #D1D5DB", borderRadius: 8, color: "#374151", fontSize: 13, cursor: "pointer", outline: "none" }}
                       >
@@ -2825,6 +2840,7 @@ export default function MapPage() {
                           <option key={item.업종} value={item.업종}>{item.업종}</option>
                         ))}
                       </select>
+                      )}
                     </>
                   )}
 
@@ -2891,53 +2907,6 @@ export default function MapPage() {
                         );
                       })()}
 
-                      <Divider />
-                      <SectionLabel num="05" title="비용 · 수익 통계" />
-                      <AiText text={ai["비용_수익"]} />
-                      <div style={{ marginLeft: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 16, padding: "20px", background: "#fff", borderRadius: 10, border: "1px solid #E5E7EB" }}>
-                        <KeyFigure label="점포당 월 평균 매출" value={fmtEok(cat.점포당매출)} />
-                        <KeyFigure label="점포 수" value={`${fmtNum(cat.점포수)}개`} />
-                        <KeyFigure label="프랜차이즈 비율" value={`${cat.프랜차이즈비율}%`} />
-                        <KeyFigure label="개업률 / 폐업률" value={`${cat.개업률}% / ${cat.폐업률}%`} />
-                      </div>
-                      <div style={{ marginLeft: 24, marginBottom: 20 }}>
-                        <button
-                          onClick={() => { setReportOpen(false); setStartupCalcOpen(true); }}
-                          style={{ width: "100%", padding: "10px 0", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                        >창업비용 계산하러가기 →</button>
-                      </div>
-
-                      <Divider />
-                      <SectionLabel num="06" title="AI 분석 종합" />
-                      <AiText text={ai["기타_통계"]} />
-                      <div style={{ marginLeft: 24, display: "flex", alignItems: "center", gap: 20, padding: "20px", background: "#fff", borderRadius: 10, border: "1px solid #E5E7EB", marginBottom: 20 }}>
-                        {cat.AI등급 && (
-                          <div style={{ textAlign: "center" }}>
-                            <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>AI 등급</div>
-                            <div style={{
-                              fontSize: 36, fontWeight: 900, lineHeight: 1,
-                              color: cat.AI등급 === "A" ? "#059669" : cat.AI등급 === "B" ? "#D97706" : "#6B7280"
-                            }}>{cat.AI등급}</div>
-                            {cat.성장확률 != null && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>성장확률 {cat.성장확률}%</div>}
-                          </div>
-                        )}
-                        <div style={{ flex: 1, borderLeft: "1px solid #E5E7EB", paddingLeft: 20 }}>
-                          {cat.업종내순위 && (
-                            <div style={{ marginBottom: 8 }}>
-                              <div style={{ fontSize: 11, color: "#9CA3AF" }}>업종 내 순위</div>
-                              <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{cat.업종내순위}위 <span style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 400 }}>/ 전체 {cat.업종내전체동수}개 동</span></div>
-                            </div>
-                          )}
-                          <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 11, color: "#9CA3AF" }}>경쟁 강도</div>
-                            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{fmtNum(Math.round(cat.경쟁강도))}개 점포</div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 11, color: "#9CA3AF" }}>업종 포화도</div>
-                            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{(cat.업종포화도 * 100).toFixed(1)}%</div>
-                          </div>
-                        </div>
-                      </div>
                     </>
                   )}
                   <Divider />
