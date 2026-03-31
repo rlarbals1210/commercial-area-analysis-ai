@@ -25,3 +25,8 @@ data/**
 
 # Env
 .env
+
+# 로컬 전용 파일 (git 추적 제외)
+WORK_LOG.md
+EDU.md
+STUDY.md

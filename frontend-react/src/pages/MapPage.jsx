@@ -181,6 +181,9 @@ export default function MapPage() {
   const [cmpRegionBSelected, setCmpRegionBSelected] = useState(null);
   const cmpRegionATimer = useRef(null);
   const cmpRegionBTimer = useRef(null);
+  const [cmpRegionCat, setCmpRegionCat] = useState(null);
+  const [cmpRegionDrillGroup, setCmpRegionDrillGroup] = useState(null);
+  const [cmpRegionPickerOpen, setCmpRegionPickerOpen] = useState(false);
   // 업종 비교 모드 state
   const [cmpIndRegionType, setCmpIndRegionType] = useState("dong");
   const [cmpIndRegionQuery, setCmpIndRegionQuery] = useState("");
@@ -1467,9 +1470,9 @@ export default function MapPage() {
   function handleCompareRegion() {
     const nameA = cmpRegionType === "dong" ? cmpRegionASelected?.dong : cmpRegionASelected;
     const nameB = cmpRegionType === "dong" ? cmpRegionBSelected?.dong : cmpRegionBSelected;
-    if (!nameA || !nameB) return;
+    if (!nameA || !nameB || !cmpRegionCat) return;
     setAiStep("loading");
-    fetch(`http://localhost:8000/api/compare/region/?type=${cmpRegionType}&a=${encodeURIComponent(nameA)}&b=${encodeURIComponent(nameB)}`)
+    fetch(`http://localhost:8000/api/compare/region/?type=${cmpRegionType}&a=${encodeURIComponent(nameA)}&b=${encodeURIComponent(nameB)}&category=${encodeURIComponent(cmpRegionCat)}`)
       .then(r => r.json())
       .then(data => { setAiResults(data); setAiStep("result"); })
       .catch(() => setAiStep("form"));
@@ -3108,7 +3111,7 @@ export default function MapPage() {
                           </button>
                         ))}
                       </div>
-                      {/* 지역 A */}
+                      {/* 지역 A / B */}
                       {[
                         { label: "지역 A", query: cmpRegionAQuery, setQuery: setCmpRegionAQuery, sugg: cmpRegionASugg, setSugg: setCmpRegionASugg, selected: cmpRegionASelected, setSelected: setCmpRegionASelected, timer: cmpRegionATimer },
                         { label: "지역 B", query: cmpRegionBQuery, setQuery: setCmpRegionBQuery, sugg: cmpRegionBSugg, setSugg: setCmpRegionBSugg, selected: cmpRegionBSelected, setSelected: setCmpRegionBSelected, timer: cmpRegionBTimer },
@@ -3147,6 +3150,47 @@ export default function MapPage() {
                           )}
                         </div>
                       ))}
+                      {/* 업종 선택 */}
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={aiSectionLabel}>
+                          <span style={aiRequiredBadge}>필수</span> 비교 업종
+                          {cmpRegionCat && <span style={{ marginLeft: 8, color: "#34D399", fontWeight: 600, fontSize: 13 }}>{CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} {cmpRegionCat}</span>}
+                        </div>
+                        <button onClick={() => setCmpRegionPickerOpen(o => !o)}
+                          style={{ width: "100%", padding: "8px 12px", background: "#2E2E2E", border: `1.5px solid ${cmpRegionPickerOpen ? "#34D399" : "#4A4A4A"}`, borderRadius: 8, color: cmpRegionCat ? "#34D399" : "#6B7280", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
+                          {cmpRegionCat ? `${CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} ${cmpRegionCat}` : "업종을 선택하세요 ▾"}
+                        </button>
+                        {cmpRegionPickerOpen && (
+                          <div style={{ marginTop: 8 }}>
+                            {cmpRegionDrillGroup ? (
+                              <>
+                                <button onClick={() => setCmpRegionDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>← {cmpRegionDrillGroup}</button>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                                  {CATEGORY_GROUPS[cmpRegionDrillGroup].map(c => (
+                                    <button key={c} onClick={() => { setCmpRegionCat(c); setCmpRegionPickerOpen(false); setCmpRegionDrillGroup(null); }}
+                                      style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cmpRegionCat === c ? "#34D399" : "rgba(255,255,255,0.15)"}`, background: cmpRegionCat === c ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)", color: cmpRegionCat === c ? "#34D399" : "#C8C8C8" }}>
+                                      {CATEGORY_EMOJI[c] ?? "🏪"} {c}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {DRILL_GROUPS.map(group => (
+                                  <button key={group} onClick={() => setCmpRegionDrillGroup(group)}
+                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.08)"; e.currentTarget.style.color = "#34D399"; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                                  >
+                                    <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                                    <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -3254,7 +3298,7 @@ export default function MapPage() {
                       (aiMode === "industry" && !aiDong.trim()) ||
                       (aiMode === "score" && (!aiDong.trim() || !aiIndustry)) ||
                       (aiMode === "gu" && (!aiGu || !aiIndustry)) ||
-                      (aiMode === "compare_region" && (!cmpRegionNameA || !cmpRegionNameB)) ||
+                      (aiMode === "compare_region" && (!cmpRegionNameA || !cmpRegionNameB || !cmpRegionCat)) ||
                       (aiMode === "compare_industry" && (!cmpIndRegionName || !cmpIndCatA || !cmpIndCatB));
                     const onClick =
                       aiMode === "compare_region" ? handleCompareRegion :
@@ -3625,35 +3669,43 @@ export default function MapPage() {
 
                   {/* ── 지역 비교 결과 ── */}
                   {aiMode === "compare_region" && aiResults?.a && (() => {
-                    const { a, b, type } = aiResults;
+                    const { a, b, type, category } = aiResults;
                     const METRICS = [
-                      { key: "총매출",       label: "월 총매출",      fmt: v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억` : `${(v/1e4).toFixed(0)}만`, unit: "" },
-                      { key: "총유동인구",   label: "총 유동인구",    fmt: v => `${v.toLocaleString()}명`, unit: "" },
-                      { key: "주거인구",     label: "주거인구",       fmt: v => `${v.toLocaleString()}명`, unit: "" },
-                      { key: "직장인구",     label: "직장인구",       fmt: v => `${v.toLocaleString()}명`, unit: "" },
-                      { key: "유동대비매출", label: "유동대비매출",   fmt: v => `${v.toLocaleString()}원`, unit: "" },
-                      { key: "개업률",       label: "개업률",         fmt: v => `${v}%`, unit: "" },
-                      { key: "폐업률",       label: "폐업률",         fmt: v => `${v}%`, unit: "" },
-                      { key: "유동_20대비율",label: "20대 유동 비율", fmt: v => `${v}%`, unit: "" },
+                      { key: "점포수",         label: "점포수",       fmt: v => `${v}개` },
+                      { key: "월매출",          label: "월 매출합",    fmt: v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억` : `${(v/1e4).toFixed(0)}만` },
+                      { key: "점포당매출",      label: "점포당 매출",  fmt: v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억` : `${Math.round(v/1e4)}만` },
+                      { key: "경쟁강도",        label: "경쟁강도",     fmt: v => `${v}` },
+                      { key: "업종_포화도",     label: "업종 포화도",  fmt: v => `${v}%` },
+                      { key: "업종_매출점유율", label: "매출 점유율",  fmt: v => `${v}%` },
+                      { key: "개업률",          label: "개업률",       fmt: v => `${v}%` },
+                      { key: "폐업률",          label: "폐업률",       fmt: v => `${v}%` },
+                      { key: "성장확률",        label: "AI 성장확률",  fmt: v => `${v}%` },
                     ];
+                    const reverseKeys = new Set(["경쟁강도", "업종_포화도", "폐업률"]);
                     return (
                       <div>
+                        {/* 업종 배지 */}
+                        <div style={{ textAlign: "center", marginBottom: 10 }}>
+                          <span style={{ fontSize: 13, background: "rgba(52,211,153,0.12)", color: "#34D399", padding: "4px 12px", borderRadius: 20, fontWeight: 600 }}>
+                            {CATEGORY_EMOJI[category] ?? "🏪"} {category}
+                          </span>
+                        </div>
                         {/* 지역명 헤더 */}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
                           <div />
                           {[a, b].map((r, i) => (
                             <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i === 0 ? "rgba(52,211,153,0.1)" : "rgba(59,130,246,0.1)", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"rgba(59,130,246,0.3)"}` }}>
                               <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#34D399":"#60A5FA" }}>{r.name}</div>
-                              <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 2 }}>{type === "dong" ? "행정동" : "구"}</div>
+                              <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 2 }}>등급 {r.등급} · {type === "dong" ? "행정동" : "구"}</div>
                             </div>
                           ))}
                         </div>
                         {/* 지표 행 */}
                         {METRICS.map(({ key, label, fmt }) => {
                           const vA = a[key] ?? 0, vB = b[key] ?? 0;
-                          const isReverseKey = key === "폐업률";
-                          const aBetter = isReverseKey ? vA < vB : vA > vB;
-                          const bBetter = isReverseKey ? vB < vA : vB > vA;
+                          const isReverse = reverseKeys.has(key);
+                          const aBetter = isReverse ? vA < vB : vA > vB;
+                          const bBetter = isReverse ? vB < vA : vB > vA;
                           return (
                             <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 6, alignItems: "center" }}>
                               <div style={{ fontSize: 12, color: "#9E9E9E", textAlign: "center" }}>{label}</div>
@@ -3670,59 +3722,42 @@ export default function MapPage() {
 
                         {/* 추천 박스 */}
                         {(() => {
-                          const { a, b } = aiResults;
-                          // 각 지표별 점수 계산 (가중치 반영)
-                          const weights = {
-                            총매출: 3, 유동대비매출: 2.5, 총유동인구: 2,
-                            주거인구: 1.5, 직장인구: 1.5,
-                            개업률: 1, 유동_20대비율: 1,
-                          };
-                          const reverseKeys = new Set(["폐업률"]);
+                          const weights = { 성장확률: 3, 월매출: 2.5, 점포당매출: 2, 개업률: 1 };
+                          const reverseW = new Set(["경쟁강도", "업종_포화도", "폐업률"]);
                           let scoreA = 0, scoreB = 0;
-                          const reasons = [];
-
                           for (const [key, w] of Object.entries(weights)) {
                             const vA = a[key] ?? 0, vB = b[key] ?? 0;
                             if (vA > vB) scoreA += w;
                             else if (vB > vA) scoreB += w;
                           }
-                          // 폐업률은 낮을수록 좋음
-                          if ((a.폐업률 ?? 0) < (b.폐업률 ?? 0)) scoreA += 1;
-                          else if ((b.폐업률 ?? 0) < (a.폐업률 ?? 0)) scoreB += 1;
-
+                          for (const key of reverseW) {
+                            const vA = a[key] ?? 0, vB = b[key] ?? 0;
+                            if (vA < vB) scoreA += 1;
+                            else if (vB < vA) scoreB += 1;
+                          }
                           const winner = scoreA >= scoreB ? a : b;
                           const loser  = scoreA >= scoreB ? b : a;
                           const winColor = scoreA >= scoreB ? "#34D399" : "#60A5FA";
-
-                          // 구체적 근거 문장 생성
                           const fmtMoney = v => v >= 1e8 ? `${(v/1e8).toFixed(1)}억원` : `${Math.round(v/1e4)}만원`;
-                          if (winner.총매출 > loser.총매출) {
-                            const ratio = ((winner.총매출 / loser.총매출 - 1) * 100).toFixed(0);
-                            reasons.push(`월 총매출이 ${loser.name}보다 ${ratio}% 높은 ${fmtMoney(winner.총매출)}을 기록하고 있어 상권 규모가 큽니다.`);
+                          const reasons = [];
+                          if (winner.성장확률 > loser.성장확률)
+                            reasons.push(`AI 성장확률(${winner.성장확률}%)이 ${loser.name}(${loser.성장확률}%)보다 높아 향후 성장 가능성이 큽니다.`);
+                          if (winner.월매출 > loser.월매출) {
+                            const ratio = loser.월매출 > 0 ? ((winner.월매출 / loser.월매출 - 1) * 100).toFixed(0) : 100;
+                            reasons.push(`${category} 업종 월매출이 ${loser.name}보다 ${ratio}% 높은 ${fmtMoney(winner.월매출)}입니다.`);
                           }
-                          if (winner.유동대비매출 > loser.유동대비매출) {
-                            reasons.push(`유동인구 1인당 매출(${winner.유동대비매출.toLocaleString()}원)이 더 높아 방문객의 실제 소비 전환율이 우수합니다.`);
-                          }
-                          if (winner.총유동인구 > loser.총유동인구) {
-                            reasons.push(`유동인구가 ${(winner.총유동인구/1e4).toFixed(0)}만 명으로 더 많아 잠재 고객 접근성이 좋습니다.`);
-                          }
-                          if ((winner.직장인구 ?? 0) > (loser.직장인구 ?? 0)) {
-                            reasons.push(`직장인구(${(winner.직장인구/1e4).toFixed(0)}만 명)가 더 많아 직장인 수요를 꾸준히 확보할 수 있습니다.`);
-                          }
-                          if ((winner.폐업률 ?? 0) < (loser.폐업률 ?? 0)) {
-                            reasons.push(`폐업률(${winner.폐업률}%)이 낮아 상권이 안정적으로 유지되고 있습니다.`);
-                          }
-                          if ((winner.유동_20대비율 ?? 0) > (loser.유동_20대비율 ?? 0)) {
-                            reasons.push(`20대 유동 비율(${winner.유동_20대비율}%)이 높아 젊은 소비층 유입이 활발합니다.`);
-                          }
-
+                          if (winner.점포당매출 > loser.점포당매출)
+                            reasons.push(`점포당 매출(${fmtMoney(winner.점포당매출)})이 더 높아 개별 점포의 수익성이 우수합니다.`);
+                          if ((winner.경쟁강도 ?? 0) < (loser.경쟁강도 ?? 0))
+                            reasons.push(`경쟁강도(${winner.경쟁강도})가 낮아 ${category} 창업 시 경쟁 부담이 적습니다.`);
+                          if ((winner.폐업률 ?? 0) < (loser.폐업률 ?? 0))
+                            reasons.push(`폐업률(${winner.폐업률}%)이 낮아 업종 생존율이 높은 안정적인 상권입니다.`);
                           const topReasons = reasons.slice(0, 3);
-
                           return (
                             <div style={{ marginTop: 16, padding: "16px", background: "rgba(52,211,153,0.06)", borderRadius: 12, border: "1.5px solid rgba(52,211,153,0.25)" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                                 <span style={{ fontSize: 18 }}>💡</span>
-                                <span style={{ fontSize: 13, color: "#9E9E9E" }}>창업 추천 지역</span>
+                                <span style={{ fontSize: 13, color: "#9E9E9E" }}>{category} 창업 추천 지역</span>
                                 <span style={{ fontSize: 16, fontWeight: 800, color: winColor, marginLeft: 4 }}>{winner.name}</span>
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -5056,7 +5091,7 @@ const AI_MODE_META = {
   industry:        { icon: "🏪", title: "행정동 선택 → 업종 추천",   desc: "관심 지역을 입력하면 유망 업종을 추천합니다",   color: "#3B82F6", rgb: "59,130,246"   },
   score:           { icon: "📊", title: "행정동 · 업종 적합도 점수", desc: "특정 지역과 업종 조합의 상세 점수를 분석합니다", color: "#38BDF8", rgb: "56,189,248"   },
   gu:              { icon: "🗺️", title: "구 · 업종 선택 → 상권 추천", desc: "구와 업종을 선택하면 행정동·길단위 상권을 추천합니다", color: "#A78BFA", rgb: "167,139,250" },
-  compare_region:  { icon: "⚖️", title: "지역 비교",               desc: "두 행정동 또는 두 구의 상권 지표를 비교합니다",    color: "#34D399", rgb: "52,211,153"   },
+  compare_region:  { icon: "⚖️", title: "지역 비교",               desc: "업종을 선택하고 두 지역의 상권 지표를 비교합니다",  color: "#34D399", rgb: "52,211,153"   },
   compare_industry:{ icon: "📈", title: "업종 비교",               desc: "한 지역 안에서 두 업종의 주요 지표를 비교합니다",  color: "#F59E0B", rgb: "245,158,11"   },
 };
 
