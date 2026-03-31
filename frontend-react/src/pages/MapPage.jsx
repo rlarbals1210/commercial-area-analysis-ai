@@ -291,7 +291,7 @@ export default function MapPage() {
   // ── 창업비용 계산기 열릴 때 임대료 데이터 로드 ──
   useEffect(() => {
     if (startupCalcOpen && !calcGuRental) {
-      fetch("http://localhost:8001/api/rental/regions/")
+      fetch("http://localhost:8000/api/rental/regions/")
         .then((r) => r.ok ? r.json() : null)
         .then((data) => { if (data) setCalcGuRental(data); })
         .catch(() => {});
@@ -860,7 +860,7 @@ export default function MapPage() {
             setStreetSpotResults(null);
             setStreetSpotCategory(null);
             clearStreetSpotMarkers();
-            fetch(`http://localhost:8001/api/recommend/street-industry/?상권코드=${상권_코드}`)
+            fetch(`http://localhost:8000/api/recommend/street-industry/?상권코드=${상권_코드}`)
               .then((r) => r.json())
               .then((data) => { setStreetResults(data); setStreetLoading(false); })
               .catch(() => setStreetLoading(false));
@@ -897,7 +897,7 @@ export default function MapPage() {
     setStoreLoading(true);
     const params = new URLSearchParams({ dong: normalizeDongName(selectedDong.dongName), limit: 1000 });
 
-    fetch(`http://localhost:8001/api/stores/?${params}`)
+    fetch(`http://localhost:8000/api/stores/?${params}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -942,7 +942,7 @@ export default function MapPage() {
   // 행정동 선택 시 전체 업종 점수 fetch
   useEffect(() => {
     if (!selectedDong) return;
-    fetch(`http://localhost:8001/api/score-all/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+    fetch(`http://localhost:8000/api/score-all/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
       .then((r) => r.json())
       .then((data) => setScoreData(data.scores || []))
       .catch(() => setScoreData([]));
@@ -957,7 +957,7 @@ export default function MapPage() {
     }
     setAvailableQuarters([]);
     setSelectedQuarter(null);
-    fetch(`http://localhost:8001/api/quarters/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+    fetch(`http://localhost:8000/api/quarters/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
       .then((r) => r.json())
       .then((data) => setAvailableQuarters(data.quarters || []))
       .catch(() => setAvailableQuarters([]));
@@ -973,8 +973,8 @@ export default function MapPage() {
     setReportCategory("");
     setDongLoading(true);
     const url = selectedQuarter
-      ? `http://localhost:8001/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&quarter=${selectedQuarter}`
-      : `http://localhost:8001/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
+      ? `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&quarter=${selectedQuarter}`
+      : `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
     fetch(url)
       .then((r) => r.json())
       .then((data) => setDongData(data))
@@ -1002,7 +1002,7 @@ export default function MapPage() {
     setGuSelectedQuarter(null);
     const dongs = guToDongsRef.current[selectedGu] || [];
     if (!dongs.length) return;
-    fetch(`http://localhost:8001/api/gu-quarters/?dongs=${encodeURIComponent(dongs.join(","))}`)
+    fetch(`http://localhost:8000/api/gu-quarters/?dongs=${encodeURIComponent(dongs.join(","))}`)
       .then((r) => r.json())
       .then((data) => setGuAvailableQuarters(data.quarters || []))
       .catch(() => setGuAvailableQuarters([]));
@@ -1015,7 +1015,7 @@ export default function MapPage() {
     if (!dongs.length) return;
     setGuData(null);
     setGuLoading(true);
-    fetch("http://localhost:8001/api/gu-analysis/", {
+    fetch("http://localhost:8000/api/gu-analysis/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1312,7 +1312,7 @@ export default function MapPage() {
 
     const coordinates = points.map((p) => [p.getLat(), p.getLng()]);
 
-    fetch("http://localhost:8001/api/recommend/custom-spot/", {
+    fetch("http://localhost:8000/api/recommend/custom-spot/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ coordinates, category }),
@@ -1350,7 +1350,7 @@ export default function MapPage() {
     setStreetSpotResults(null);
     setStreetSpotLoading(true);
 
-    fetch(`http://localhost:8001/api/recommend/street-spot/?상권코드=${encodeURIComponent(상권코드)}&category=${encodeURIComponent(category)}`)
+    fetch(`http://localhost:8000/api/recommend/street-spot/?상권코드=${encodeURIComponent(상권코드)}&category=${encodeURIComponent(category)}`)
       .then((r) => r.json())
       .then((data) => {
         setStreetSpotLoading(false);
@@ -1403,7 +1403,7 @@ export default function MapPage() {
     setSpotCategory(category);
     setAiStep("spot_loading");
 
-    fetch(`http://localhost:8001/api/recommend/spot/?dong=${encodeURIComponent(dongName)}&category=${encodeURIComponent(category)}`)
+    fetch(`http://localhost:8000/api/recommend/spot/?dong=${encodeURIComponent(dongName)}&category=${encodeURIComponent(category)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) { alert(data.error); setAiStep("result"); return; }
@@ -1457,7 +1457,7 @@ export default function MapPage() {
   // ── 지역 자동완성 검색 헬퍼 ──
   function searchRegionSuggest(query, type, setSugg) {
     if (!query.trim()) { setSugg([]); return; }
-    fetch(`http://localhost:8001/api/search/regions/?q=${encodeURIComponent(query)}&type=${type}`)
+    fetch(`http://localhost:8000/api/search/regions/?q=${encodeURIComponent(query)}&type=${type}`)
       .then(r => r.json())
       .then(d => setSugg(d.results || []))
       .catch(() => setSugg([]));
@@ -1469,7 +1469,7 @@ export default function MapPage() {
     const nameB = cmpRegionType === "dong" ? cmpRegionBSelected?.dong : cmpRegionBSelected;
     if (!nameA || !nameB) return;
     setAiStep("loading");
-    fetch(`http://localhost:8001/api/compare/region/?type=${cmpRegionType}&a=${encodeURIComponent(nameA)}&b=${encodeURIComponent(nameB)}`)
+    fetch(`http://localhost:8000/api/compare/region/?type=${cmpRegionType}&a=${encodeURIComponent(nameA)}&b=${encodeURIComponent(nameB)}`)
       .then(r => r.json())
       .then(data => { setAiResults(data); setAiStep("result"); })
       .catch(() => setAiStep("form"));
@@ -1480,7 +1480,7 @@ export default function MapPage() {
     const regionName = cmpIndRegionType === "dong" ? cmpIndRegionSelected?.dong : cmpIndRegionSelected;
     if (!regionName || !cmpIndCatA || !cmpIndCatB) return;
     setAiStep("loading");
-    fetch(`http://localhost:8001/api/compare/industry/?region=${encodeURIComponent(regionName)}&region_type=${cmpIndRegionType}&cat_a=${encodeURIComponent(cmpIndCatA)}&cat_b=${encodeURIComponent(cmpIndCatB)}`)
+    fetch(`http://localhost:8000/api/compare/industry/?region=${encodeURIComponent(regionName)}&region_type=${cmpIndRegionType}&cat_a=${encodeURIComponent(cmpIndCatA)}&cat_b=${encodeURIComponent(cmpIndCatB)}`)
       .then(r => r.json())
       .then(data => { setAiResults(data); setAiStep("result"); })
       .catch(() => setAiStep("form"));
@@ -1500,7 +1500,7 @@ export default function MapPage() {
 
     if (aiMode === "dong") {
       Promise.all([
-        fetch(`http://localhost:8001/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
+        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1521,7 +1521,7 @@ export default function MapPage() {
 
     if (aiMode === "industry") {
       Promise.all([
-        fetch(`http://localhost:8001/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
+        fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1535,7 +1535,7 @@ export default function MapPage() {
 
     if (aiMode === "score") {
       Promise.all([
-        fetch(`http://localhost:8001/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1552,8 +1552,8 @@ export default function MapPage() {
       setAiGuStreetResults(null);
       setAiGuDongError(null);
       Promise.all([
-        fetch(`http://localhost:8001/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
-        fetch(`http://localhost:8001/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
+        fetch(`http://localhost:8000/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([dongData, streetData]) => {
@@ -1586,7 +1586,7 @@ export default function MapPage() {
     if (zoomLevel < GU_MODE_LEVEL) { setGuAllRanking([]); return; }
     const guDongsMap = guToDongsRef.current;
     if (!guDongsMap || Object.keys(guDongsMap).length === 0) return;
-    fetch("http://localhost:8001/api/gu-all-ranking/", {
+    fetch("http://localhost:8000/api/gu-all-ranking/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ gu_dongs_map: guDongsMap }),
@@ -1655,7 +1655,7 @@ export default function MapPage() {
     setSearchExpanded(false);
     setAiStep("loading");
     Promise.all([
-      fetch(`http://localhost:8001/api/recommend/industry/?dong=${encodeURIComponent(dongName.trim())}`).then((r) => r.json()),
+      fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(dongName.trim())}`).then((r) => r.json()),
       new Promise((res) => setTimeout(res, 1200)),
     ])
       .then(([data]) => {
@@ -2986,7 +2986,7 @@ export default function MapPage() {
                           clearTimeout(aiIndustrySuggestTimer.current);
                           if (v.trim().length >= 1) {
                             aiIndustrySuggestTimer.current = setTimeout(() => {
-                              fetch(`http://localhost:8001/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                              fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
                                 .then((r) => r.json())
                                 .then((d) => { setAiIndustrySuggestions(d.suggestions || []); setAiIndustrySuggestOpen(true); })
                                 .catch(() => setAiIndustrySuggestions([]));
@@ -3909,7 +3909,7 @@ export default function MapPage() {
                       setPickerDrillGroup(null);
                       setAiStep("loading");
                       Promise.all([
-                        fetch(`http://localhost:8001/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
+                        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
                         new Promise((res) => setTimeout(res, 1200)),
                       ])
                         .then(([data]) => {
@@ -4052,7 +4052,7 @@ export default function MapPage() {
                       clearTimeout(calcSuggestTimer.current);
                       if (v.trim().length >= 1) {
                         calcSuggestTimer.current = setTimeout(() => {
-                          fetch(`http://localhost:8001/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                          fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
                             .then((r) => r.json())
                             .then((d) => { setCalcSuggestions(d.suggestions || []); setCalcSuggestOpen(true); })
                             .catch(() => setCalcSuggestions([]));
