@@ -120,6 +120,8 @@ def normalize_dong(name: str) -> str:
     return DONG_REMAP.get(name, name)
 
 
+
+
 def quarters(request):
     dong = normalize_dong(request.GET.get("dong"))
     if not dong:
@@ -637,36 +639,29 @@ def recommend_location(request):
     if not candidate_dongs:
         return JsonResponse({"error": "추천할 수 있는 상권 데이터가 없습니다."}, status=404)
 
-    # 정규화 최대값
-    max_유동 = max((commercial_map[d]["총유동인구"] or 0) for d in candidate_dongs) or 1
-    max_소분류 = max(subdiv_stores.get(d, 0) for d in candidate_dongs) or 1
-    max_경쟁강도 = max((commercial_map[d]["경쟁강도"] or 0) for d in candidate_dongs) or 1
+    # 로컬 정규화 최대값 (후보 행정동 기준)
+    max_유동   = max((commercial_map[d]["총유동인구"] or 0) for d in candidate_dongs) or 1
+    max_포화도 = max((commercial_map[d]["업종_포화도"] or 0) for d in candidate_dongs) or 1
+    max_소분류 = max(subdiv_stores.values(), default=0) or 1
+    max_경쟁   = max((commercial_map[d]["경쟁강도"] or 0) for d in candidate_dongs) or 1
 
     results = []
     for dong in candidate_dongs:
         c = commercial_map[dong]
         s = score_map.get(dong, {})
 
-        성장확률 = s.get("성장확률") or 50.0
-        포화도 = c.get("업종_포화도") or 0.5
-        경쟁강도_raw = c.get("경쟁강도") or 0
-        경쟁강도_norm = 경쟁강도_raw / max_경쟁강도  # 0~1 정규화
-        유동인구 = c.get("총유동인구") or 0
+        성장확률      = s.get("성장확률") or 50.0
+        유동인구      = c.get("총유동인구") or 0
         소분류_점포수 = subdiv_stores.get(dong, 0)
+        포화도        = c.get("업종_포화도") or 0.5
+        경쟁강도_norm = (c.get("경쟁강도") or 0) / max_경쟁
 
-        # 소분류 경쟁 점수: 해당 소분류 점포가 적을수록 높음 (0~100)
-        소분류_경쟁점수 = max(0.0, (1 - 소분류_점포수 / max_소분류)) * 100
-        # 유동인구 점수: 많을수록 높음 (0~100)
-        유동인구_점수 = (유동인구 / max_유동) * 100
-        # 포화도 점수: 낮을수록 높음 (0~100)
-        포화도_점수 = max(0.0, 1 - 포화도) * 100
+        유동인구_점수   = (유동인구 / max_유동) * 100
+        소분류경쟁_점수 = max(0.0, 1 - 소분류_점포수 / max_소분류) * 100
+        포화도_점수     = max(0.0, 1 - 포화도 / max_포화도) * 100
 
-        # 종합점수 = AI성장확률×40% + 소분류경쟁×30% + 유동인구×15% + 포화도×15%
-        composite = (
-            성장확률 * 0.40
-            + 소분류_경쟁점수 * 0.30
-            + 유동인구_점수 * 0.15
-            + 포화도_점수 * 0.15
+        composite = round(
+            성장확률 * 0.40 + 소분류경쟁_점수 * 0.30 + 유동인구_점수 * 0.15 + 포화도_점수 * 0.15, 1
         )
 
         dong_code = c.get("행정동코드") or 0
@@ -674,7 +669,7 @@ def recommend_location(request):
         results.append({
             "dongName": dong,
             "guName": _GU_CODE_MAP.get(gu_prefix, ""),
-            "score": round(composite, 1),
+            "score": composite,
             "성장확률": round(성장확률, 1),
             "등급": s.get("등급", "-"),
             "소분류_점포수": 소분류_점포수,
@@ -833,28 +828,27 @@ def recommend_score(request):
     if not c:
         return JsonResponse({"error": "상권 데이터가 없습니다."}, status=404)
 
-    # 같은 카테고리 전체 동 기준 정규화
+    # 전국 기준 정규화 최대값
     all_rows = list(
         CommercialData.objects.filter(통합카테고리=category, 기준_년분기_코드=latest_q)
         .values("당월매출합", "총유동인구", "경쟁강도")
     )
     max_매출 = max((r["당월매출합"] or 0) for r in all_rows) or 1
     max_유동 = max((r["총유동인구"] or 0) for r in all_rows) or 1
-    max_경쟁강도 = max((r["경쟁강도"] or 0) for r in all_rows) or 1
+    max_경쟁 = max((r["경쟁강도"] or 0) for r in all_rows) or 1
 
-    성장확률 = score_obj.성장확률 or 50.0
-    경쟁강도_norm = (c.경쟁강도 or 0) / max_경쟁강도  # 0~1 정규화
-    매출_점수 = round(((c.당월매출합 or 0) / max_매출) * 100, 1)
-    유동인구_점수 = round(((c.총유동인구 or 0) / max_유동) * 100, 1)
-    경쟁_점수 = round(max(0.0, 1 - 경쟁강도_norm) * 100, 1)
-    성장_점수 = round(성장확률, 1)
+    성장확률    = score_obj.성장확률 or 50.0
+    매출        = c.당월매출합 or 0
+    유동인구    = c.총유동인구 or 0
+
+    # breakdown 개별 점수 (UI 표시용)
+    매출_점수     = round((매출 / max_매출) * 100, 1)
+    유동인구_점수 = round((유동인구 / max_유동) * 100, 1)
+    경쟁강도_norm = (c.경쟁강도 or 0) / max_경쟁
+    경쟁강도_점수 = round(max(0.0, 1 - 경쟁강도_norm) * 100, 1)
 
     composite = round(
-        성장_점수 * 0.40
-        + 매출_점수 * 0.30
-        + 유동인구_점수 * 0.15
-        + 경쟁_점수 * 0.15,
-        1
+        성장확률 * 0.40 + 매출_점수 * 0.30 + 유동인구_점수 * 0.15 + 경쟁강도_점수 * 0.15, 1
     )
 
     grade = (
@@ -868,7 +862,7 @@ def recommend_score(request):
         "성장확률": 성장확률,
         "경쟁강도_norm": 경쟁강도_norm,
         "업종_포화도": c.업종_포화도 or 0.5,
-        "총유동인구": c.총유동인구 or 0,
+        "총유동인구": 유동인구,
         "폐업_률_평균": c.폐업_률_평균,
         "개업_율_평균": c.개업_율_평균,
     })
@@ -880,10 +874,10 @@ def recommend_score(request):
         "grade": grade,
         "summary": summary,
         "breakdown": [
-            {"label": "성장 추세", "score": 성장_점수, "max": 100},
-            {"label": "매출 잠재력", "score": 매출_점수, "max": 100},
-            {"label": "유동인구", "score": 유동인구_점수, "max": 100},
-            {"label": "경쟁 강도", "score": 경쟁_점수, "max": 100},
+            {"label": "성장 추세",  "score": round(성장확률, 1), "max": 100},
+            {"label": "매출 잠재력", "score": 매출_점수,         "max": 100},
+            {"label": "유동인구",   "score": 유동인구_점수,      "max": 100},
+            {"label": "경쟁 강도",   "score": 경쟁강도_점수,     "max": 100},
         ],
         "pros": pros,
         "cons": cons,
