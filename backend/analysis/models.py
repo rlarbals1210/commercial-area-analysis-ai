@@ -22,24 +22,29 @@ class CommercialData(models.Model):
     주말매출합          = models.BigIntegerField(null=True)
     매출_주말비율       = models.FloatField(null=True)
 
-    # 시간대별 매출
-    시간대_00_06_매출   = models.BigIntegerField(null=True)
-    시간대_06_11_매출   = models.BigIntegerField(null=True)
-    시간대_11_14_매출   = models.BigIntegerField(null=True)
-    시간대_14_17_매출   = models.BigIntegerField(null=True)
-    시간대_17_21_매출   = models.BigIntegerField(null=True)
-    시간대_21_24_매출   = models.BigIntegerField(null=True)
+    # 요일별 매출
+    월요일매출합        = models.BigIntegerField(null=True)
+    화요일매출합        = models.BigIntegerField(null=True)
+    수요일매출합        = models.BigIntegerField(null=True)
+    목요일매출합        = models.BigIntegerField(null=True)
+    금요일매출합        = models.BigIntegerField(null=True)
+    토요일매출합        = models.BigIntegerField(null=True)
+    일요일매출합        = models.BigIntegerField(null=True)
 
-    # 성별 매출
-    남성매출합          = models.BigIntegerField(null=True)
-    여성매출합          = models.BigIntegerField(null=True)
-    매출_남성비율       = models.FloatField(null=True)
-    매출_여성비율       = models.FloatField(null=True)
+    # 나이별 매출 금액
+    매출_10대합         = models.BigIntegerField(null=True)
+    매출_30대합         = models.BigIntegerField(null=True)
+    매출_40대합         = models.BigIntegerField(null=True)
+    매출_50대합         = models.BigIntegerField(null=True)
+    매출_60대이상합     = models.BigIntegerField(null=True)
 
-    # 주중/주말 매출
-    주중매출합          = models.BigIntegerField(null=True)
-    주말매출합          = models.BigIntegerField(null=True)
-    매출_주말비율       = models.FloatField(null=True)
+    # 나이별 결제 건수
+    매출건수_10대       = models.BigIntegerField(null=True)
+    매출건수_20대       = models.BigIntegerField(null=True)
+    매출건수_30대       = models.BigIntegerField(null=True)
+    매출건수_40대       = models.BigIntegerField(null=True)
+    매출건수_50대       = models.BigIntegerField(null=True)
+    매출건수_60대이상   = models.BigIntegerField(null=True)
 
     # 시간대별 매출
     시간대_00_06_매출   = models.BigIntegerField(null=True)
@@ -51,7 +56,29 @@ class CommercialData(models.Model):
 
     # 유동인구
     총유동인구          = models.BigIntegerField()
+    유동_10대           = models.BigIntegerField(null=True)
     유동_20대           = models.BigIntegerField()
+    유동_30대           = models.BigIntegerField(null=True)
+    유동_40대           = models.BigIntegerField(null=True)
+    유동_50대           = models.BigIntegerField(null=True)
+    유동_60대이상       = models.BigIntegerField(null=True)
+
+    # 요일별 유동인구
+    월요일유동          = models.BigIntegerField(null=True)
+    화요일유동          = models.BigIntegerField(null=True)
+    수요일유동          = models.BigIntegerField(null=True)
+    목요일유동          = models.BigIntegerField(null=True)
+    금요일유동          = models.BigIntegerField(null=True)
+    토요일유동          = models.BigIntegerField(null=True)
+    일요일유동          = models.BigIntegerField(null=True)
+
+    # 시간대별 유동인구
+    시간대_00_06_유동   = models.BigIntegerField(null=True)
+    시간대_06_11_유동   = models.BigIntegerField(null=True)
+    시간대_11_14_유동   = models.BigIntegerField(null=True)
+    시간대_14_17_유동   = models.BigIntegerField(null=True)
+    시간대_17_21_유동   = models.BigIntegerField(null=True)
+    시간대_21_24_유동   = models.BigIntegerField(null=True)
 
     # 직장·주거인구 (신규)
     총_직장_인구_수     = models.BigIntegerField(null=True)

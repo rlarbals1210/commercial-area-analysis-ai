@@ -2829,9 +2829,32 @@ export default function MapPage() {
                     <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 10 }}>결제 고객 성별</div>
                     <InlineBar label="남성" ratio={d.성별?.남성비율 || 0} color="#3B82F6" valueLabel={`${d.성별?.남성비율 || 0}%`} />
                     <InlineBar label="여성" ratio={d.성별?.여성비율 || 0} color="#EC4899" valueLabel={`${d.성별?.여성비율 || 0}%`} />
-                    <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginTop: 16, marginBottom: 10 }}>주중 / 주말 매출</div>
-                    <InlineBar label="주중 (월~금)" ratio={d.주중주말?.주중비율 || 0} color="#6366F1" valueLabel={`${d.주중주말?.주중비율 || 0}%`} />
-                    <InlineBar label="주말 (토~일)" ratio={d.주중주말?.주말비율 || 0} color="#0EA5E9" valueLabel={`${d.주중주말?.주말비율 || 0}%`} />
+                    {d.요일별 && (() => {
+                      const 요일목록 = ["월","화","수","목","금","토","일"];
+                      const values = 요일목록.map(k => d.요일별[k] || 0);
+                      const max = Math.max(...values, 1);
+                      return (
+                        <>
+                          <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginTop: 16, marginBottom: 12 }}>요일별 매출</div>
+                          <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 80 }}>
+                            {요일목록.map((day, i) => {
+                              const v = values[i];
+                              const h = Math.round((v / max) * 100);
+                              const isWeekend = day === "토" || day === "일";
+                              const isTop = v === max;
+                              return (
+                                <div key={day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                                  <div style={{ width: "100%", height: 58, display: "flex", alignItems: "flex-end" }}>
+                                    <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#111827" : isWeekend ? "#FBBF24" : "#93C5FD", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                  </div>
+                                  <div style={{ fontSize: 10, color: isWeekend ? "#D97706" : "#9CA3AF" }}>{day}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* 업종 심화 분석 선택 */}
@@ -2941,6 +2964,90 @@ export default function MapPage() {
                                       <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#111827" : "#D1D5DB", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
                                     </div>
                                     <div style={{ fontSize: 10, color: "#9CA3AF", textAlign: "center" }}>{label}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 요일별 매출 (업종) */}
+                      {cat.요일별매출 && (() => {
+                        const 요일목록 = ["월","화","수","목","금","토","일"];
+                        const values = 요일목록.map(k => cat.요일별매출[k] || 0);
+                        const max = Math.max(...values, 1);
+                        return (
+                          <div style={{ marginLeft: 24, marginBottom: 24 }}>
+                            <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 12 }}>요일별 매출</div>
+                            <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 90 }}>
+                              {요일목록.map((day, i) => {
+                                const v = values[i];
+                                const h = Math.round((v / max) * 100);
+                                const isWeekend = day === "토" || day === "일";
+                                const isTop = v === max;
+                                return (
+                                  <div key={day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                                    <div style={{ width: "100%", height: 68, display: "flex", alignItems: "flex-end" }}>
+                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#111827" : isWeekend ? "#FDE68A" : "#D1D5DB", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                    </div>
+                                    <div style={{ fontSize: 10, color: isWeekend ? "#D97706" : "#9CA3AF" }}>{day}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 나이별 매출 금액 */}
+                      {cat.나이별매출 && (() => {
+                        const ages = ["10대","20대","30대","40대","50대","60대이상"];
+                        const ageLabels = ["10대","20대","30대","40대","50대","60대+"];
+                        const values = ages.map(k => cat.나이별매출[k] || 0);
+                        const max = Math.max(...values, 1);
+                        return (
+                          <div style={{ marginLeft: 24, marginBottom: 24 }}>
+                            <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 12 }}>나이별 매출</div>
+                            <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 90 }}>
+                              {ages.map((age, i) => {
+                                const v = values[i];
+                                const h = Math.round((v / max) * 100);
+                                const isTop = v === max;
+                                return (
+                                  <div key={age} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                                    <div style={{ width: "100%", height: 68, display: "flex", alignItems: "flex-end" }}>
+                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#111827" : "#A5B4FC", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                    </div>
+                                    <div style={{ fontSize: 9, color: "#9CA3AF", textAlign: "center" }}>{ageLabels[i]}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 나이별 결제 건수 */}
+                      {cat.나이별건수 && (() => {
+                        const ages = ["10대","20대","30대","40대","50대","60대이상"];
+                        const ageLabels = ["10대","20대","30대","40대","50대","60대+"];
+                        const values = ages.map(k => cat.나이별건수[k] || 0);
+                        const max = Math.max(...values, 1);
+                        return (
+                          <div style={{ marginLeft: 24, marginBottom: 24 }}>
+                            <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 12 }}>나이별 결제 건수</div>
+                            <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 90 }}>
+                              {ages.map((age, i) => {
+                                const v = values[i];
+                                const h = Math.round((v / max) * 100);
+                                const isTop = v === max;
+                                return (
+                                  <div key={age} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                                    <div style={{ width: "100%", height: 68, display: "flex", alignItems: "flex-end" }}>
+                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#111827" : "#6EE7B7", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                    </div>
+                                    <div style={{ fontSize: 9, color: "#9CA3AF", textAlign: "center" }}>{ageLabels[i]}</div>
                                   </div>
                                 );
                               })}
