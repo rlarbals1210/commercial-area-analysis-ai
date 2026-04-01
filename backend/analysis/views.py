@@ -1,6 +1,8 @@
 import json
+import math
 import os
 import threading
+import requests as http_requests
 import pandas as pd
 from pathlib import Path
 from django.http import JsonResponse
@@ -54,6 +56,105 @@ def _get_street_geojson():
         else:
             _street_geojson = {}
     return _street_geojson
+
+# ── 행정동 centroid 캐시 (카카오 마커용) ──────────────────────────
+_dong_centroids: dict | None = None
+_dong_centroids_lock = threading.Lock()
+
+_HANGJEONGDONG_GEOJSON = Path(__file__).resolve().parents[2] / "frontend-react" / "public" / "seoul_hangjeongdong.geojson"
+
+def _get_dong_centroids() -> dict:
+    global _dong_centroids
+    if _dong_centroids is not None:
+        return _dong_centroids
+    with _dong_centroids_lock:
+        if _dong_centroids is not None:
+            return _dong_centroids
+        result = {}
+        try:
+            with open(_HANGJEONGDONG_GEOJSON, encoding="utf-8") as f:
+                gj = json.load(f)
+            for feat in gj.get("features", []):
+                name = feat.get("properties", {}).get("dong_name", "")
+                if not name:
+                    continue
+                name = normalize_dong(name)
+                geom = feat.get("geometry", {})
+                coords = []
+                if geom.get("type") == "MultiPolygon":
+                    for poly in geom["coordinates"]:
+                        for ring in poly:
+                            coords.extend(ring)
+                elif geom.get("type") == "Polygon":
+                    for ring in geom["coordinates"]:
+                        coords.extend(ring)
+                if not coords:
+                    continue
+                lngs = [c[0] for c in coords]
+                lats = [c[1] for c in coords]
+                cx = sum(lngs) / len(lngs)
+                cy = sum(lats) / len(lats)
+                dlat = (max(lats) - min(lats)) / 2 * 111_000
+                dlng = (max(lngs) - min(lngs)) / 2 * 88_000
+                radius = int(max(300, min(math.sqrt(dlat**2 + dlng**2), 2000)))
+                result[name] = {
+                    "lng": cx, "lat": cy, "radius": radius,
+                    "bbox": (min(lats), max(lats), min(lngs), max(lngs)),
+                    "polygon": shapely_shape(feat["geometry"]),
+                }
+        except Exception:
+            pass
+        _dong_centroids = result
+    return _dong_centroids
+
+def _grid_cells(bbox, n=3):
+    """행정동 bounding box를 n×n 격자로 분할해 (lat, lng, radius) 리스트 반환"""
+    min_lat, max_lat, min_lng, max_lng = bbox
+    lat_step = (max_lat - min_lat) / n
+    lng_step = (max_lng - min_lng) / n
+    cells = []
+    for i in range(n):
+        for j in range(n):
+            cell_lat = min_lat + (i + 0.5) * lat_step
+            cell_lng = min_lng + (j + 0.5) * lng_step
+            dlat = lat_step / 2 * 111_000
+            dlng = lng_step / 2 * 88_000
+            radius = int(max(100, math.sqrt(dlat**2 + dlng**2)))
+            cells.append((cell_lat, cell_lng, radius))
+    return cells
+
+
+def _fetch_cell(url, headers, keyword, lat, lng, radius):
+    """단일 셀에서 카카오 키워드 검색 (최대 3페이지 = 45개)"""
+    docs = []
+    for page in range(1, 4):
+        try:
+            resp = http_requests.get(url, headers=headers, params={
+                "query": keyword, "x": lng, "y": lat,
+                "radius": radius, "size": 15, "page": page,
+            }, timeout=10)
+            if resp.status_code != 200:
+                break
+            data = resp.json()
+            docs.extend(data.get("documents", []))
+            if data.get("meta", {}).get("is_end", True):
+                break
+        except Exception:
+            break
+    return docs
+
+
+# 통합카테고리 → 카카오 키워드 매핑 (이름이 길거나 슬래시 포함된 것만 변환)
+_CATEGORY_KEYWORD = {
+    "분식/간식":           "분식",
+    "베이커리/디저트":     "베이커리",
+    "양식/기타외식":       "양식",
+    "생활용품 소매":       "생활용품",
+    "스포츠 강습":         "스포츠학원",
+    "자동차수리/미용":     "자동차수리",
+    "컴퓨터및주변장치판매": "컴퓨터판매",
+    "기타 B2B서비스":      "사업서비스",
+}
 
 # gu_rental.json 메모리 캐시
 _gu_rental = None
@@ -452,23 +553,70 @@ def score_all(request):
 
 
 def store_list(request):
-    """행정동 내 개별 상가 목록 반환 (GET, dong 필수 / category 선택)"""
+    """행정동 + 업종 → 카카오 로컬 API로 개별 상가 목록 반환 (GET, dong·category 필수)"""
+    from django.core.cache import cache
+
     dong = normalize_dong(request.GET.get("dong"))
-    category = request.GET.get("category")
-    limit = min(int(request.GET.get("limit", 500)), 1000)
+    category = request.GET.get("category", "").strip()
 
     if not dong:
         return JsonResponse({"error": "dong 파라미터가 필요합니다."}, status=400)
+    if not category:
+        return JsonResponse({"error": "category 파라미터가 필요합니다."}, status=400)
 
-    qs = StoreInfo.objects.filter(행정동명=dong)
-    if category:
-        qs = qs.filter(통합카테고리=category)
+    cache_key = f"kakao_stores_{dong}_{category}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return JsonResponse({"stores": cached, "total": len(cached)})
 
-    total = qs.count()
-    stores = list(
-        qs.values("상호명", "통합카테고리", "상권업종소분류명", "도로명주소", "위도", "경도")[:limit]
-    )
-    return JsonResponse({"stores": stores, "total": total})
+    centroid = _get_dong_centroids().get(dong)
+    if not centroid:
+        return JsonResponse({"stores": [], "total": 0})
+
+    api_key = os.environ.get("KAKAO_REST_API_KEY", "")
+    keyword = _CATEGORY_KEYWORD.get(category, category)
+    url = "https://dapi.kakao.com/v2/local/search/keyword.json"
+    headers = {"Authorization": f"KakaoAK {api_key}"}
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    cells = _grid_cells(centroid["bbox"])
+    all_docs = []
+    with ThreadPoolExecutor(max_workers=len(cells)) as executor:
+        futures = [
+            executor.submit(_fetch_cell, url, headers, keyword, lat, lng, radius)
+            for lat, lng, radius in cells
+        ]
+        for future in futures:
+            all_docs.extend(future.result())
+
+    # place id 기준 중복 제거 + 행정동 폴리곤 경계 필터
+    polygon = centroid.get("polygon")
+    seen, stores = set(), []
+    for doc in all_docs:
+        pid = doc.get("id", "")
+        if pid in seen:
+            continue
+        seen.add(pid)
+        if polygon:
+            try:
+                pt = Point(float(doc.get("x", 0)), float(doc.get("y", 0)))
+                if not polygon.contains(pt):
+                    continue
+            except Exception:
+                pass
+        stores.append({
+            "상호명":          doc.get("place_name", ""),
+            "통합카테고리":    category,
+            "상권업종소분류명": doc.get("category_name", ""),
+            "도로명주소":      doc.get("road_address_name") or doc.get("address_name", ""),
+            "위도":            float(doc.get("y", 0)),
+            "경도":            float(doc.get("x", 0)),
+        })
+
+    if stores:
+        cache.set(cache_key, stores, 6 * 3600)
+    return JsonResponse({"stores": stores, "total": len(stores)})
 
 
 def suggest_industries(request):
@@ -1812,17 +1960,19 @@ def trend_mz_industries(request):
     return JsonResponse({"quarter": latest_q, "results": results})
 
 
-@csrf_exempt
-def trend_worker_industries(request):
-    """직장인 인기 업종 - 주중 매출 비율이 높은 업종 순위"""
-    from django.db.models import Avg
-    latest_q = (
+def _latest_quarter():
+    return (
         CommercialData.objects
         .values_list("기준_년분기_코드", flat=True)
         .distinct()
         .order_by("-기준_년분기_코드")
         .first()
     )
+
+
+def trend_weekday_industries(request):
+    """주중 매출 비율 순위 - 주중매출비율 높은 업종 순위"""
+    latest_q = _latest_quarter()
     if not latest_q:
         return JsonResponse({"results": []})
 
@@ -1834,25 +1984,47 @@ def trend_worker_industries(request):
         .annotate(
             총매출=Sum("당월매출합"),
             주중매출=Sum("주중매출합"),
-            avg_주말비율=Avg("매출_주말비율"),
         )
-        .order_by("-총매출")  # 전체 매출 기준 정렬
     )
 
-    results = []
-    for i, r in enumerate(rows, 1):
+    computed = []
+    for r in rows:
         총매출 = r["총매출"] or 0
         주중매출 = r["주중매출"] or 0
-        주중비율 = round(주중매출 / 총매출 * 100, 1) if 총매출 else 0
-        주말비율 = round((r["avg_주말비율"] or 0) * 100, 1)
-        results.append({
-            "순위": i,
-            "통합카테고리": r["통합카테고리"],
-            "주중_매출비율": 주중비율,
-            "주말_매출비율": 주말비율,
-            "직장인_지수": round(1 - (r["avg_주말비율"] or 0), 4),
-        })
+        비율 = round(주중매출 / 총매출 * 100, 1) if 총매출 else 0
+        computed.append({"통합카테고리": r["통합카테고리"], "주중_매출": 주중매출, "주중_매출비율": 비율})
 
+    computed.sort(key=lambda x: x["주중_매출비율"], reverse=True)
+    results = [{"순위": i, **c} for i, c in enumerate(computed, 1)]
+    return JsonResponse({"quarter": latest_q, "results": results})
+
+
+def trend_weekend_industries(request):
+    """주말 매출 순위 - 주말매출합 높은 업종 순위"""
+    latest_q = _latest_quarter()
+    if not latest_q:
+        return JsonResponse({"results": []})
+
+    rows = list(
+        CommercialData.objects
+        .filter(기준_년분기_코드=latest_q)
+        .exclude(주말매출합__isnull=True)
+        .values("통합카테고리")
+        .annotate(
+            총매출=Sum("당월매출합"),
+            주말매출=Sum("주말매출합"),
+        )
+    )
+
+    computed = []
+    for r in rows:
+        총매출 = r["총매출"] or 0
+        주말매출 = r["주말매출"] or 0
+        비율 = round(주말매출 / 총매출 * 100, 1) if 총매출 else 0
+        computed.append({"통합카테고리": r["통합카테고리"], "주말_매출": 주말매출, "주말_매출비율": 비율})
+
+    computed.sort(key=lambda x: x["주말_매출비율"], reverse=True)
+    results = [{"순위": i, **c} for i, c in enumerate(computed, 1)]
     return JsonResponse({"quarter": latest_q, "results": results})
 
 

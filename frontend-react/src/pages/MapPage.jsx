@@ -942,37 +942,36 @@ export default function MapPage() {
     }
   }
 
-  // ── 행정동 선택 + 마커 토글 변경 시: 상가 마커 fetch ──
+  // ── 마커 토글 / 행정동 / 업종 필터 변경 시: 카카오 API로 상가 마커 fetch ──
   useEffect(() => {
     clearStoreMarkers();
     allStoresRef.current = [];
+    storeCategoryFilterRef.current = storeCategoryFilter;
     const map = mapInstanceRef.current;
-    if (!showStoreMarkers || !selectedDong || !map || !window.kakao) return;
+    if (!showStoreMarkers || !selectedDong || !storeCategoryFilter.length || !map || !window.kakao) return;
 
     let cancelled = false;
     setStoreLoading(true);
-    const params = new URLSearchParams({ dong: normalizeDongName(selectedDong.dongName), limit: 1000 });
 
-    fetch(`http://localhost:8000/api/stores/?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
+    Promise.all(storeCategoryFilter.map((cat) => {
+      const params = new URLSearchParams({
+        dong: normalizeDongName(selectedDong.dongName),
+        category: cat,
+      });
+      return fetch(`http://localhost:8000/api/stores/?${params}`)
+        .then((r) => r.json())
+        .then((data) => data.stores || [])
+        .catch(() => []);
+    }))
+      .then((results) => {
         if (cancelled) return;
-        allStoresRef.current = data.stores || [];
-        renderStoreMarkers(map, getFilteredStores());
+        allStoresRef.current = results.flat();
+        renderStoreMarkers(map, allStoresRef.current);
       })
-      .catch(() => {})
       .finally(() => { if (!cancelled) setStoreLoading(false); });
 
     return () => { cancelled = true; };
-  }, [showStoreMarkers, selectedDong]);
-
-  // ── 필터 변경 시: ref 동기화 + 마커 재렌더 ──
-  useEffect(() => {
-    storeCategoryFilterRef.current = storeCategoryFilter;
-    const map = mapInstanceRef.current;
-    if (!showStoreMarkers || !map || !window.kakao || !allStoresRef.current.length) return;
-    renderStoreMarkers(map, getFilteredStores());
-  }, [storeCategoryFilter]);
+  }, [showStoreMarkers, selectedDong, storeCategoryFilter]);
 
 
   // 행정동 패널 닫힐 때 마커 + 점수 초기화
@@ -1730,8 +1729,10 @@ export default function MapPage() {
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>상권분석</div>
                   <div style={{ fontSize: 12, color: "#9CA3AF", marginLeft: "auto" }}>검색하거나 지도에서 선택하세요</div>
                 </div>
-                {/* 카드 내 검색 */}
-                <div style={{ position: "relative" }}>
+              </div>
+            )}
+            {/* 검색창 — 항상 표시 */}
+            <div style={{ position: "relative", marginTop: (selectedDong || selectedGu) ? 10 : 0 }}>
                   <div style={{ display: "flex", alignItems: "center", background: "#F9FAFB", border: `1.5px solid ${cardSearchResults.length > 0 ? "#BFDBFE" : "#E5E7EB"}`, borderRadius: cardSearchResults.length > 0 ? "8px 8px 0 0" : 8, padding: "7px 10px", gap: 7, transition: "border-color 0.15s" }}>
                     <input
                       ref={cardSearchRef}
@@ -1789,8 +1790,6 @@ export default function MapPage() {
                     </div>
                   )}
                 </div>
-              </div>
-            )}
           </div>
 
           {/* 행정동 선택 (항상 표시, 구 선택 후 활성화) */}

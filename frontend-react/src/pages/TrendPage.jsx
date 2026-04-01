@@ -170,7 +170,8 @@ export default function TrendPage() {
 
   const [mzIndustries, setMzIndustries] = useState([]);
   const [mzVisible, setMzVisible] = useState(PAGE_SIZE);
-  const [workerIndustries, setWorkerIndustries] = useState([]);
+  const [weekdayIndustries, setWeekdayIndustries] = useState([]);
+  const [weekendIndustries, setWeekendIndustries] = useState([]);
   const [activeTab, setActiveTab] = useState("mz");
 
   const upCarouselRef = useRef(null);
@@ -240,14 +241,17 @@ export default function TrendPage() {
       });
   }, [selectedGu, guToDongs]);
 
-  // MZ 인기 업종 로드
+  // MZ / 주중 / 주말 인기 업종 로드
   useEffect(() => {
     fetch(`${API}/api/trend/mz-industries/`)
       .then((r) => r.json())
       .then((data) => setMzIndustries(data.results || []));
-    fetch(`${API}/api/trend/worker-industries/`)
+    fetch(`${API}/api/trend/weekday-industries/`)
       .then((r) => r.json())
-      .then((data) => setWorkerIndustries(data.results || []));
+      .then((data) => setWeekdayIndustries(data.results || []));
+    fetch(`${API}/api/trend/weekend-industries/`)
+      .then((r) => r.json())
+      .then((data) => setWeekendIndustries(data.results || []));
   }, []);
 
   // 캐러셀 자동 스크롤 헬퍼
@@ -446,25 +450,15 @@ export default function TrendPage() {
           )}
         </section>
 
-        {/* MZ / 직장인 인기 업종 */}
+        {/* MZ / 주중매출 / 주말매출 인기 업종 */}
         <section style={{ marginTop: 48 }}>
-          {/* 제목 + 탭 토글 */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{
-                padding: "2px 10px", borderRadius: 20, fontSize: 13, fontWeight: 700,
-                background: activeTab === "mz" ? "linear-gradient(135deg, #38BDF8, #f472b6)" : "linear-gradient(135deg, #2563EB, #06B6D4)",
-                color: "#fff",
-              }}>
-                {activeTab === "mz" ? "MZ" : "직장인"}
-              </span>
-              인기 업종
-            </h2>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>업종별 매출 순위</h2>
             <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 8, padding: 3, gap: 2 }}>
-              {[{ key: "mz", label: "MZ" }, { key: "worker", label: "직장인" }].map(({ key, label }) => (
+              {[{ key: "mz", label: "MZ" }, { key: "weekday", label: "주중 매출" }, { key: "weekend", label: "주말 매출" }].map(({ key, label }) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key)}
+                  onClick={() => { setActiveTab(key); setMzVisible(PAGE_SIZE); }}
                   style={{
                     padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
                     fontSize: 13, fontWeight: 600,
@@ -480,12 +474,14 @@ export default function TrendPage() {
             </div>
           </div>
           <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
-            {activeTab === "mz" ? "20대 매출 비율이 높은 업종 순위" : "주중 매출 비율이 높은 업종 순위"}
+            {activeTab === "mz" ? "20대 매출 비율이 높은 업종 순위"
+              : activeTab === "weekday" ? "주중(월~금) 매출이 높은 업종 순위"
+              : "주말(토~일) 매출이 높은 업종 순위"}
           </p>
 
           <div style={{
             display: "grid",
-            gridTemplateColumns: activeTab === "mz" ? "80px 1fr 1fr 1fr" : "80px 1fr 1fr 1fr",
+            gridTemplateColumns: activeTab === "mz" ? "80px 1fr 1fr 1fr" : "80px 1fr 1fr",
             padding: "10px 20px",
             fontSize: 13, fontWeight: 600, color: "#6B7280",
             borderBottom: "1px solid #E5E7EB",
@@ -498,60 +494,79 @@ export default function TrendPage() {
                 <span style={{ textAlign: "center" }}>20대 매출 비율</span>
                 <span style={{ textAlign: "center" }}>MZ 지수</span>
               </>
+            ) : activeTab === "weekday" ? (
+              <span style={{ textAlign: "center" }}>주중 매출 비율</span>
             ) : (
-              <>
-                <span style={{ textAlign: "center" }}>주중 매출 비율</span>
-                <span style={{ textAlign: "center" }}>주말 매출 비율</span>
-              </>
+              <span style={{ textAlign: "center" }}>주말 매출 비율</span>
             )}
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {(activeTab === "mz" ? mzIndustries : workerIndustries).slice(0, mzVisible).map((row) => (
-              <div
-                key={row.순위}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "80px 1fr 1fr 1fr",
-                  alignItems: "center",
-                  background: "#fff",
-                  borderRadius: 12,
-                  border: "1px solid #F3F4F6",
-                  padding: "12px 20px",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                }}
-              >
-                <span style={{ fontSize: 14, fontWeight: 700, color: row.순위 <= 3 ? "#1D4ED8" : "#9CA3AF", textAlign: "center" }}>
-                  {row.순위}위
-                </span>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <CatIcon cat={row.통합카테고리} size={20} />
-                  <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
-                </div>
-                {activeTab === "mz" ? (
-                  <>
-                    <span style={{ textAlign: "center", fontSize: 14, fontWeight: 600, color: "#6366F1" }}>
-                      {row["20대_매출비율"]}%
-                    </span>
-                    <span style={{ textAlign: "center", display: "flex", justifyContent: "center" }}>
-                      <MzDots value={row["MZ_지수"]} tab="mz" />
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span style={{ textAlign: "center", fontSize: 14, fontWeight: 600, color: "#0EA5E9" }}>
-                      {row["주중_매출비율"]}%
-                    </span>
-                    <span style={{ textAlign: "center", fontSize: 14, fontWeight: 600, color: "#2563EB" }}>
-                      {row["주말_매출비율"]}%
-                    </span>
-                  </>
-                )}
-              </div>
-            ))}
+            {(() => {
+              const data = activeTab === "mz" ? mzIndustries : activeTab === "weekday" ? weekdayIndustries : weekendIndustries;
+              const barKey = activeTab === "mz" ? "20대_매출비율" : activeTab === "weekday" ? "주중_매출비율" : "주말_매출비율";
+              const maxVal = data.length > 0 ? Math.max(...data.map(r => r[barKey] || 0)) : 1;
+              const MEDALS = { 1: "🥇", 2: "🥈", 3: "🥉" };
+              const MEDAL_BG = { 1: "#FFFBEB", 2: "#F9FAFB", 3: "#FFF7ED" };
+              const barColor = activeTab === "mz" ? "#6366F1" : activeTab === "weekday" ? "#0EA5E9" : "#8B5CF6";
+              const cols = activeTab === "mz" ? "80px 1fr 1fr 1fr" : "80px 1fr 1fr";
+
+              return data.slice(0, mzVisible).map((row) => {
+                const barPct = maxVal > 0 ? ((row[barKey] || 0) / maxVal) * 100 : 0;
+                const isTop3 = row.순위 <= 3;
+                return (
+                  <div
+                    key={row.순위}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: cols,
+                      alignItems: "center",
+                      background: isTop3 ? (MEDAL_BG[row.순위] || "#fff") : "#fff",
+                      borderRadius: 12,
+                      border: isTop3 ? "1px solid #E5E7EB" : "1px solid #F3F4F6",
+                      padding: "12px 20px",
+                      boxShadow: isTop3 ? "0 2px 6px rgba(0,0,0,0.07)" : "0 1px 3px rgba(0,0,0,0.04)",
+                    }}
+                  >
+                    {/* 순위 */}
+                    <div style={{ textAlign: "center" }}>
+                      {isTop3 ? (
+                        <span style={{ fontSize: 22 }}>{MEDALS[row.순위]}</span>
+                      ) : (
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "#9CA3AF" }}>{row.순위}위</span>
+                      )}
+                    </div>
+                    {/* 업종 */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                      <CatIcon cat={row.통합카테고리} size={20} />
+                      <span style={{ fontSize: 15, fontWeight: isTop3 ? 700 : 600, color: "#111827" }}>{row.통합카테고리}</span>
+                    </div>
+                    {/* 지표: 비율 (바 차트 포함) */}
+                    <div style={{ textAlign: "center" }}>
+                      {activeTab === "mz" ? (
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "#6366F1" }}>{row["20대_매출비율"]}%</span>
+                      ) : activeTab === "weekday" ? (
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "#0EA5E9" }}>{row["주중_매출비율"]}%</span>
+                      ) : (
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "#8B5CF6" }}>{row["주말_매출비율"]}%</span>
+                      )}
+                      <div style={{ height: 4, background: "#F3F4F6", borderRadius: 2, width: "80%", margin: "5px auto 0" }}>
+                        <div style={{ height: "100%", width: `${barPct}%`, background: barColor, borderRadius: 2, transition: "width 0.4s ease" }} />
+                      </div>
+                    </div>
+                    {/* MZ 탭 전용: MZ 지수 */}
+                    {activeTab === "mz" && (
+                      <span style={{ textAlign: "center", display: "flex", justifyContent: "center" }}>
+                        <MzDots value={row["MZ_지수"]} tab="mz" />
+                      </span>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
 
-          {mzVisible < (activeTab === "mz" ? mzIndustries : workerIndustries).length && (
+          {mzVisible < (activeTab === "mz" ? mzIndustries : activeTab === "weekday" ? weekdayIndustries : weekendIndustries).length && (
             <div style={{ marginTop: 12, textAlign: "center" }}>
               <button
                 onClick={() => setMzVisible((v) => v + PAGE_SIZE)}
