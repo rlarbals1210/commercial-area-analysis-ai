@@ -258,6 +258,7 @@ export default function MapPage() {
   const [pickerDrillGroup, setPickerDrillGroup] = useState(null);
   // 창업비용 계산기 드릴다운 (calcActiveTab → drillGroup으로 전환)
   const [calcDrillGroup, setCalcDrillGroup] = useState(null);
+  const [calcStep, setCalcStep] = useState(1);                   // 1: 업종, 2: 정보입력, 3: 결과
   const [startupCalcOpen, setStartupCalcOpen] = useState(false); // 창업 비용 계산기
   const [toolMenuOpen, setToolMenuOpen] = useState(false); // 상권 분석 도구 드롭다운
   const [calcIndustry, setCalcIndustry] = useState(null);       // 계산기 선택 업종
@@ -4189,98 +4190,45 @@ export default function MapPage() {
 
       {/* ── 창업비용 계산기 오버레이 ── */}
       {startupCalcOpen && (
-        <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); }}>
+        <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); setCalcStep(1); }}>
           <div style={startupCalcPanelStyle} onClick={(e) => e.stopPropagation()}>
 
             {/* 헤더 */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 22 }}>💰</span>
-                <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>창업비용 계산기</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>창업비용 계산기</div>
+                <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>예상 초기비용과 월 고정비를 확인하세요</div>
               </div>
-              <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); }} style={closeBtnStyle}>✕</button>
+              <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); setCalcStep(1); }} style={closeBtnStyle}>✕</button>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-
-            {/* 결과 뷰 / 입력 뷰 전환 — calcResult가 있으면 결과만 표시, 없으면 입력 폼 표시 */}
-            {calcResult ? (
-              /* 결과 섹션 — gap을 10으로 줄여 카드 간격 최소화, 스크롤 없이 한 화면에 맞춤 */
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
-                {/* 헤더: 선택 업종·구 + 다시 계산하기 버튼 */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 14, color: "#93B8EE", fontWeight: 700 }}>{calcIndustry} · {calcResult.구}</span>
-                  <button
-                    onClick={() => setCalcResult(null)} // 결과 초기화 → 입력 폼으로 복귀
-                    style={{
-                      padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12,
-                      border: "1.5px solid #E5E7EB", background: "#F9FAFB",
-                      color: "#374151",
-                    }}
-                  >← 다시 계산하기</button>
+            {/* 스텝 인디케이터 */}
+            {calcStep < 3 && (() => {
+              const steps = [{ n: 1, label: "업종 선택" }, { n: 2, label: "기본 정보" }, { n: 3, label: "결과" }];
+              return (
+                <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 24 }}>
+                  {steps.flatMap(({ n, label }, i) => {
+                    const items = [
+                      <div key={`step-${n}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, background: calcStep >= n ? "#111827" : "#F3F4F6", color: calcStep >= n ? "#fff" : "#9CA3AF", transition: "background 0.2s" }}>{n}</div>
+                        <div style={{ fontSize: 11, color: calcStep >= n ? "#111827" : "#9CA3AF", fontWeight: calcStep === n ? 700 : 400, whiteSpace: "nowrap" }}>{label}</div>
+                      </div>
+                    ];
+                    if (i < 2) items.push(<div key={`line-${n}`} style={{ flex: 1, height: 2, background: calcStep > n ? "#111827" : "#E5E7EB", margin: "13px 6px 0", transition: "background 0.2s" }} />);
+                    return items;
+                  })}
                 </div>
+              );
+            })()}
 
-                {/* 초기 창업비용 */}
-                <div style={{ background: "#F9FAFB", borderRadius: 12, padding: "12px 14px", border: "1px solid #E5E7EB" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                    📦 초기 창업비용 <span style={{ fontSize: 11, color: "#6B7280", fontWeight: 400 }}>(일회성)</span>
-                  </div>
-                  {[["보증금", calcResult.보증금], ["인테리어", calcResult.인테리어], ["설비·집기", calcResult.설비집기], ["초기재고", calcResult.초기재고]].map(([label, val]) => (
-                    <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
-                      <span style={{ color: "#6B7280" }}>{label}</span>
-                      <span style={{ color: "#111827", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
-                    </div>
-                  ))}
-                  <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>합계</span>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: "#60A5FA" }}>{calcResult.초기합계.toLocaleString()}만원</span>
-                  </div>
-                </div>
-
-                {/* 월 고정비 */}
-                <div style={{ background: "#F9FAFB", borderRadius: 12, padding: "12px 14px", border: "1px solid #E5E7EB" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 8 }}>📅 월 고정비</div>
-                  {[["임대료", calcResult.월임대료], ["관리비·공과금", calcResult.월관리비], ["인건비", calcResult.월인건비]].map(([label, val]) => (
-                    <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
-                      <span style={{ color: "#6B7280" }}>{label}</span>
-                      <span style={{ color: "#111827", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
-                    </div>
-                  ))}
-                  <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>합계</span>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: "#059669" }}>{calcResult.월고정비합계.toLocaleString()}만원</span>
-                  </div>
-                </div>
-
-                {/* 손익분기 */}
-                <div style={{ background: "rgba(245,158,11,0.08)", borderRadius: 12, padding: "10px 14px", border: "1px solid rgba(245,158,11,0.2)" }}>
-                  <div style={{ color: "#FCD34D", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>💡 손익분기 기준</div>
-                  <div style={{ color: "#D1D5DB", fontSize: 13, lineHeight: 1.5 }}>
-                    원가율 {calcResult.원가율}% 기준, 월{" "}
-                    <span style={{ color: "#FCD34D", fontWeight: 700 }}>{calcResult.손익분기_월매출.toLocaleString()}만원</span> 이상 매출 필요
-                  </div>
-                  {calcResult.특이사항 && (
-                    <div style={{ color: "#9CA3AF", marginTop: 4, fontSize: 11 }}>⚠️ {calcResult.특이사항}</div>
-                  )}
-                </div>
-
-                {/* 주석 */}
-                <div style={{ fontSize: 11, color: "#6B7280", textAlign: "center", lineHeight: 1.5 }}>
-                  ※ {calcResult.구} 평균 임대료 기준 ({calcResult.층}{calcResult.rentFallback ? " 데이터 없어 1층 기준" : ""}, {calcResult.rentPerSqm}만원/㎡)<br />
-                  ※ 실제 비용은 참고용으로만 활용하세요.
-                </div>
-              </div>
-            ) : (
-              <>
-              {/* ① 업종 선택 */}
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#6B7280", marginBottom: 10, letterSpacing: "0.05em" }}>① 업종 선택</div>
-                {/* 업종 검색창 */}
-                <div style={{ marginBottom: 8 }}>
+            {/* 스텝 1: 업종 선택 */}
+            {calcStep === 1 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* 검색창 */}
+                <div style={{ position: "relative" }}>
                   <input
                     type="text"
-                    placeholder="업종 직접 검색... (예: 피자, 세차장)"
+                    placeholder="업종 검색... (예: 카페, 피자)"
                     value={calcSearchQuery}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -4294,172 +4242,138 @@ export default function MapPage() {
                             .then((d) => { setCalcSuggestions(d.suggestions || []); setCalcSuggestOpen(true); })
                             .catch(() => setCalcSuggestions([]));
                         }, 200);
-                      } else {
-                        setCalcSuggestions([]);
-                        setCalcSuggestOpen(false);
-                      }
+                      } else { setCalcSuggestions([]); setCalcSuggestOpen(false); }
                     }}
                     onBlur={() => setTimeout(() => setCalcSuggestOpen(false), 150)}
-                    style={{
-                      width: "100%", padding: "6px 10px", fontSize: 13,
-                      borderRadius: calcSuggestOpen && calcSuggestions.length > 0 ? "8px 8px 0 0" : 8,
-                      background: "#F9FAFB", border: "1.5px solid #E5E7EB",
-                      color: "#111827", outline: "none", boxSizing: "border-box",
-                    }}
+                    style={{ width: "100%", padding: "10px 14px", fontSize: 14, borderRadius: calcSuggestOpen && calcSuggestions.length > 0 ? "10px 10px 0 0" : 10, border: "1.5px solid #E5E7EB", background: "#F9FAFB", color: "#111827", outline: "none", boxSizing: "border-box" }}
                   />
-                  <div style={{
-                    overflow: "hidden",
-                    maxHeight: calcSuggestOpen && calcSuggestions.length > 0 ? 320 : 0,
-                    opacity: calcSuggestOpen && calcSuggestions.length > 0 ? 1 : 0,
-                    transition: "max-height 0.22s ease, opacity 0.18s ease",
-                    background: "#fff", border: "1.5px solid #E5E7EB",
-                    borderTop: "none", borderRadius: "0 0 8px 8px",
-                  }}>
+                  <div style={{ overflow: "hidden", maxHeight: calcSuggestOpen && calcSuggestions.length > 0 ? 320 : 0, opacity: calcSuggestOpen && calcSuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 10px 10px", position: "absolute", width: "100%", zIndex: 10 }}>
                     {calcSuggestions.map((s, i) => (
-                      <div
-                        key={i}
-                        onMouseDown={() => {
-                          setCalcIndustry(s.통합카테고리);
-                          setCalcResult(null);
-                          setCalcSearchQuery("");
-                          setCalcSuggestOpen(false);
-                        }}
-                        style={{
-                          padding: "7px 12px", cursor: "pointer", fontSize: 13,
-                          borderBottom: i < calcSuggestions.length - 1 ? "1px solid #F3F4F6" : "none",
-                          display: "flex", justifyContent: "space-between", alignItems: "center",
-                        }}
+                      <div key={i} onMouseDown={() => { setCalcIndustry(s.통합카테고리); setCalcSearchQuery(""); setCalcSuggestOpen(false); }}
+                        style={{ padding: "9px 14px", cursor: "pointer", fontSize: 13, borderBottom: i < calcSuggestions.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
                         onMouseEnter={(e) => e.currentTarget.style.background = "#EFF6FF"}
                         onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                       >
                         <span style={{ color: "#111827" }}>{s.소분류명}</span>
-                        <span style={{
-                          fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)",
-                          padding: "2px 7px", borderRadius: 10,
-                        }}>{s.통합카테고리}</span>
+                        <span style={{ fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.1)", padding: "2px 8px", borderRadius: 10 }}>{s.통합카테고리}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* 드릴다운 목록 — 검색 중에는 숨김 */}
+                {/* 드릴다운 */}
                 {!calcSearchQuery && (
                   calcDrillGroup ? (
-                    /* 세부 카테고리 */
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <button
-                        onClick={() => setCalcDrillGroup(null)}
-                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#6B7280", marginBottom: 4 }}
-                      >
+                    <div>
+                      <button onClick={() => setCalcDrillGroup(null)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#6B7280", marginBottom: 10 }}>
                         ← {DRILL_GROUP_META[calcDrillGroup].emoji} {calcDrillGroup}
                       </button>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                         {CATEGORY_GROUPS[calcDrillGroup].map((cat) => (
-                          <button key={cat} onClick={() => { setCalcIndustry(cat); setCalcResult(null); }}
-                            style={{
-                              padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13,
-                              border: calcIndustry === cat ? "2px solid #2563EB" : "1.5px solid #E5E7EB",
-                              background: calcIndustry === cat ? "#EFF6FF" : "#F9FAFB",
-                              color: calcIndustry === cat ? "#2563EB" : "#374151",
-                              fontWeight: calcIndustry === cat ? 700 : 400,
-                              display: "flex", alignItems: "center", gap: 4,
-                            }}
-                          >
-                            <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
-                          </button>
+                          <button key={cat} onClick={() => setCalcIndustry(calcIndustry === cat ? null : cat)}
+                            style={{ padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: calcIndustry === cat ? "2px solid #111827" : "1.5px solid #E5E7EB", background: calcIndustry === cat ? "#111827" : "#F9FAFB", color: calcIndustry === cat ? "#fff" : "#374151", fontWeight: calcIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
+                          ><span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}</button>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    /* 대분류 목록 */
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {DRILL_GROUPS.map((group) => (
-                        <button
-                          key={group}
-                          onClick={() => setCalcDrillGroup(group)}
-                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                        <button key={group} onClick={() => setCalcDrillGroup(group)}
+                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F9FF"; e.currentTarget.style.borderColor = "#BAE6FD"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
                         >
-                          <span style={{ fontSize: 18 }}>{DRILL_GROUP_META[group].emoji}</span>
-                          {group}
-                          <span style={{ marginLeft: "auto", fontSize: 12, color: "#6B7280" }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                          <span style={{ fontSize: 20 }}>{DRILL_GROUP_META[group].emoji}</span>
+                          <span>{group}</span>
+                          <span style={{ marginLeft: "auto", fontSize: 12, color: "#9CA3AF" }}>{CATEGORY_GROUPS[group].length}개 →</span>
                         </button>
                       ))}
                     </div>
                   )
                 )}
+
+                {/* 선택된 업종 표시 + 다음 버튼 */}
+                {calcIndustry && (
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, marginBottom: 12 }}>
+                      <span style={{ fontSize: 16 }}>{CATEGORY_EMOJI[calcIndustry] ?? "🏪"}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#15803D" }}>{calcIndustry}</span>
+                      <span style={{ fontSize: 12, color: "#4ADE80", marginLeft: "auto" }}>선택됨</span>
+                    </div>
+                    <button onClick={() => setCalcStep(2)}
+                      style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                      다음 →
+                    </button>
+                  </div>
+                )}
               </div>
+            )}
 
-              {/* ② 기본 정보 (업종 선택 후) */}
-              {calcIndustry && (
-                <>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#6B7280", marginBottom: 10, letterSpacing: "0.05em" }}>② 기본 정보</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* 스텝 2: 기본 정보 입력 */}
+            {calcStep === 2 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* 선택 업종 요약 */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10 }}>
+                  <span style={{ fontSize: 16 }}>{CATEGORY_EMOJI[calcIndustry] ?? "🏪"}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>{calcIndustry}</span>
+                  <button onClick={() => { setCalcStep(1); setCalcResult(null); }} style={{ marginLeft: "auto", fontSize: 12, color: "#6B7280", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>변경</button>
+                </div>
 
-                      {/* 면적 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>면적</span>
-                        <input
-                          type="number" min={10} max={300} value={calcArea}
-                          onChange={(e) => { setCalcArea(Number(e.target.value)); setCalcResult(null); }}
-                          style={calcInputStyle}
-                        />
-                        <span style={{ color: "#6B7280", fontSize: 13 }}>㎡ &nbsp;({(calcArea / 3.3).toFixed(1)}평)</span>
-                      </div>
-
-                      {/* 층수 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>층수</span>
-                        {["지하1층", "1층", "2층"].map((f) => (
-                          <button key={f} onClick={() => { setCalcFloor(f); setCalcResult(null); }} style={{
-                            padding: "4px 12px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                            border: calcFloor === f ? "1.5px solid #2563EB" : "1.5px solid #E5E7EB",
-                            background: calcFloor === f ? "#EFF6FF" : "#F9FAFB",
-                            color: calcFloor === f ? "#2563EB" : "#374151",
-                          }}>{f}</button>
-                        ))}
-                      </div>
-
-                      {/* 직원수 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>직원수</span>
-                        <input
-                          type="number" min={0} max={10} value={calcWorkers}
-                          onChange={(e) => { setCalcWorkers(Number(e.target.value)); setCalcResult(null); }}
-                          style={calcInputStyle}
-                        />
-                        <span style={{ color: "#6B7280", fontSize: 13 }}>명 (사장 포함)</span>
-                      </div>
-
-                      {/* 지역 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>지역</span>
-                        {selectedDong?.guName ? (
-                          <span style={{ fontSize: 13, color: "#93B8EE", fontWeight: 600 }}>
-                            {selectedDong.guName} <span style={{ color: "#6B7280", fontWeight: 400 }}>(지도 선택)</span>
-                          </span>
-                        ) : (
-                          <select
-                            value={calcSelectedGu}
-                            onChange={(e) => { setCalcSelectedGu(e.target.value); setCalcResult(null); }}
-                            style={{
-                              ...calcInputStyle,
-                              width: 140, cursor: "pointer",
-                              background: "#F9FAFB",
-                              color: "#111827",
-                            }}
-                          >
-                            <option value="" style={{ background: "#fff", color: "#6B7280" }}>구 선택...</option>
-                            {REGIONS.map((g) => <option key={g} value={g} style={{ background: "#fff", color: "#111827" }}>{g}</option>)}
-                          </select>
-                        )}
-                      </div>
+                {/* 입력 폼 */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
+                  {/* 면적 */}
+                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid #F3F4F6" }}>
+                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>면적</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input type="number" min={10} max={300} value={calcArea}
+                        onChange={(e) => setCalcArea(Number(e.target.value))}
+                        style={{ width: 72, padding: "6px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 14, outline: "none", color: "#111827", textAlign: "right" }}
+                      />
+                      <span style={{ fontSize: 13, color: "#6B7280" }}>㎡</span>
+                      <span style={{ fontSize: 12, color: "#9CA3AF" }}>({(calcArea / 3.3).toFixed(1)}평)</span>
                     </div>
                   </div>
+                  {/* 층수 */}
+                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid #F3F4F6" }}>
+                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>층수</div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {["지하1층", "1층", "2층"].map((f) => (
+                        <button key={f} onClick={() => setCalcFloor(f)} style={{ padding: "5px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, border: calcFloor === f ? "1.5px solid #111827" : "1.5px solid #E5E7EB", background: calcFloor === f ? "#111827" : "#fff", color: calcFloor === f ? "#fff" : "#374151", fontWeight: calcFloor === f ? 700 : 400 }}>{f}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* 직원수 */}
+                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid #F3F4F6" }}>
+                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>직원수</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button onClick={() => setCalcWorkers(Math.max(0, calcWorkers - 1))} style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", cursor: "pointer", fontSize: 16, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                      <span style={{ width: 28, textAlign: "center", fontSize: 15, fontWeight: 700, color: "#111827" }}>{calcWorkers}</span>
+                      <button onClick={() => setCalcWorkers(Math.min(10, calcWorkers + 1))} style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", cursor: "pointer", fontSize: 16, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                      <span style={{ fontSize: 12, color: "#9CA3AF" }}>명 (사장 포함)</span>
+                    </div>
+                  </div>
+                  {/* 지역 */}
+                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px" }}>
+                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>지역</div>
+                    {selectedDong?.guName ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{selectedDong.guName}</span>
+                        <span style={{ fontSize: 11, color: "#9CA3AF", background: "#F3F4F6", padding: "2px 7px", borderRadius: 6 }}>지도 선택</span>
+                      </div>
+                    ) : (
+                      <select value={calcSelectedGu} onChange={(e) => setCalcSelectedGu(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", color: "#111827", fontSize: 13, outline: "none", cursor: "pointer" }}>
+                        <option value="">구 선택...</option>
+                        {REGIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    )}
+                  </div>
+                </div>
 
-                  {/* 계산 버튼 */}
+                {/* 버튼 */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setCalcStep(1)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
                   <button
                     onClick={() => {
                       const gu = selectedDong?.guName || calcSelectedGu;
@@ -4481,29 +4395,97 @@ export default function MapPage() {
                       const 월고정비합계 = 월임대료 + 월관리비 + 월인건비;
                       const 원가율 = cat["원가율_%"];
                       const 손익분기_월매출 = Math.round(월고정비합계 / (1 - 원가율 / 100));
-                      setCalcResult({
-                        구: gu, 층: calcFloor, rentPerSqm,
-                        월임대료, 보증금, 인테리어, 설비집기, 초기재고, 초기합계,
-                        월인건비, 월관리비, 월고정비합계,
-                        원가율, 손익분기_월매출,
-                        특이사항: cat["특이사항"],
-                        rentFallback: !guData?.[calcFloor],
-                      });
+                      setCalcResult({ 구: gu, 층: calcFloor, rentPerSqm, 월임대료, 보증금, 인테리어, 설비집기, 초기재고, 초기합계, 월인건비, 월관리비, 월고정비합계, 원가율, 손익분기_월매출, 특이사항: cat["특이사항"], rentFallback: !guData?.[calcFloor] });
+                      setCalcStep(3);
                     }}
-                    style={{
-                      padding: "11px 0", borderRadius: 10, border: "none", flexShrink: 0,
-                      background: "linear-gradient(135deg, #3B82F6, #8B5CF6)",
-                      color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
-                    }}
-                  >
-                    계산하기
+                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                    결과 보기
                   </button>
-
-                </>
-              )}
-              </>
+                </div>
+              </div>
             )}
-            </div>
+
+            {/* 스텝 3: 카드형 결과 */}
+            {calcStep === 3 && calcResult && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* 요약 헤더 */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#111827", borderRadius: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 2 }}>{calcResult.구} · {calcResult.층}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>{CATEGORY_EMOJI[calcIndustry] ?? "🏪"}</span>{calcIndustry}
+                    </div>
+                  </div>
+                  <button onClick={() => setCalcStep(2)} style={{ fontSize: 12, color: "#9CA3AF", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>← 수정</button>
+                </div>
+
+                {/* 초기 창업비용 카드 */}
+                <div style={{ border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
+                  <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid #F3F4F6" }}>
+                    <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 2 }}>📦 초기 창업비용 <span style={{ fontWeight: 400 }}>(일회성)</span></div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: "#3B82F6" }}>{calcResult.초기합계.toLocaleString()}<span style={{ fontSize: 14, fontWeight: 600, color: "#6B7280" }}>만원</span></div>
+                  </div>
+                  <div style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {[["보증금", calcResult.보증금, calcResult.초기합계], ["인테리어", calcResult.인테리어, calcResult.초기합계], ["설비·집기", calcResult.설비집기, calcResult.초기합계], ["초기재고", calcResult.초기재고, calcResult.초기합계]].map(([label, val, total]) => (
+                      <div key={label}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ fontSize: 12, color: "#6B7280" }}>{label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{val.toLocaleString()}만원</span>
+                        </div>
+                        <div style={{ height: 4, background: "#F3F4F6", borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${Math.round(val / total * 100)}%`, background: "#93C5FD", borderRadius: 2 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 월 고정비 카드 */}
+                <div style={{ border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
+                  <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid #F3F4F6" }}>
+                    <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 2 }}>📅 월 고정비</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: "#059669" }}>{calcResult.월고정비합계.toLocaleString()}<span style={{ fontSize: 14, fontWeight: 600, color: "#6B7280" }}>만원/월</span></div>
+                  </div>
+                  <div style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {[["임대료", calcResult.월임대료, calcResult.월고정비합계], ["관리비·공과금", calcResult.월관리비, calcResult.월고정비합계], ["인건비", calcResult.월인건비, calcResult.월고정비합계]].map(([label, val, total]) => (
+                      <div key={label}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ fontSize: 12, color: "#6B7280" }}>{label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{val.toLocaleString()}만원</span>
+                        </div>
+                        <div style={{ height: 4, background: "#F3F4F6", borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${Math.round(val / total * 100)}%`, background: "#6EE7B7", borderRadius: 2 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 손익분기 카드 */}
+                <div style={{ padding: "14px 16px", background: "#FFFBEB", border: "1.5px solid #FDE68A", borderRadius: 12 }}>
+                  <div style={{ fontSize: 12, color: "#92400E", fontWeight: 700, marginBottom: 6 }}>💡 손익분기점</div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                    <span style={{ fontSize: 24, fontWeight: 800, color: "#D97706" }}>{calcResult.손익분기_월매출.toLocaleString()}</span>
+                    <span style={{ fontSize: 13, color: "#92400E", fontWeight: 600 }}>만원/월 이상 매출 필요</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#B45309", marginTop: 4 }}>원가율 {calcResult.원가율}% 기준</div>
+                  {calcResult.특이사항 && (
+                    <div style={{ fontSize: 11, color: "#D97706", marginTop: 6, padding: "6px 10px", background: "rgba(217,119,6,0.08)", borderRadius: 6 }}>⚠️ {calcResult.특이사항}</div>
+                  )}
+                </div>
+
+                {/* 주석 + 다시 계산 */}
+                <div style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", lineHeight: 1.7 }}>
+                  ※ {calcResult.구} 평균 임대료 기준 ({calcResult.층}{calcResult.rentFallback ? ", 1층 기준 적용" : ""}, {calcResult.rentPerSqm}만원/㎡)<br />
+                  ※ 실제 비용은 달라질 수 있습니다. 참고용으로만 활용하세요.
+                </div>
+                <button onClick={() => { setCalcStep(1); setCalcResult(null); setCalcIndustry(null); setCalcDrillGroup(null); }}
+                  style={{ padding: "11px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                  처음부터 다시 계산하기
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       )}
@@ -5249,12 +5231,12 @@ const startupCalcOverlayStyle = {
 const startupCalcPanelStyle = {
   background: "#fff",
   borderRadius: 20,
-  boxShadow: "0 20px 70px rgba(0,0,0,0.2)",
+  boxShadow: "0 20px 70px rgba(0,0,0,0.18)",
   border: "1px solid #E5E7EB",
-  width: 500,
-  maxHeight: "85vh",
-  overflowY: "auto",   // 패널 자체가 스크롤 — flex:1 자식이 패널을 maxHeight까지 늘리는 문제 방지
-  padding: "22px 24px",
+  width: 520,
+  maxHeight: "88vh",
+  overflowY: "auto",
+  padding: "24px 24px",
   boxSizing: "border-box",
 };
 
