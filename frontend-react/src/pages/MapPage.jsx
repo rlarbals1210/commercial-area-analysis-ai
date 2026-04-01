@@ -158,6 +158,11 @@ export default function MapPage() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const [cardSearchQuery, setCardSearchQuery] = useState("");
+  const [cardSearchResults, setCardSearchResults] = useState([]);
+  const [cardSearchHighlight, setCardSearchHighlight] = useState(-1);
+  const cardSearchRef = useRef(null);
+
   const [hoveredDong, setHoveredDong] = useState(null);   // { dongName, guName }
   const [selectedDong, setSelectedDong] = useState(null); // { dongName, guName } — 팝업용
   const [selectedGu, setSelectedGu] = useState(null);     // guName — 구 팝업용
@@ -1558,6 +1563,44 @@ export default function MapPage() {
     setSelectedDong({ dongName, guName: group.guName });
   }
 
+  // ── 플로팅 카드 검색 → 지도 선택 ──
+  function handleCardSearchSelect({ type, guName, dongName, centroid }) {
+    const map = mapInstanceRef.current;
+    if (!map || !window.kakao) return;
+    setCardSearchQuery("");
+    setCardSearchResults([]);
+    setCardSearchHighlight(-1);
+    if (type === "gu") {
+      guPolygonGroupsRef.current.forEach(({ guName: gn, polygons: ps }) => {
+        ps.forEach(p => p.setOptions(gn === guName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+      });
+      const group = guPolygonGroupsRef.current.find(g => g.guName === guName);
+      if (group) selectedGuGroupRef.current = group;
+      if (selectedGroupRef.current) {
+        selectedGroupRef.current.polygons.forEach(p => p.setOptions(POLYGON_DEFAULT));
+        selectedGroupRef.current = null;
+      }
+      smoothZoom(map, GU_MODE_LEVEL, () => map.panTo(new window.kakao.maps.LatLng(centroid.lat, centroid.lng)));
+      setSelectedDong(null);
+      setSelectedGu(guName);
+    } else {
+      const group = polygonGroupsRef.current.find(g => g.dongName === dongName && g.guName === guName);
+      if (group) {
+        polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
+          ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+        });
+        selectedGroupRef.current = group;
+      }
+      if (selectedGuGroupRef.current) {
+        selectedGuGroupRef.current.polygons.forEach(p => p.setOptions(POLYGON_DEFAULT));
+        selectedGuGroupRef.current = null;
+      }
+      smoothZoom(map, 4, () => map.panTo(new window.kakao.maps.LatLng(centroid.lat, centroid.lng)));
+      setSelectedGu(null);
+      setSelectedDong({ dongName, guName });
+    }
+  }
+
   function openAiModal({ region = null, industry = null, dong = "" } = {}) {
     setAiModalOpen(true);
     setAiStep("mode");
@@ -1647,7 +1690,6 @@ export default function MapPage() {
             boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
             border: "1px solid #E5E7EB",
             zIndex: 14,
-            overflow: "hidden",
           }}
         >
           {/* 카드 헤더 */}
@@ -1684,8 +1726,69 @@ export default function MapPage() {
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 4 }}>상권분석</div>
-                <div style={{ fontSize: 12, color: "#9CA3AF" }}>지도에서 구를 선택하세요</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>상권분석</div>
+                  <div style={{ fontSize: 12, color: "#9CA3AF", marginLeft: "auto" }}>검색하거나 지도에서 선택하세요</div>
+                </div>
+                {/* 카드 내 검색 */}
+                <div style={{ position: "relative" }}>
+                  <div style={{ display: "flex", alignItems: "center", background: "#F9FAFB", border: `1.5px solid ${cardSearchResults.length > 0 ? "#BFDBFE" : "#E5E7EB"}`, borderRadius: cardSearchResults.length > 0 ? "8px 8px 0 0" : 8, padding: "7px 10px", gap: 7, transition: "border-color 0.15s" }}>
+                    <input
+                      ref={cardSearchRef}
+                      type="text"
+                      placeholder="구 또는 행정동 검색..."
+                      value={cardSearchQuery}
+                      onChange={(e) => {
+                        const q = e.target.value;
+                        setCardSearchQuery(q);
+                        setCardSearchHighlight(-1);
+                        if (!q.trim()) { setCardSearchResults([]); return; }
+                        const results = [];
+                        guPolygonGroupsRef.current.forEach(({ guName, centroid }) => {
+                          if (guName.includes(q)) results.push({ type: "gu", label: guName, guName, centroid });
+                        });
+                        polygonGroupsRef.current.forEach(({ dongName, guName, centroid }) => {
+                          if (dongName.includes(q)) results.push({ type: "dong", label: dongName, dongName, guName, centroid });
+                        });
+                        setCardSearchResults(results.slice(0, 8));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown") { e.preventDefault(); setCardSearchHighlight(h => Math.min(h + 1, cardSearchResults.length - 1)); }
+                        else if (e.key === "ArrowUp") { e.preventDefault(); setCardSearchHighlight(h => Math.max(h - 1, 0)); }
+                        else if ((e.key === "Enter" || e.key === "Tab") && cardSearchResults.length > 0) {
+                          e.preventDefault();
+                          const idx = cardSearchHighlight >= 0 ? cardSearchHighlight : 0;
+                          handleCardSearchSelect(cardSearchResults[idx]);
+                        }
+                        else if (e.key === "Escape") { setCardSearchQuery(""); setCardSearchResults([]); setCardSearchHighlight(-1); }
+                      }}
+                      style={{ border: "none", outline: "none", fontSize: 13, width: "100%", background: "transparent", color: "#111827" }}
+                    />
+                    {cardSearchQuery && (
+                      <button onClick={() => { setCardSearchQuery(""); setCardSearchResults([]); setCardSearchHighlight(-1); cardSearchRef.current?.focus(); }}
+                        style={{ border: "none", background: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14, padding: 0, flexShrink: 0 }}>✕</button>
+                    )}
+                  </div>
+                  {cardSearchResults.length > 0 && (
+                    <div style={{ position: "absolute", left: 0, right: 0, background: "#fff", border: "1.5px solid #BFDBFE", borderTop: "none", borderRadius: "0 0 8px 8px", boxShadow: "0 8px 20px rgba(0,0,0,0.1)", zIndex: 10, maxHeight: 220, overflowY: "auto", scrollbarWidth: "none" }}>
+                      {cardSearchResults.map((r, i) => (
+                        <div key={i}
+                          onMouseDown={() => handleCardSearchSelect(r)}
+                          onMouseEnter={() => setCardSearchHighlight(i)}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", cursor: "pointer", background: i === cardSearchHighlight ? "#EFF6FF" : "#fff", borderBottom: i < cardSearchResults.length - 1 ? "1px solid #F3F4F6" : "none" }}
+                        >
+                          <span style={{ fontSize: 11, fontWeight: 700, color: r.type === "gu" ? "#D97706" : "#2563EB", background: r.type === "gu" ? "#FEF3C7" : "#EFF6FF", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>
+                            {r.type === "gu" ? "구" : "동"}
+                          </span>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.label}</div>
+                            {r.type === "dong" && <div style={{ fontSize: 11, color: "#9CA3AF" }}>{r.guName}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
