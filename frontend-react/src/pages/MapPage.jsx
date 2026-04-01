@@ -250,15 +250,16 @@ export default function MapPage() {
   const [pickerDrillGroup, setPickerDrillGroup] = useState(null);
   // 창업비용 계산기 드릴다운 (calcActiveTab → drillGroup으로 전환)
   const [calcDrillGroup, setCalcDrillGroup] = useState(null);
-  const [calcStep, setCalcStep] = useState(1);                   // 1: 업종, 2: 정보입력, 3: 결과
+  const [calcStep, setCalcStep] = useState(1);                   // 1:위치 2:업종 3:크기 4:층수 5:결과
   const [startupCalcOpen, setStartupCalcOpen] = useState(false); // 창업 비용 계산기
   const [toolMenuOpen, setToolMenuOpen] = useState(false); // 상권 분석 도구 드롭다운
   const [calcIndustry, setCalcIndustry] = useState(null);       // 계산기 선택 업종
-  const [calcArea, setCalcArea] = useState(33);                  // 면적(㎡)
-  const [calcFloor, setCalcFloor] = useState("1층");             // 층수
+  const [calcRegion, setCalcRegion] = useState("");             // 구 선택
+  const [calcDong, setCalcDong] = useState("");               // 동 선택
+  const [calcSize, setCalcSize] = useState(null);               // '소형'|'중형'|'대형'
+  const [calcFloor, setCalcFloor] = useState(null);             // 층수 카드 선택
   const [calcWorkers, setCalcWorkers] = useState(1);             // 직원수
   const [calcResult, setCalcResult] = useState(null);            // 계산 결과
-  const [calcSelectedGu, setCalcSelectedGu] = useState("");     // 구 선택 (지도 선택 없을 때)
   const [calcGuRental, setCalcGuRental] = useState(null);        // 구별 임대료 캐시
   const [calcSearchQuery, setCalcSearchQuery] = useState("");         // 업종 검색어 (입력창 표시용)
   const [calcSuggestions, setCalcSuggestions] = useState([]);         // API 자동완성 결과 목록
@@ -3912,7 +3913,7 @@ export default function MapPage() {
 
       {/* ── 창업비용 계산기 오버레이 ── */}
       {startupCalcOpen && (
-        <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); setCalcStep(1); }}>
+        <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcRegion(""); setCalcDong(""); setCalcSize(null); setCalcFloor(null); setCalcWorkers(1); setCalcSearchQuery(""); setCalcDrillGroup(null); setCalcStep(1); }}>
           <div style={startupCalcPanelStyle} onClick={(e) => e.stopPropagation()}>
 
             {/* 헤더 */}
@@ -3921,30 +3922,103 @@ export default function MapPage() {
                 <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>창업비용 계산기</div>
                 <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>예상 초기비용과 월 고정비를 확인하세요</div>
               </div>
-              <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); setCalcStep(1); }} style={closeBtnStyle}>✕</button>
+              <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcRegion(""); setCalcDong(""); setCalcSize(null); setCalcFloor(null); setCalcWorkers(1); setCalcSearchQuery(""); setCalcDrillGroup(null); setCalcStep(1); }} style={closeBtnStyle}>✕</button>
             </div>
 
             {/* 스텝 인디케이터 */}
-            {calcStep < 3 && (() => {
-              const steps = [{ n: 1, label: "업종 선택" }, { n: 2, label: "기본 정보" }, { n: 3, label: "결과" }];
+            {calcStep < 5 && (() => {
+              const steps = [
+                { n: 1, label: "위치" },
+                { n: 2, label: "업종" },
+                { n: 3, label: "크기" },
+                { n: 4, label: "층수" },
+                { n: 5, label: "결과" },
+              ];
               return (
                 <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 24 }}>
                   {steps.flatMap(({ n, label }, i) => {
                     const items = [
                       <div key={`step-${n}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, background: calcStep >= n ? "#111827" : "#F3F4F6", color: calcStep >= n ? "#fff" : "#9CA3AF", transition: "background 0.2s" }}>{n}</div>
-                        <div style={{ fontSize: 11, color: calcStep >= n ? "#111827" : "#9CA3AF", fontWeight: calcStep === n ? 700 : 400, whiteSpace: "nowrap" }}>{label}</div>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: calcStep >= n ? "#111827" : "#F3F4F6", color: calcStep >= n ? "#fff" : "#9CA3AF", transition: "background 0.2s" }}>{n}</div>
+                        <div style={{ fontSize: 10, color: calcStep >= n ? "#111827" : "#9CA3AF", fontWeight: calcStep === n ? 700 : 400, whiteSpace: "nowrap" }}>{label}</div>
                       </div>
                     ];
-                    if (i < 2) items.push(<div key={`line-${n}`} style={{ flex: 1, height: 2, background: calcStep > n ? "#111827" : "#E5E7EB", margin: "13px 6px 0", transition: "background 0.2s" }} />);
+                    if (i < 4) items.push(<div key={`line-${n}`} style={{ flex: 1, height: 2, background: calcStep > n ? "#111827" : "#E5E7EB", margin: "12px 4px 0", transition: "background 0.2s" }} />);
                     return items;
                   })}
                 </div>
               );
             })()}
 
-            {/* 스텝 1: 업종 선택 */}
-            {calcStep === 1 && (
+            {/* 스텝 1: 위치(구/동) 선택 */}
+            {calcStep === 1 && (() => {
+              const preGu = selectedGu?.name || selectedDong?.guName || "";
+              const preDong = selectedDong?.dongName || "";
+              const activeGu = calcRegion || preGu;
+              const dongList = guToDongsRef.current[activeGu] || [];
+              const activeDong = calcDong || (activeGu === preGu ? preDong : "");
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+                  {/* 구 선택 단계 */}
+                  {!activeGu ? (
+                    <>
+                      <div style={{ fontSize: 13, color: "#6B7280" }}>구를 선택하세요</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                        {REGIONS.map((gu) => (
+                          <button key={gu} onClick={() => { setCalcRegion(gu); setCalcDong(""); }}
+                            style={{ padding: "8px 4px", borderRadius: 8, cursor: "pointer", fontSize: 12, border: "1.5px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "all 0.15s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F9FF"; e.currentTarget.style.borderColor = "#BAE6FD"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.borderColor = "#E5E7EB"; }}>
+                            {gu.replace("구", "")}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* 선택된 구 버튼 (누르면 구 목록으로 복귀) */}
+                      <button onClick={() => { setCalcRegion(""); setCalcDong(""); }}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, border: "2px solid #111827", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, textAlign: "left" }}>
+                        <span>📍 {activeGu}</span>
+                        <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 400, opacity: 0.6 }}>← 구 변경</span>
+                      </button>
+
+                      {/* 동 목록 */}
+                      <div style={{ fontSize: 12, color: "#6B7280" }}>행정동을 선택하세요 <span style={{ color: "#9CA3AF" }}>(선택 안 해도 됨)</span></div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {[...dongList].sort().map((dong) => {
+                          const isActive = activeDong === dong;
+                          return (
+                            <button key={dong} onClick={() => setCalcDong(dong === calcDong ? "" : dong)}
+                              style={{ padding: "6px 12px", borderRadius: 16, cursor: "pointer", fontSize: 13, border: isActive ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: isActive ? "#EFF6FF" : "#F9FAFB", color: isActive ? "#1D4ED8" : "#374151", fontWeight: isActive ? 700 : 400, transition: "all 0.15s" }}>
+                              {dong}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* 선택 확인 + 다음 버튼 */}
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, marginBottom: 12 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "#15803D" }}>
+                            📍 {activeGu}{activeDong ? ` · ${activeDong}` : ""}
+                          </span>
+                          <span style={{ fontSize: 12, color: "#4ADE80", marginLeft: "auto" }}>선택됨</span>
+                        </div>
+                        <button onClick={() => setCalcStep(2)}
+                          style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                          다음 →
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* 스텝 2: 업종 선택 */}
+            {calcStep === 2 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {/* 검색창 */}
                 <div style={{ position: "relative" }}>
@@ -4015,7 +4089,7 @@ export default function MapPage() {
                   )
                 )}
 
-                {/* 선택된 업종 표시 + 다음 버튼 */}
+                {/* 선택된 업종 표시 + 다음/이전 버튼 */}
                 {calcIndustry && (
                   <div style={{ marginTop: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, marginBottom: 12 }}>
@@ -4023,122 +4097,123 @@ export default function MapPage() {
                       <span style={{ fontSize: 14, fontWeight: 700, color: "#15803D" }}>{calcIndustry}</span>
                       <span style={{ fontSize: 12, color: "#4ADE80", marginLeft: "auto" }}>선택됨</span>
                     </div>
-                    <button onClick={() => setCalcStep(2)}
-                      style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-                      다음 →
-                    </button>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => setCalcStep(1)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
+                      <button onClick={() => setCalcStep(3)} style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>다음 →</button>
+                    </div>
                   </div>
+                )}
+                {!calcIndustry && (
+                  <button onClick={() => setCalcStep(1)} style={{ padding: "11px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
                 )}
               </div>
             )}
 
-            {/* 스텝 2: 기본 정보 입력 */}
-            {calcStep === 2 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* 선택 업종 요약 */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10 }}>
-                  <span style={{ fontSize: 16 }}>{CATEGORY_EMOJI[calcIndustry] ?? "🏪"}</span>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>{calcIndustry}</span>
-                  <button onClick={() => { setCalcStep(1); setCalcResult(null); }} style={{ marginLeft: "auto", fontSize: 12, color: "#6B7280", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>변경</button>
-                </div>
-
-                {/* 입력 폼 */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
-                  {/* 면적 */}
-                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid #F3F4F6" }}>
-                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>면적</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <input type="number" min={10} max={300} value={calcArea}
-                        onChange={(e) => setCalcArea(Number(e.target.value))}
-                        style={{ width: 72, padding: "6px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", fontSize: 14, outline: "none", color: "#111827", textAlign: "right" }}
-                      />
-                      <span style={{ fontSize: 13, color: "#6B7280" }}>㎡</span>
-                      <span style={{ fontSize: 12, color: "#9CA3AF" }}>({(calcArea / 3.3).toFixed(1)}평)</span>
-                    </div>
-                  </div>
-                  {/* 층수 */}
-                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid #F3F4F6" }}>
-                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>층수</div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {["지하1층", "1층", "2층"].map((f) => (
-                        <button key={f} onClick={() => setCalcFloor(f)} style={{ padding: "5px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, border: calcFloor === f ? "1.5px solid #111827" : "1.5px solid #E5E7EB", background: calcFloor === f ? "#111827" : "#fff", color: calcFloor === f ? "#fff" : "#374151", fontWeight: calcFloor === f ? 700 : 400 }}>{f}</button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* 직원수 */}
-                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid #F3F4F6" }}>
-                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>직원수</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <button onClick={() => setCalcWorkers(Math.max(0, calcWorkers - 1))} style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", cursor: "pointer", fontSize: 16, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
-                      <span style={{ width: 28, textAlign: "center", fontSize: 15, fontWeight: 700, color: "#111827" }}>{calcWorkers}</span>
-                      <button onClick={() => setCalcWorkers(Math.min(10, calcWorkers + 1))} style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", cursor: "pointer", fontSize: 16, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-                      <span style={{ fontSize: 12, color: "#9CA3AF" }}>명 (사장 포함)</span>
-                    </div>
-                  </div>
-                  {/* 지역 */}
-                  <div style={{ display: "flex", alignItems: "center", padding: "14px 16px" }}>
-                    <div style={{ width: 80, fontSize: 13, color: "#6B7280", fontWeight: 600 }}>지역</div>
-                    {selectedDong?.guName ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{selectedDong.guName}</span>
-                        <span style={{ fontSize: 11, color: "#9CA3AF", background: "#F3F4F6", padding: "2px 7px", borderRadius: 6 }}>지도 선택</span>
+            {/* 스텝 3: 매장 크기 선택 */}
+            {calcStep === 3 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ fontSize: 13, color: "#6B7280" }}>매장 크기를 선택하세요</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[
+                    { key: "소형", label: "소형", range: "10~20평", desc: "1인 운영, 소규모 창업", multiplier: "×0.6" },
+                    { key: "중형", label: "중형", range: "20~40평", desc: "직원 1~2명, 일반 점포", multiplier: "×1.0 (기준)" },
+                    { key: "대형", label: "대형", range: "40평+", desc: "직원 다수, 대형 점포", multiplier: "×1.8" },
+                  ].map(({ key, label, range, desc, multiplier }) => (
+                    <button key={key} onClick={() => setCalcSize(key)}
+                      style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 12, cursor: "pointer", border: calcSize === key ? "2px solid #111827" : "1.5px solid #E5E7EB", background: calcSize === key ? "#111827" : "#F9FAFB", color: calcSize === key ? "#fff" : "#374151", textAlign: "left", transition: "all 0.15s" }}>
+                      <div style={{ fontSize: 22 }}>{key === "소형" ? "🏠" : key === "중형" ? "🏪" : "🏢"}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{label} <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.7 }}>({range})</span></div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>{desc}</div>
                       </div>
-                    ) : (
-                      <select value={calcSelectedGu} onChange={(e) => setCalcSelectedGu(e.target.value)}
-                        style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #E5E7EB", background: "#fff", color: "#111827", fontSize: 13, outline: "none", cursor: "pointer" }}>
-                        <option value="">구 선택...</option>
-                        {REGIONS.map((g) => <option key={g} value={g}>{g}</option>)}
-                      </select>
-                    )}
-                  </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.6 }}>{multiplier}</div>
+                    </button>
+                  ))}
                 </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <button onClick={() => setCalcStep(2)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
+                  <button onClick={() => setCalcStep(4)} disabled={!calcSize}
+                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: calcSize ? "#111827" : "#E5E7EB", color: calcSize ? "#fff" : "#9CA3AF", fontSize: 15, fontWeight: 700, cursor: calcSize ? "pointer" : "default" }}>
+                    다음 →
+                  </button>
+                </div>
+              </div>
+            )}
 
-                {/* 버튼 */}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setCalcStep(1)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
+            {/* 스텝 4: 층수 선택 */}
+            {calcStep === 4 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ fontSize: 13, color: "#6B7280" }}>층수를 선택하세요</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { key: "지하1층", label: "지하 1층", emoji: "⬇️", multiplier: "×0.7", desc: "임대료 저렴, 유동인구↓" },
+                    { key: "1층", label: "1층", emoji: "🏪", multiplier: "×1.3", desc: "유동인구 최고, 임대료↑" },
+                    { key: "2층", label: "2층", emoji: "⬆️", multiplier: "×0.85", desc: "임대료 적당, 접근성↓" },
+                    { key: "3층이상", label: "3층 이상", emoji: "🏢", multiplier: "×0.7", desc: "임대료 저렴, 집객↓↓" },
+                  ].map(({ key, label, emoji, multiplier, desc }) => (
+                    <button key={key} onClick={() => setCalcFloor(key)}
+                      style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, padding: "14px 14px", borderRadius: 12, cursor: "pointer", border: calcFloor === key ? "2px solid #111827" : "1.5px solid #E5E7EB", background: calcFloor === key ? "#111827" : "#F9FAFB", color: calcFloor === key ? "#fff" : "#374151", textAlign: "left", transition: "all 0.15s" }}>
+                      <div style={{ fontSize: 20 }}>{emoji}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{label}</div>
+                      <div style={{ fontSize: 12, opacity: 0.6 }}>{desc}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>{multiplier}</div>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <button onClick={() => setCalcStep(3)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
                   <button
+                    disabled={!calcFloor}
                     onClick={() => {
-                      const gu = selectedDong?.guName || calcSelectedGu;
-                      if (!gu) { alert("지역(구)을 선택해주세요."); return; }
+                      const preGu = selectedGu?.name || selectedDong?.guName || "";
+                      const preDong = selectedDong?.dongName || "";
+                      const gu = calcRegion || preGu;
+                      const dong = calcDong || (gu === preGu ? preDong : "");
                       const cat = STARTUP_COSTS[calcIndustry];
-                      const pyeong = calcArea / 3.3;
+                      const sizeMultiplier = { 소형: 0.6, 중형: 1.0, 대형: 1.8 }[calcSize] ?? 1.0;
+                      const floorMultiplier = { "지하1층": 0.7, "1층": 1.3, "2층": 0.85, "3층이상": 0.7 }[calcFloor] ?? 1.0;
+                      const combined = sizeMultiplier * floorMultiplier;
+                      const pyeong = { 소형: 15, 중형: 30, 대형: 60 }[calcSize] ?? 30;
                       const guData = calcGuRental?.[gu];
-                      const floorData = guData?.[calcFloor] || guData?.["1층"];
-                      const rentPerSqm = floorData?.["임대료_만원per㎡"] ?? 4.0;
-                      const 월임대료 = Math.round(rentPerSqm * calcArea);
-                      const 보증금 = 월임대료 * cat["보증금_임대료배수"];
-                      const 인테리어 = Math.round(cat["인테리어_만원per평"] * pyeong);
-                      const 설비집기 = cat["설비_집기_만원"];
-                      const 초기재고 = cat["초기재고_만원"];
+                      const floorKey = calcFloor === "3층이상" ? "2층" : calcFloor === "지하1층" ? "지하1층" : calcFloor;
+                      const floorData = guData?.[floorKey] || guData?.["1층"];
+                      const rentPerSqm = (floorData?.["임대료_만원per㎡"] ?? 4.0) * floorMultiplier;
+                      const sqm = pyeong * 3.3;
+                      const 월임대료 = Math.round(rentPerSqm * sqm);
+                      const 보증금 = Math.round(월임대료 * cat["보증금_임대료배수"]);
+                      const 인테리어 = Math.round(cat["인테리어_만원per평"] * pyeong * sizeMultiplier);
+                      const 설비집기 = Math.round(cat["설비_집기_만원"] * sizeMultiplier);
+                      const 초기재고 = Math.round(cat["초기재고_만원"] * sizeMultiplier);
                       const 초기합계 = 보증금 + 인테리어 + 설비집기 + 초기재고;
                       const 월최저임금 = Math.round(10030 * 209 / 10000);
-                      const 월인건비 = calcWorkers * 월최저임금;
-                      const 월관리비 = cat["관리비_공과금_만원per월"];
+                      const workers = { 소형: 1, 중형: 2, 대형: 4 }[calcSize] ?? 2;
+                      const 월인건비 = workers * 월최저임금;
+                      const 월관리비 = Math.round(cat["관리비_공과금_만원per월"] * sizeMultiplier);
                       const 월고정비합계 = 월임대료 + 월관리비 + 월인건비;
                       const 원가율 = cat["원가율_%"];
                       const 손익분기_월매출 = Math.round(월고정비합계 / (1 - 원가율 / 100));
-                      setCalcResult({ 구: gu, 층: calcFloor, rentPerSqm, 월임대료, 보증금, 인테리어, 설비집기, 초기재고, 초기합계, 월인건비, 월관리비, 월고정비합계, 원가율, 손익분기_월매출, 특이사항: cat["특이사항"], rentFallback: !guData?.[calcFloor] });
-                      setCalcStep(3);
+                      setCalcResult({ 구: gu, 동: dong, 층: calcFloor, 크기: calcSize, pyeong, rentPerSqm: floorData?.["임대료_만원per㎡"] ?? 4.0, 월임대료, 보증금, 인테리어, 설비집기, 초기재고, 초기합계, 월인건비, 월관리비, 월고정비합계, 원가율, 손익분기_월매출, 특이사항: cat["특이사항"], rentFallback: !guData?.[floorKey] });
+                      setCalcStep(5);
                     }}
-                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: calcFloor ? "#111827" : "#E5E7EB", color: calcFloor ? "#fff" : "#9CA3AF", fontSize: 15, fontWeight: 700, cursor: calcFloor ? "pointer" : "default" }}>
                     결과 보기
                   </button>
                 </div>
               </div>
             )}
 
-            {/* 스텝 3: 카드형 결과 */}
-            {calcStep === 3 && calcResult && (
+            {/* 스텝 5: 카드형 결과 */}
+            {calcStep === 5 && calcResult && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {/* 요약 헤더 */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#111827", borderRadius: 12 }}>
                   <div>
-                    <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 2 }}>{calcResult.구} · {calcResult.층}</div>
+                    <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 2 }}>{calcResult.구}{calcResult.동 ? ` ${calcResult.동}` : ""} · {calcResult.크기} ({calcResult.pyeong}평) · {calcResult.층}</div>
                     <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
                       <span>{CATEGORY_EMOJI[calcIndustry] ?? "🏪"}</span>{calcIndustry}
                     </div>
                   </div>
-                  <button onClick={() => setCalcStep(2)} style={{ fontSize: 12, color: "#9CA3AF", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>← 수정</button>
+                  <button onClick={() => setCalcStep(4)} style={{ fontSize: 12, color: "#9CA3AF", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>← 수정</button>
                 </div>
 
                 {/* 초기 창업비용 카드 */}
@@ -4201,7 +4276,7 @@ export default function MapPage() {
                   ※ {calcResult.구} 평균 임대료 기준 ({calcResult.층}{calcResult.rentFallback ? ", 1층 기준 적용" : ""}, {calcResult.rentPerSqm}만원/㎡)<br />
                   ※ 실제 비용은 달라질 수 있습니다. 참고용으로만 활용하세요.
                 </div>
-                <button onClick={() => { setCalcStep(1); setCalcResult(null); setCalcIndustry(null); setCalcDrillGroup(null); }}
+                <button onClick={() => { setCalcStep(1); setCalcResult(null); setCalcIndustry(null); setCalcRegion(""); setCalcDong(""); setCalcSize(null); setCalcFloor(null); setCalcDrillGroup(null); }}
                   style={{ padding: "11px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   처음부터 다시 계산하기
                 </button>

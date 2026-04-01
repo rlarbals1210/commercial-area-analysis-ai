@@ -2028,7 +2028,8 @@ def report(request):
             for attempt in range(3):
                 resp = http_requests.post(url, json=body, timeout=60)
                 if resp.status_code == 200:
-                    parts = resp.json()["candidates"][0]["content"]["parts"]
+                    resp_json = json.loads(resp.content.decode("utf-8"))
+                    parts = resp_json["candidates"][0]["content"]["parts"]
                     text = next((p["text"] for p in reversed(parts) if not p.get("thought", False)), "").strip()
                     if "```" in text:
                         for part in text.split("```"):
@@ -2259,7 +2260,8 @@ def gu_report(request):
             for attempt in range(3):
                 resp = http_requests.post(url, json=body, timeout=60)
                 if resp.status_code == 200:
-                    parts = resp.json()["candidates"][0]["content"]["parts"]
+                    resp_json = json.loads(resp.content.decode("utf-8"))
+                    parts = resp_json["candidates"][0]["content"]["parts"]
                     text = next((p["text"] for p in reversed(parts) if not p.get("thought", False)), "").strip()
                     if "```" in text:
                         for part in text.split("```"):

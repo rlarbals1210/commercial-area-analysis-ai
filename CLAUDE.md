@@ -11,10 +11,10 @@
 
 ## 서버 실행
 
-### 백엔드 (포트 **8001**)
+### 백엔드 (포트 **8000**)
 ```bash
 cd backend
-python manage.py runserver 8001
+python manage.py runserver 8000
 ```
 
 ### 프론트엔드 (포트 5173)
