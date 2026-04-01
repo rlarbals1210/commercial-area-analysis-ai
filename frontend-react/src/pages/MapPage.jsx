@@ -803,27 +803,27 @@ export default function MapPage() {
         }
         const popup = document.createElement("div");
         popup.style.cssText = `
-          background: rgba(20,20,30,0.95);
+          background: #fff;
           border: 1.5px solid ${color};
           border-radius: 10px;
           padding: 8px 12px;
           font-family: 'Pretendard', sans-serif;
           min-width: 140px;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.12);
           pointer-events: auto;
           position: relative;
         `;
         popup.innerHTML = `
           <div style="font-size:11px;color:${color};font-weight:700;margin-bottom:3px;">${store.통합카테고리}</div>
-          <div style="font-size:13px;font-weight:700;color:#E8E8E8;margin-bottom:2px;">${store.상호명}</div>
-          <div style="font-size:10px;color:#9E9E9E;">${store.상권업종소분류명}</div>
-          ${store.도로명주소 ? `<div style="font-size:10px;color:#777;margin-top:4px;border-top:1px solid #333;padding-top:4px;">${store.도로명주소}</div>` : ""}
+          <div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:2px;">${store.상호명}</div>
+          <div style="font-size:10px;color:#6B7280;">${store.상권업종소분류명}</div>
+          ${store.도로명주소 ? `<div style="font-size:10px;color:#9CA3AF;margin-top:4px;border-top:1px solid #E5E7EB;padding-top:4px;">${store.도로명주소}</div>` : ""}
         `;
         const closeBtn = document.createElement("button");
         closeBtn.textContent = "✕";
         closeBtn.style.cssText = `
           position:absolute; top:6px; right:8px;
-          border:none; background:none; color:#9E9E9E;
+          border:none; background:none; color:#6B7280;
           cursor:pointer; font-size:12px; padding:0; line-height:1;
         `;
         closeBtn.addEventListener("click", (e) => {
@@ -1906,14 +1906,13 @@ export default function MapPage() {
           bottom: 144,
           right: aiModalOpen ? 480 : 82,
           zIndex: 20,
-          background: "rgba(30,30,40,0.95)",
-          border: "1px solid rgba(255,255,255,0.12)",
+          background: "#fff",
+          border: "1px solid #E5E7EB",
           borderRadius: 10,
           padding: "10px 16px",
           fontSize: 14,
-          color: "#E8E8E8",
-          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
-          backdropFilter: "blur(8px)",
+          color: "#374151",
+          boxShadow: "0 4px 15px rgba(0,0,0,0.12)",
           whiteSpace: "nowrap",
           transition: "right 0.22s ease-out",
           animation: "anim-slide-up 0.2s ease-out",
@@ -1930,19 +1929,18 @@ export default function MapPage() {
           right: aiModalOpen ? 480 : 82,
           zIndex: 20,
           width: 240,
-          background: "rgba(28,28,38,0.97)",
-          border: "1px solid rgba(255,255,255,0.1)",
+          background: "#fff",
+          border: "1px solid #E5E7EB",
           borderRadius: 14,
           padding: "14px 14px 12px",
-          boxShadow: "0 8px 28px rgba(0,0,0,0.55)",
-          backdropFilter: "blur(12px)",
+          boxShadow: "0 8px 28px rgba(0,0,0,0.12)",
           transition: "right 0.22s ease-out",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>업종 필터</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>업종 필터</span>
             {storeCategoryFilter.length > 0 && (
               <button onClick={() => { setStoreCategoryFilter([]); setStoreDrillGroup(null); }}
-                style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>
+                style={{ fontSize: 11, color: "#6B7280", background: "none", border: "none", cursor: "pointer" }}>
                 전체 해제
               </button>
             )}
@@ -1963,7 +1961,7 @@ export default function MapPage() {
                   return (
                     <button key={cat}
                       onClick={() => setStoreCategoryFilter(active ? storeCategoryFilter.filter(c => c !== cat) : [...storeCategoryFilter, cat])}
-                      style={{ ...storeFilterChipStyle(active), borderColor: active ? STORE_CATEGORY_COLORS[cat] : undefined, color: active ? STORE_CATEGORY_COLORS[cat] : undefined }}>
+                      style={{ ...storeFilterChipStyle(active), ...(active ? { borderColor: STORE_CATEGORY_COLORS[cat], color: STORE_CATEGORY_COLORS[cat] } : {}) }}>
                       <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: STORE_CATEGORY_COLORS[cat] ?? "#9E9E9E", flexShrink: 0 }} />{cat}
                     </button>
                   );
@@ -1977,9 +1975,9 @@ export default function MapPage() {
                 const selectedCount = groupCats.filter(c => storeCategoryFilter.includes(c)).length;
                 return (
                   <button key={group} onClick={() => setStoreDrillGroup(group)}
-                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: selectedCount > 0 ? "1px solid rgba(59,130,246,0.4)" : "1px solid rgba(255,255,255,0.08)", background: selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)", color: selectedCount > 0 ? "#93B8EE" : "#C8C8C8" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = selectedCount > 0 ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.04)"; }}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: selectedCount > 0 ? "1px solid rgba(59,130,246,0.4)" : "1px solid #E5E7EB", background: selectedCount > 0 ? "#EFF6FF" : "#F9FAFB", color: selectedCount > 0 ? "#2563EB" : "#374151" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = selectedCount > 0 ? "#EFF6FF" : "#F9FAFB"; }}
                   >
                     <span>{DRILL_GROUP_META[group].emoji} {group}</span>
                     <span style={{ fontSize: 11, color: selectedCount > 0 ? "#93B8EE" : "#6B7280" }}>
@@ -2016,7 +2014,7 @@ export default function MapPage() {
             width: 52,
             height: 52,
             borderRadius: 12,
-            background: showStoreMarkers ? "rgba(59,130,246,0.25)" : "rgba(35,35,35,0.97)",
+            background: showStoreMarkers ? "#EFF6FF" : "#fff",
             border: "none",
             cursor: "pointer",
             display: "flex",
@@ -2028,7 +2026,7 @@ export default function MapPage() {
           }}
         >
           {storeLoading ? (
-            <span style={{ fontSize: 13, color: "#9E9E9E", fontWeight: 700 }}>...</span>
+            <span style={{ fontSize: 13, color: "#6B7280", fontWeight: 700 }}>...</span>
           ) : (
             <svg style={{ width: 36, height: 36 }} viewBox="0 0 20 27" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M10 0C4.477 0 0 4.477 0 10c0 7.5 10 17 10 17s10-9.5 10-17C20 4.477 15.523 0 10 0z"
@@ -2050,7 +2048,7 @@ export default function MapPage() {
         >
           +
         </button>
-        <div style={{ width: "100%", height: 1, background: "#4A4A4A" }} />
+        <div style={{ width: "100%", height: 1, background: "#E5E7EB" }} />
         <button
           style={zoomBtnStyle}
           onClick={() => {
@@ -2087,17 +2085,17 @@ export default function MapPage() {
         {searchExpanded && (
           <div data-popup className="anim-slide-down" style={{
             order: 2,
-            background: "#2A2A2A",
+            background: "#fff",
             borderRadius: "0 0 14px 14px",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
+            border: "1px solid #E5E7EB",
             borderTop: "none",
             maxHeight: 420,
             overflowY: "auto",
           }} ref={searchDropdownRef}>
             {/* 지역 검색 결과 */}
             {searchResults.length > 0 && (
-              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ borderBottom: "1px solid #F3F4F6" }}>
                 <div style={{ padding: "8px 14px 4px", fontSize: 13, fontWeight: 700, color: "#6B7280", letterSpacing: "0.06em" }}>지역 검색 결과</div>
                 {searchResults.map((r, i) => (
                   <button
@@ -2107,22 +2105,22 @@ export default function MapPage() {
                       display: "flex", alignItems: "center", gap: 10,
                       width: "100%", padding: "9px 14px", border: "none",
                       background: "none", cursor: "pointer", textAlign: "left",
-                      borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                      borderBottom: i < searchResults.length - 1 ? "1px solid #F3F4F6" : "none",
                       transition: "background 0.1s",
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "#F9FAFB"}
                     onMouseLeave={(e) => e.currentTarget.style.background = "none"}
                   >
                     <span style={{
-                      fontSize: 12, fontWeight: 700, color: r.type === "gu" ? "#FBBF24" : "#93B8EE",
-                      background: r.type === "gu" ? "rgba(251,191,36,0.12)" : "rgba(59,130,246,0.12)",
+                      fontSize: 12, fontWeight: 700, color: r.type === "gu" ? "#D97706" : "#2563EB",
+                      background: r.type === "gu" ? "#FEF3C7" : "#EFF6FF",
                       borderRadius: 4, padding: "2px 6px", flexShrink: 0,
                     }}>
                       {r.type === "gu" ? "구" : "행정동"}
                     </span>
                     <div>
-                      <div style={{ fontSize: 16, fontWeight: 600, color: "#E8E8E8" }}>{r.type === "gu" ? r.guName : r.dongName}</div>
-                      {r.type === "dong" && <div style={{ fontSize: 14, color: "#9E9E9E" }}>{r.guName}</div>}
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "#111827" }}>{r.type === "gu" ? r.guName : r.dongName}</div>
+                      {r.type === "dong" && <div style={{ fontSize: 14, color: "#6B7280" }}>{r.guName}</div>}
                     </div>
                   </button>
                 ))}
@@ -2139,13 +2137,13 @@ export default function MapPage() {
                   if (e.target.value) setSearchIndustryDrillGroup("__search__");
                   else setSearchIndustryDrillGroup(null);
                 }}
-                style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)", color: "#E8E8E8", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+                style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "#F9FAFB", border: "1.5px solid #E5E7EB", color: "#111827", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
               />
               {searchIndustrySearchQuery ? (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {Object.keys(STARTUP_COSTS).filter(c => c.includes(searchIndustrySearchQuery)).map(cat => (
                     <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustrySearchQuery(""); setSearchIndustryDrillGroup(null); }}
-                      style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
+                      style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid #E5E7EB", background: selectedIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: selectedIndustry === cat ? "#2563EB" : "#374151" }}>
                       {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
                     </button>
                   ))}
@@ -2158,7 +2156,7 @@ export default function MapPage() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                     {CATEGORY_GROUPS[searchIndustryDrillGroup].map(cat => (
                       <button key={cat} onClick={() => { setSelectedIndustry(selectedIndustry === cat ? null : cat); setSearchIndustryDrillGroup(null); }}
-                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: selectedIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: selectedIndustry === cat ? "#93B8EE" : "#C8C8C8" }}>
+                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: selectedIndustry === cat ? "1.5px solid #3B82F6" : "1.5px solid #E5E7EB", background: selectedIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: selectedIndustry === cat ? "#2563EB" : "#374151" }}>
                         {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
                       </button>
                     ))}
@@ -2169,14 +2167,14 @@ export default function MapPage() {
                   {selectedIndustry && (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
                       <span style={{ fontSize: 12, color: "#93B8EE" }}>{CATEGORY_EMOJI[selectedIndustry] ?? "🏪"} {selectedIndustry}</span>
-                      <button onClick={() => setSelectedIndustry(null)} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
+                      <button onClick={() => setSelectedIndustry(null)} style={{ fontSize: 11, color: "#6B7280", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
                     </div>
                   )}
                   {DRILL_GROUPS.map(group => (
                     <button key={group} onClick={() => setSearchIndustryDrillGroup(group)}
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; e.currentTarget.style.color = "#93B8EE"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
                     >
                       <span>{DRILL_GROUP_META[group].emoji} {group}</span>
                       <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
@@ -2186,7 +2184,7 @@ export default function MapPage() {
               )}
             </div>
             {/* 지역 필터 */}
-            <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ padding: "0 14px 14px", borderTop: "1px solid #F3F4F6" }}>
               <p style={{ ...popupSectionLabel, margin: "12px 0 8px", fontSize: 14 }}>지역 필터</p>
               <div style={chipGrid}>
                 {REGIONS.map((item) => (
@@ -2211,10 +2209,10 @@ export default function MapPage() {
             </div>
             {/* 선택된 구의 행정동 목록 */}
             {selectedRegion && (
-              <div data-popup className="anim-slide-down" style={{ background: "rgba(24,24,34,0.97)", borderTop: "1px solid rgba(59,130,246,0.25)", padding: "12px 14px 14px" }}>
+              <div data-popup className="anim-slide-down" style={{ background: "#fff", borderTop: "1px solid #E5E7EB", padding: "12px 14px 14px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#FBBF24", background: "rgba(251,191,36,0.12)", borderRadius: 4, padding: "2px 6px" }}>구</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8" }}>{selectedRegion}</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{selectedRegion}</span>
                   <span style={{ fontSize: 14, color: "#555" }}>({(guToDongsRef.current[selectedRegion] || []).length}개 행정동)</span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
@@ -2227,9 +2225,9 @@ export default function MapPage() {
                         setSearchExpanded(false);
                         setSelectedRegion(null);
                       }}
-                      style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#C8C8C8", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "all 0.1s" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.2)"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)"; e.currentTarget.style.color = "#93B8EE"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                      style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "all 0.1s" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.borderColor = "#BFDBFE"; e.currentTarget.style.color = "#2563EB"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.color = "#374151"; }}
                     >{dong}</button>
                   ))}
                 </div>
@@ -2250,7 +2248,7 @@ export default function MapPage() {
 
         {/* 검색 입력창 */}
         <div
-          style={{ ...searchBoxStyle, order: 1, borderRadius: searchExpanded ? "14px 14px 0 0" : 14, borderBottom: searchExpanded ? "1px solid rgba(255,255,255,0.06)" : "none" }}
+          style={{ ...searchBoxStyle, order: 1, borderRadius: searchExpanded ? "14px 14px 0 0" : 14, borderBottom: searchExpanded ? "1px solid #E5E7EB" : "none" }}
           onClick={() => { setSearchExpanded(true); setRankModalOpen(false); setGuRankModalOpen(false); setDongStatsOpen(false); }}
         >
           <span style={{ fontSize: 19, marginRight: 8, color: searchExpanded ? "#3B82F6" : "#777", transition: "color 0.15s" }}>🔍</span>
@@ -2264,7 +2262,7 @@ export default function MapPage() {
             }}
             ref={searchInputRef}
             placeholder="지역명 · 업종 검색"
-            style={{ border: "none", outline: "none", fontSize: 17, width: "100%", background: "transparent", color: "#E8E8E8" }}
+            style={{ border: "none", outline: "none", fontSize: 17, width: "100%", background: "transparent", color: "#111827" }}
           />
           {searchExpanded && (
             <button
@@ -2282,7 +2280,7 @@ export default function MapPage() {
         <div className="anim-slide-up" style={{ ...tooltipStyle, left: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hoveredDong.dongName ? 6 : 0 }}>
             <span style={tooltipLabel}>구</span>
-            <span style={{ fontWeight: 700, color: "#E8E8E8", fontSize: 17 }}>{hoveredDong.guName}</span>
+            <span style={{ fontWeight: 700, color: "#111827", fontSize: 17 }}>{hoveredDong.guName}</span>
           </div>
           {hoveredDong.dongName && (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2290,7 +2288,7 @@ export default function MapPage() {
               <span style={{ fontWeight: 700, color: "#93B8EE", fontSize: 17 }}>{hoveredDong.dongName}</span>
             </div>
           )}
-          <div style={{ color: "#9E9E9E", fontSize: 14, marginTop: 8, borderTop: "1px solid #3A3A3A", paddingTop: 6 }}>
+          <div style={{ color: "#6B7280", fontSize: 14, marginTop: 8, borderTop: "1px solid #E5E7EB", paddingTop: 6 }}>
             클릭하면 상세 정보
           </div>
         </div>
@@ -2310,26 +2308,26 @@ export default function MapPage() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
               <div>
-                <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>서울특별시</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedGu} {guRankType === "revenue" ? "업종별 매출" : "업종별 상가 수"} 전체</div>
+                <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>서울특별시</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#111827" }}>{selectedGu} {guRankType === "revenue" ? "업종별 매출" : "업종별 상가 수"} 전체</div>
               </div>
               <button onClick={() => setGuRankModalOpen(false)} style={closeBtnStyle}>✕</button>
             </div>
 
             <div style={{ flex: 1, overflowY: "auto" }}>
               {guLoading ? (
-                <p style={{ color: "#9E9E9E", fontSize: 15, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
+                <p style={{ color: "#6B7280", fontSize: 15, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
               ) : guRankType === "revenue" ? (
                 <>
-                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 매출 (전체 {industries.length}개)</div>
+                  <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>업종별 매출 (전체 {industries.length}개)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {industries.map((item) => (
                       <div key={item["통합카테고리"]}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                          <span style={{ fontSize: 14, color: "#374151" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 14, color: "#6B7280" }}>{fmtRevenue(item["당월매출합"])}</span>
                         </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
+                        <div style={{ background: "#E5E7EB", borderRadius: 3, height: 5, overflow: "hidden" }}>
                           <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
                         </div>
                       </div>
@@ -2338,15 +2336,15 @@ export default function MapPage() {
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 상가 수 (전체 {industries.length}개)</div>
+                  <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>업종별 상가 수 (전체 {industries.length}개)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {storesSorted.map((item) => (
                       <div key={item["통합카테고리"]}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                          <span style={{ fontSize: 14, color: "#374151" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 14, color: "#6B7280" }}>{item["점포수"]}개</span>
                         </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
+                        <div style={{ background: "#E5E7EB", borderRadius: 3, height: 5, overflow: "hidden" }}>
                           <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
                         </div>
                       </div>
@@ -2372,8 +2370,8 @@ export default function MapPage() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
               <div>
-                <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong?.guName}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong?.dongName} {rankType === "revenue" ? "업종별 매출" : "업종별 상가 수"} 전체</div>
+                <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>{selectedDong?.guName}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#111827" }}>{selectedDong?.dongName} {rankType === "revenue" ? "업종별 매출" : "업종별 상가 수"} 전체</div>
               </div>
               <button onClick={() => setRankModalOpen(false)} style={closeBtnStyle}>✕</button>
             </div>
@@ -2384,7 +2382,7 @@ export default function MapPage() {
               const activeYear = selectedQuarter ? Math.floor(selectedQuarter / 10) : Math.floor(availableQuarters[0] / 10);
               const quartersOfYear = availableQuarters.filter((q) => Math.floor(q / 10) === activeYear);
               return (
-                <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.08)", flexShrink: 0 }}>
+                <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #E5E7EB", flexShrink: 0 }}>
                   <div style={{ display: "flex", gap: 4, marginBottom: 8, overflowX: "auto", paddingBottom: 2 }}>
                     {years.map((y) => (
                       <button
@@ -2393,7 +2391,7 @@ export default function MapPage() {
                           const first = availableQuarters.find((q) => Math.floor(q / 10) === y);
                           setSelectedQuarter(first === availableQuarters[0] ? null : first);
                         }}
-                        style={{ flexShrink: 0, padding: "4px 12px", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "rgba(255,255,255,0.07)", color: activeYear === y ? "#fff" : "#9E9E9E", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s, color 0.15s" }}
+                        style={{ flexShrink: 0, padding: "4px 12px", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: activeYear === y ? "#3B82F6" : "#F3F4F6", color: activeYear === y ? "#fff" : "#6B7280", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s, color 0.15s" }}
                       >{y}</button>
                     ))}
                   </div>
@@ -2405,7 +2403,7 @@ export default function MapPage() {
                         <button
                           key={q}
                           onClick={() => setSelectedQuarter(isLatest ? null : q)}
-                          style={{ flexShrink: 0, padding: "4px 14px", borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid rgba(255,255,255,0.1)", background: isActive ? "rgba(59,130,246,0.18)" : "transparent", color: isActive ? "#93B8EE" : "#9E9E9E", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s, border-color 0.15s, color 0.15s" }}
+                          style={{ flexShrink: 0, padding: "4px 14px", borderRadius: 6, fontSize: 14, fontWeight: 500, cursor: "pointer", border: isActive ? "1px solid #3B82F6" : "1px solid #E5E7EB", background: isActive ? "#EFF6FF" : "transparent", color: isActive ? "#2563EB" : "#6B7280", transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s, border-color 0.15s, color 0.15s" }}
                         >{q % 10}분기</button>
                       );
                     })}
@@ -2416,18 +2414,18 @@ export default function MapPage() {
 
             <div style={{ flex: 1, overflowY: "auto" }}>
               {dongLoading ? (
-                <p style={{ color: "#9E9E9E", fontSize: 15, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
+                <p style={{ color: "#6B7280", fontSize: 15, textAlign: "center", padding: "24px 0" }}>불러오는 중...</p>
               ) : rankType === "revenue" ? (
                 <>
-                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 매출 (전체 {industries.length}개)</div>
+                  <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>업종별 매출 (전체 {industries.length}개)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {industries.map((item) => (
                       <div key={item["통합카테고리"]}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 14, color: "#9E9E9E" }}>{fmtRevenue(item["당월매출합"])}</span>
+                          <span style={{ fontSize: 14, color: "#374151" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 14, color: "#6B7280" }}>{fmtRevenue(item["당월매출합"])}</span>
                         </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
+                        <div style={{ background: "#E5E7EB", borderRadius: 3, height: 5, overflow: "hidden" }}>
                           <div style={{ width: `${(item["당월매출합"] / maxRevenue) * 100}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 3 }} />
                         </div>
                       </div>
@@ -2436,15 +2434,15 @@ export default function MapPage() {
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>업종별 상가 수 (전체 {industries.length}개)</div>
+                  <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>업종별 상가 수 (전체 {industries.length}개)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {storesSorted.map((item) => (
                       <div key={item["통합카테고리"]}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 14, color: "#C8C8C8" }}>{item["통합카테고리"]}</span>
-                          <span style={{ fontSize: 14, color: "#9E9E9E" }}>{item["점포수"]}개</span>
+                          <span style={{ fontSize: 14, color: "#374151" }}>{item["통합카테고리"]}</span>
+                          <span style={{ fontSize: 14, color: "#6B7280" }}>{item["점포수"]}개</span>
                         </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 3, height: 5, overflow: "hidden" }}>
+                        <div style={{ background: "#E5E7EB", borderRadius: 3, height: 5, overflow: "hidden" }}>
                           <div style={{ width: `${(item["점포수"] / maxStores) * 100}%`, height: "100%", background: "linear-gradient(90deg, #10B981, #34D399)", borderRadius: 3 }} />
                         </div>
                       </div>
@@ -2487,15 +2485,15 @@ export default function MapPage() {
             {/* 헤더 */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexShrink: 0 }}>
               <div>
-                <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{selectedDong?.guName}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8" }}>{selectedDong?.dongName} 상세 통계</div>
+                <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>{selectedDong?.guName}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#111827" }}>{selectedDong?.dongName} 상세 통계</div>
               </div>
               <button onClick={() => setDongStatsOpen(false)} style={closeBtnStyle}>✕</button>
             </div>
 
             {/* 성별 매출 */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>성별 매출 비율</div>
+              <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>성별 매출 비율</div>
               <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", height: 28 }}>
                 <div style={{ width: `${남성비율}%`, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", transition: "width 0.4s" }}>
                   {남성비율 > 10 ? `남 ${남성비율}%` : ""}
@@ -2512,7 +2510,7 @@ export default function MapPage() {
 
             {/* 주중/주말 매출 */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>주중 / 주말 매출</div>
+              <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>주중 / 주말 매출</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
                   { label: "주중 (월~금)", value: 주중주말.주중 || 0, color: "#3B82F6" },
@@ -2523,10 +2521,10 @@ export default function MapPage() {
                   return (
                     <div key={label}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span style={{ fontSize: 13, color: "#C0C0C0" }}>{label}</span>
+                        <span style={{ fontSize: 13, color: "#374151" }}>{label}</span>
                         <span style={{ fontSize: 13, fontWeight: 600, color }}>{fmtEok(value)}</span>
                       </div>
-                      <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ height: 8, background: "#E5E7EB", borderRadius: 4, overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${ratio}%`, background: color, borderRadius: 4, transition: "width 0.4s" }} />
                       </div>
                     </div>
@@ -2537,18 +2535,18 @@ export default function MapPage() {
 
             {/* 시간대별 매출 */}
             <div>
-              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 12 }}>시간대별 매출</div>
+              <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>시간대별 매출</div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 120 }}>
                 {시간대목록.map(({ label, value }) => {
                   const heightPct = Math.round((value / 시간대최대) * 100);
                   const isTop = value === 시간대최대;
                   return (
                     <div key={label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                      <div style={{ fontSize: 10, color: isTop ? "#38BDF8" : "#9E9E9E", fontWeight: isTop ? 700 : 400 }}>{fmtEok(value)}</div>
+                      <div style={{ fontSize: 10, color: isTop ? "#2563EB" : "#6B7280", fontWeight: isTop ? 700 : 400 }}>{fmtEok(value)}</div>
                       <div style={{ width: "100%", height: 80, display: "flex", alignItems: "flex-end" }}>
-                        <div style={{ width: "100%", height: `${heightPct}%`, background: isTop ? "#38BDF8" : "rgba(59,130,246,0.45)", borderRadius: "4px 4px 0 0", transition: "height 0.4s" }} />
+                        <div style={{ width: "100%", height: `${heightPct}%`, background: isTop ? "#2563EB" : "#93C5FD", borderRadius: "4px 4px 0 0", transition: "height 0.4s" }} />
                       </div>
-                      <div style={{ fontSize: 10, color: "#9E9E9E", textAlign: "center", whiteSpace: "pre-line", lineHeight: 1.3 }}>{label}</div>
+                      <div style={{ fontSize: 10, color: "#6B7280", textAlign: "center", whiteSpace: "pre-line", lineHeight: 1.3 }}>{label}</div>
                     </div>
                   );
                 })}
@@ -3100,7 +3098,7 @@ export default function MapPage() {
             right: 0,       // 화면 오른쪽에 고정
             width: 380,
             borderRight: "none",
-            borderLeft: "1px solid rgba(255,255,255,0.07)",
+            borderLeft: "1px solid #E5E7EB",
             zIndex: 12,
           }}
         >
@@ -3109,9 +3107,9 @@ export default function MapPage() {
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 20 }}>✨</span>
-                  <span style={{ fontSize: 19, fontWeight: 700, color: "#E8E8E8" }}>AI 상권 추천</span>
+                  <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>AI 상권 추천</span>
                 </div>
-                <div style={{ fontSize: 13, color: "#9E9E9E", paddingLeft: 28 }}>
+                <div style={{ fontSize: 13, color: "#6B7280", paddingLeft: 28 }}>
                   {aiStep === "mode" && "분석 방식을 선택하세요"}
                   {aiStep === "form" && AI_MODE_META[aiMode]?.desc}
                   {(aiStep === "loading" || aiStep === "result") && AI_MODE_META[aiMode]?.title}
@@ -3130,7 +3128,7 @@ export default function MapPage() {
               </div>
             </div>
 
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 16, flex: 1, overflowY: "auto" }}>
+            <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16, flex: 1, overflowY: "auto" }}>
 
               {/* ── 모드 선택 단계 ── */}
               {aiStep === "mode" && (
@@ -3153,8 +3151,8 @@ export default function MapPage() {
                         borderRadius: 10, background: `rgba(${rgb},0.15)`,
                       }}>{icon}</div>
                       <div style={{ textAlign: "left", flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8", marginBottom: 3 }}>{title}</div>
-                        <div style={{ fontSize: 13, color: "#9E9E9E" }}>{desc}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 3 }}>{title}</div>
+                        <div style={{ fontSize: 13, color: "#6B7280" }}>{desc}</div>
                       </div>
                       <span style={{ color: color, fontSize: 18, flexShrink: 0 }}>›</span>
                     </button>
@@ -3207,19 +3205,19 @@ export default function MapPage() {
                         style={{
                           width: "100%", padding: "7px 11px", fontSize: 13, marginBottom: 8,
                           borderRadius: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? "8px 8px 0 0" : 8,
-                          background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)",
-                          color: "#E8E8E8", outline: "none", boxSizing: "border-box",
+                          background: "#F9FAFB", border: "1.5px solid #E5E7EB",
+                          color: "#111827", outline: "none", boxSizing: "border-box",
                         }}
                       />
                       {/* 자동완성 드롭다운 */}
-                      <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 260 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#1E2330", border: "1.5px solid rgba(255,255,255,0.12)", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
+                      <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 260 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
                         {aiIndustrySuggestions.map((s, i) => (
                           <div key={i} onMouseDown={() => { setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
-                            style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.15)"}
+                            style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "#EFF6FF"}
                             onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                           >
-                            <span style={{ color: "#E8E8E8" }}>{s.소분류명}</span>
+                            <span style={{ color: "#111827" }}>{s.소분류명}</span>
                             <span style={{ fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)", padding: "2px 7px", borderRadius: 10 }}>{s.통합카테고리}</span>
                           </div>
                         ))}
@@ -3237,7 +3235,7 @@ export default function MapPage() {
                               {CATEGORY_GROUPS[aiIndustryDrillGroup].map((cat) => (
                                 <button key={cat}
                                   onClick={() => { const next = aiIndustry === cat ? null : cat; setAiIndustry(next); }}
-                                  style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)", background: aiIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)", color: aiIndustry === cat ? "#93B8EE" : "#C8C8C8", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
+                                  style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: aiIndustry === cat ? "#2563EB" : "#374151", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
                                 >
                                   <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
                                 </button>
@@ -3249,9 +3247,9 @@ export default function MapPage() {
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                             {DRILL_GROUPS.map(group => (
                               <button key={group} onClick={() => setAiIndustryDrillGroup(group)}
-                                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", transition: "background 0.15s" }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.12)"; e.currentTarget.style.color = "#93B8EE"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "background 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
                               >
                                 <span style={{ fontSize: 15 }}>{DRILL_GROUP_META[group].emoji} {group}</span>
                                 <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
@@ -3273,8 +3271,8 @@ export default function MapPage() {
                         onChange={(e) => setAiDong(e.target.value)}
                         placeholder="예: 역삼1동, 합정동"
                         style={{
-                          width: "100%", padding: "10px 14px", background: "#2E2E2E",
-                          border: "1.5px solid #4A4A4A", borderRadius: 10, color: "#E8E8E8",
+                          width: "100%", padding: "10px 14px", background: "#F9FAFB",
+                          border: "1.5px solid #E5E7EB", borderRadius: 10, color: "#111827",
                           fontSize: 16, outline: "none", boxSizing: "border-box",
                         }}
                       />
@@ -3290,8 +3288,8 @@ export default function MapPage() {
                         value={aiGu}
                         onChange={(e) => setAiGu(e.target.value)}
                         style={{
-                          width: "100%", padding: "10px 14px", background: "#2E2E2E",
-                          border: "1.5px solid #4A4A4A", borderRadius: 10, color: aiGu ? "#E8E8E8" : "#6B7280",
+                          width: "100%", padding: "10px 14px", background: "#F9FAFB",
+                          border: "1.5px solid #E5E7EB", borderRadius: 10, color: aiGu ? "#111827" : "#9CA3AF",
                           fontSize: 16, outline: "none", boxSizing: "border-box", cursor: "pointer",
                         }}
                       >
@@ -3310,7 +3308,7 @@ export default function MapPage() {
                       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                         {["dong", "gu"].map(t => (
                           <button key={t} onClick={() => { setCmpRegionType(t); setCmpRegionASelected(null); setCmpRegionBSelected(null); setCmpRegionAQuery(""); setCmpRegionBQuery(""); setCmpRegionASugg([]); setCmpRegionBSugg([]); }}
-                            style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpRegionType === t ? "2px solid #34D399" : "1.5px solid rgba(255,255,255,0.15)", background: cmpRegionType === t ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)", color: cmpRegionType === t ? "#34D399" : "#9E9E9E" }}>
+                            style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpRegionType === t ? "2px solid #34D399" : "1.5px solid #E5E7EB", background: cmpRegionType === t ? "rgba(52,211,153,0.12)" : "#F9FAFB", color: cmpRegionType === t ? "#059669" : "#6B7280" }}>
                             {t === "dong" ? "🏘 행정동" : "🏙 구"}
                           </button>
                         ))}
@@ -3336,17 +3334,17 @@ export default function MapPage() {
                             }}
                             onBlur={() => setTimeout(() => setSugg([]), 150)}
                             placeholder={cmpRegionType === "dong" ? "예: 역삼, 합정" : "예: 강남, 마포"}
-                            style={{ width: "100%", padding: "8px 12px", background: "#2E2E2E", border: "1.5px solid #4A4A4A", borderRadius: sugg.length > 0 ? "8px 8px 0 0" : 8, color: "#E8E8E8", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                            style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", borderRadius: sugg.length > 0 ? "8px 8px 0 0" : 8, color: "#111827", fontSize: 14, outline: "none", boxSizing: "border-box" }}
                           />
                           {sugg.length > 0 && (
-                            <div style={{ position: "absolute", zIndex: 10, width: "100%", background: "#1E2330", border: "1.5px solid rgba(255,255,255,0.12)", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto" }}>
+                            <div style={{ position: "absolute", zIndex: 10, width: "100%", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto" }}>
                               {sugg.map((s, i) => (
                                 <div key={i} onMouseDown={() => { setSelected(cmpRegionType === "dong" ? s : s); setQuery(cmpRegionType === "dong" ? s.dong : s); setSugg([]); }}
-                                  style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < sugg.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", display: "flex", justifyContent: "space-between" }}
-                                  onMouseEnter={e => e.currentTarget.style.background = "rgba(52,211,153,0.12)"}
+                                  style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < sugg.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between" }}
+                                  onMouseEnter={e => e.currentTarget.style.background = "rgba(52,211,153,0.08)"}
                                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                                 >
-                                  <span style={{ color: "#E8E8E8" }}>{cmpRegionType === "dong" ? s.dong : s}</span>
+                                  <span style={{ color: "#111827" }}>{cmpRegionType === "dong" ? s.dong : s}</span>
                                   {cmpRegionType === "dong" && <span style={{ fontSize: 11, color: "#34D399", background: "rgba(52,211,153,0.15)", padding: "2px 7px", borderRadius: 10 }}>{s.gu}</span>}
                                 </div>
                               ))}
@@ -3361,7 +3359,7 @@ export default function MapPage() {
                           {cmpRegionCat && <span style={{ marginLeft: 8, color: "#34D399", fontWeight: 600, fontSize: 13 }}>{CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} {cmpRegionCat}</span>}
                         </div>
                         <button onClick={() => setCmpRegionPickerOpen(o => !o)}
-                          style={{ width: "100%", padding: "8px 12px", background: "#2E2E2E", border: `1.5px solid ${cmpRegionPickerOpen ? "#34D399" : "#4A4A4A"}`, borderRadius: 8, color: cmpRegionCat ? "#34D399" : "#6B7280", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
+                          style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: `1.5px solid ${cmpRegionPickerOpen ? "#34D399" : "#E5E7EB"}`, borderRadius: 8, color: cmpRegionCat ? "#059669" : "#9CA3AF", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
                           {cmpRegionCat ? `${CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} ${cmpRegionCat}` : "업종을 선택하세요 ▾"}
                         </button>
                         {cmpRegionPickerOpen && (
@@ -3372,7 +3370,7 @@ export default function MapPage() {
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                                   {CATEGORY_GROUPS[cmpRegionDrillGroup].map(c => (
                                     <button key={c} onClick={() => { setCmpRegionCat(c); setCmpRegionPickerOpen(false); setCmpRegionDrillGroup(null); }}
-                                      style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cmpRegionCat === c ? "#34D399" : "rgba(255,255,255,0.15)"}`, background: cmpRegionCat === c ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)", color: cmpRegionCat === c ? "#34D399" : "#C8C8C8" }}>
+                                      style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cmpRegionCat === c ? "#34D399" : "#E5E7EB"}`, background: cmpRegionCat === c ? "rgba(52,211,153,0.15)" : "#F9FAFB", color: cmpRegionCat === c ? "#059669" : "#374151" }}>
                                       {CATEGORY_EMOJI[c] ?? "🏪"} {c}
                                     </button>
                                   ))}
@@ -3382,9 +3380,9 @@ export default function MapPage() {
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 {DRILL_GROUPS.map(group => (
                                   <button key={group} onClick={() => setCmpRegionDrillGroup(group)}
-                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.08)"; e.currentTarget.style.color = "#34D399"; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.08)"; e.currentTarget.style.color = "#059669"; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
                                   >
                                     <span>{DRILL_GROUP_META[group].emoji} {group}</span>
                                     <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
@@ -3405,7 +3403,7 @@ export default function MapPage() {
                       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                         {["dong", "gu"].map(t => (
                           <button key={t} onClick={() => { setCmpIndRegionType(t); setCmpIndRegionSelected(null); setCmpIndRegionQuery(""); setCmpIndRegionSugg([]); }}
-                            style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpIndRegionType === t ? "2px solid #F59E0B" : "1.5px solid rgba(255,255,255,0.15)", background: cmpIndRegionType === t ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)", color: cmpIndRegionType === t ? "#F59E0B" : "#9E9E9E" }}>
+                            style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpIndRegionType === t ? "2px solid #F59E0B" : "1.5px solid #E5E7EB", background: cmpIndRegionType === t ? "rgba(245,158,11,0.12)" : "#F9FAFB", color: cmpIndRegionType === t ? "#D97706" : "#6B7280" }}>
                             {t === "dong" ? "🏘 행정동" : "🏙 구"}
                           </button>
                         ))}
@@ -3427,17 +3425,17 @@ export default function MapPage() {
                           }}
                           onBlur={() => setTimeout(() => setCmpIndRegionSugg([]), 150)}
                           placeholder={cmpIndRegionType === "dong" ? "예: 역삼, 합정" : "예: 강남, 마포"}
-                          style={{ width: "100%", padding: "8px 12px", background: "#2E2E2E", border: "1.5px solid #4A4A4A", borderRadius: cmpIndRegionSugg.length > 0 ? "8px 8px 0 0" : 8, color: "#E8E8E8", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                          style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", borderRadius: cmpIndRegionSugg.length > 0 ? "8px 8px 0 0" : 8, color: "#111827", fontSize: 14, outline: "none", boxSizing: "border-box" }}
                         />
                         {cmpIndRegionSugg.length > 0 && (
-                          <div style={{ position: "absolute", zIndex: 10, width: "100%", background: "#1E2330", border: "1.5px solid rgba(255,255,255,0.12)", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto" }}>
+                          <div style={{ position: "absolute", zIndex: 10, width: "100%", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto" }}>
                             {cmpIndRegionSugg.map((s, i) => (
                               <div key={i} onMouseDown={() => { setCmpIndRegionSelected(cmpIndRegionType === "dong" ? s : s); setCmpIndRegionQuery(cmpIndRegionType === "dong" ? s.dong : s); setCmpIndRegionSugg([]); }}
-                                style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < cmpIndRegionSugg.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", display: "flex", justifyContent: "space-between" }}
-                                onMouseEnter={e => e.currentTarget.style.background = "rgba(245,158,11,0.12)"}
+                                style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < cmpIndRegionSugg.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(245,158,11,0.08)"}
                                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                               >
-                                <span style={{ color: "#E8E8E8" }}>{cmpIndRegionType === "dong" ? s.dong : s}</span>
+                                <span style={{ color: "#111827" }}>{cmpIndRegionType === "dong" ? s.dong : s}</span>
                                 {cmpIndRegionType === "dong" && <span style={{ fontSize: 11, color: "#F59E0B", background: "rgba(245,158,11,0.15)", padding: "2px 7px", borderRadius: 10 }}>{s.gu}</span>}
                               </div>
                             ))}
@@ -3455,7 +3453,7 @@ export default function MapPage() {
                             {cat && <span style={{ marginLeft: 8, color, fontWeight: 600, fontSize: 13 }}>{CATEGORY_EMOJI[cat] ?? "🏪"} {cat}</span>}
                           </div>
                           <button onClick={() => setCmpIndPickerTarget(cmpIndPickerTarget === target ? null : target)}
-                            style={{ width: "100%", padding: "8px 12px", background: "#2E2E2E", border: `1.5px solid ${cmpIndPickerTarget === target ? color : "#4A4A4A"}`, borderRadius: 8, color: cat ? color : "#6B7280", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
+                            style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: `1.5px solid ${cmpIndPickerTarget === target ? color : "#E5E7EB"}`, borderRadius: 8, color: cat ? color : "#9CA3AF", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
                             {cat ? `${CATEGORY_EMOJI[cat] ?? "🏪"} ${cat}` : "업종을 선택하세요 ▾"}
                           </button>
                           {cmpIndPickerTarget === target && (
@@ -3466,7 +3464,7 @@ export default function MapPage() {
                                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                                     {CATEGORY_GROUPS[cmpIndDrillGroup].map(c => (
                                       <button key={c} onClick={() => { setCat(c); setCmpIndPickerTarget(null); setCmpIndDrillGroup(null); }}
-                                        style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cat === c ? color : "rgba(255,255,255,0.15)"}`, background: cat === c ? `rgba(${target==="a"?"52,211,153":"248,113,113"},0.15)` : "rgba(255,255,255,0.04)", color: cat === c ? color : "#C8C8C8" }}>
+                                        style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cat === c ? color : "#E5E7EB"}`, background: cat === c ? `rgba(${target==="a"?"52,211,153":"248,113,113"},0.15)` : "#F9FAFB", color: cat === c ? color : "#374151" }}>
                                         {CATEGORY_EMOJI[c] ?? "🏪"} {c}
                                       </button>
                                     ))}
@@ -3476,9 +3474,9 @@ export default function MapPage() {
                                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                   {DRILL_GROUPS.map(group => (
                                     <button key={group} onClick={() => setCmpIndDrillGroup(group)}
-                                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
-                                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(59,130,246,0.1)"; e.currentTarget.style.color = "#93B8EE"; }}
-                                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
+                                      onMouseEnter={e => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
+                                      onMouseLeave={e => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
                                     >
                                       <span>{DRILL_GROUP_META[group].emoji} {group}</span>
                                       <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
@@ -3518,8 +3516,8 @@ export default function MapPage() {
                         disabled={disabled}
                         style={{
                           width: "100%", padding: "13px 0",
-                          background: disabled ? "#3A3A3A" : btnColor,
-                          color: disabled ? "#666" : "#fff", border: "none", borderRadius: 12,
+                          background: disabled ? "#E5E7EB" : btnColor,
+                          color: disabled ? "#9CA3AF" : "#fff", border: "none", borderRadius: 12,
                           fontSize: 17, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
                           transition: "all 0.2s", letterSpacing: "0.02em",
                         }}
@@ -3535,8 +3533,8 @@ export default function MapPage() {
               {aiStep === "loading" && (
                 <div style={{ textAlign: "center", padding: "48px 0" }}>
                   <div style={{ fontSize: 38, marginBottom: 16, display: "inline-block" }}>⚙️</div>
-                  <div style={{ fontSize: 17, color: "#E8E8E8", fontWeight: 600, marginBottom: 8 }}>AI가 분석하고 있습니다</div>
-                  <div style={{ fontSize: 14, color: "#9E9E9E" }}>매출·유동인구·경쟁 강도를 종합적으로 평가 중...</div>
+                  <div style={{ fontSize: 17, color: "#111827", fontWeight: 600, marginBottom: 8 }}>AI가 분석하고 있습니다</div>
+                  <div style={{ fontSize: 14, color: "#6B7280" }}>매출·유동인구·경쟁 강도를 종합적으로 평가 중...</div>
                   <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 20 }}>
                     {[0, 1, 2].map((i) => (
                       <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#3B82F6", opacity: 0.3 + i * 0.35 }} />
@@ -3549,7 +3547,7 @@ export default function MapPage() {
               {aiStep === "result" && aiResults && (
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                    <span style={{ fontSize: 15, color: "#9E9E9E" }}>
+                    <span style={{ fontSize: 15, color: "#6B7280" }}>
                       {aiMode === "dong" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiSubIndustry}</span>{aiRegion && <> · {aiRegion}</>} 추천 상권</>}
                       {aiMode === "industry" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> 추천 업종</>}
                       {aiMode === "score" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> · <span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span> 적합도</>}
@@ -3578,20 +3576,20 @@ export default function MapPage() {
                                 {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
                               </div>
                               <div>
-                                <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>
+                                <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>
                                   {aiMode === "dong" ? item.dongName : item.industry}
                                 </div>
-                                <div style={{ fontSize: 13, color: "#9E9E9E" }}>
+                                <div style={{ fontSize: 13, color: "#6B7280" }}>
                                   {aiMode === "dong" ? item.guName : item.category}
                                 </div>
                               </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#60A5FA" : "#E8E8E8" }}>{item.score}</div>
-                              <div style={{ fontSize: 12, color: "#9E9E9E" }}>AI 점수</div>
+                              <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#2563EB" : "#111827" }}>{item.score}</div>
+                              <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
                             </div>
                           </div>
-                          <div style={{ fontSize: 14, color: "#C8C8C8", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
+                          <div style={{ fontSize: 14, color: "#374151", background: "#F3F4F6", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
                             {item.reason}
                           </div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
@@ -3603,17 +3601,17 @@ export default function MapPage() {
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>월 매출</div>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{fmtRevenue(item.revenue)}</div>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.revenue)}</div>
                             </div>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 점포</div>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: item.점포수 === 0 ? "#34D399" : "#E8E8E8" }}>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 점포</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: item.점포수 === 0 ? "#059669" : "#111827" }}>
                                 {item.점포수 === 0 ? "0개 (블루오션)" : `${item.점포수}개`}
                               </div>
                             </div>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 강도</div>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 강도</div>
                               <div style={{ fontSize: 14, fontWeight: 600, color: item.competition === "낮음" ? "#34D399" : item.competition === "중간" ? "#FBBF24" : "#F87171" }}>
                                 {item.competition}
                               </div>
@@ -3636,7 +3634,7 @@ export default function MapPage() {
                   {aiMode === "gu" && (
                     <div>
                       {/* 탭 헤더 */}
-                      <div style={{ display: "flex", gap: 6, marginBottom: 14, background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 4 }}>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 14, background: "#F3F4F6", borderRadius: 10, padding: 4 }}>
                         {[
                           { key: "dong", label: "🏘️ 행정동 추천" },
                           { key: "street", label: "🛣️ 길단위 상권 추천" },
@@ -3647,7 +3645,7 @@ export default function MapPage() {
                             style={{
                               flex: 1, padding: "9px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
                               background: aiGuResultTab === key ? "linear-gradient(135deg,#7C3AED,#A78BFA)" : "transparent",
-                              color: aiGuResultTab === key ? "#fff" : "#9E9E9E",
+                              color: aiGuResultTab === key ? "#fff" : "#6B7280",
                               transition: "all 0.18s",
                             }}
                           >
@@ -3660,10 +3658,10 @@ export default function MapPage() {
                       {aiGuResultTab === "dong" && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                           {aiGuDongError && (
-                            <div style={{ textAlign: "center", padding: "24px 0", color: "#9E9E9E", fontSize: 13 }}>
+                            <div style={{ textAlign: "center", padding: "24px 0", color: "#6B7280", fontSize: 13 }}>
                               <div style={{ fontSize: 22, marginBottom: 8 }}>📭</div>
-                              {aiGu} 내 <b style={{ color: "#E8E8E8" }}>{aiIndustry}</b> 데이터가 없습니다.<br />
-                              <span style={{ fontSize: 11, color: "#6B7280" }}>길단위 상권 탭을 확인해보세요.</span>
+                              {aiGu} 내 <b style={{ color: "#111827" }}>{aiIndustry}</b> 데이터가 없습니다.<br />
+                              <span style={{ fontSize: 11, color: "#9CA3AF" }}>길단위 상권 탭을 확인해보세요.</span>
                             </div>
                           )}
                           {aiResults.map((item) => (
@@ -3674,16 +3672,16 @@ export default function MapPage() {
                                     {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
                                   </div>
                                   <div>
-                                    <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>{item.dongName}</div>
-                                    <div style={{ fontSize: 13, color: "#9E9E9E" }}>{item.guName}</div>
+                                    <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{item.dongName}</div>
+                                    <div style={{ fontSize: 13, color: "#6B7280" }}>{item.guName}</div>
                                   </div>
                                 </div>
                                 <div style={{ textAlign: "right" }}>
-                                  <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#A78BFA" : "#E8E8E8" }}>{item.score}</div>
-                                  <div style={{ fontSize: 12, color: "#9E9E9E" }}>AI 점수</div>
+                                  <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#7C3AED" : "#111827" }}>{item.score}</div>
+                                  <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
                                 </div>
                               </div>
-                              <div style={{ fontSize: 14, color: "#C8C8C8", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
+                              <div style={{ fontSize: 14, color: "#374151", background: "#F3F4F6", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
                                 {item.reason}
                               </div>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
@@ -3695,17 +3693,17 @@ export default function MapPage() {
                               </div>
                               <div style={{ display: "flex", gap: 8 }}>
                                 <div style={aiMiniStatStyle}>
-                                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>월 매출</div>
-                                  <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{fmtRevenue(item.revenue)}</div>
+                                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.revenue)}</div>
                                 </div>
                                 <div style={aiMiniStatStyle}>
-                                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 점포</div>
-                                  <div style={{ fontSize: 14, fontWeight: 600, color: item.stores === 0 ? "#34D399" : "#E8E8E8" }}>
+                                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 점포</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: item.stores === 0 ? "#059669" : "#111827" }}>
                                     {item.stores === 0 ? "0개 (블루오션)" : `${item.stores}개`}
                                   </div>
                                 </div>
                                 <div style={aiMiniStatStyle}>
-                                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 2 }}>경쟁 강도</div>
+                                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 강도</div>
                                   <div style={{ fontSize: 14, fontWeight: 600, color: item.competition === "낮음" ? "#34D399" : item.competition === "중간" ? "#FBBF24" : "#F87171" }}>
                                     {item.competition}
                                   </div>
@@ -3724,20 +3722,20 @@ export default function MapPage() {
                               해당 구에 관련 길단위 상권 데이터가 없습니다.
                             </div>
                           ) : aiGuStreetResults.map((item) => (
-                            <div key={item.rank} style={{ ...aiResultCardStyle(item.rank === 1), borderColor: item.rank === 1 ? "rgba(167,139,250,0.5)" : "rgba(255,255,255,0.08)" }}>
+                            <div key={item.rank} style={{ ...aiResultCardStyle(item.rank === 1), borderColor: item.rank === 1 ? "#C4B5FD" : "#E5E7EB" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                  <div style={{ ...aiRankBadge(item.rank), background: item.rank === 1 ? "linear-gradient(135deg,#7C3AED,#A78BFA)" : "rgba(255,255,255,0.08)" }}>
+                                  <div style={{ ...aiRankBadge(item.rank), background: item.rank === 1 ? "linear-gradient(135deg,#7C3AED,#A78BFA)" : "#F3F4F6" }}>
                                     {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
                                   </div>
                                   <div>
-                                    <div style={{ fontSize: 17, fontWeight: 700, color: "#E8E8E8" }}>{item.상권명}</div>
-                                    <div style={{ fontSize: 13, color: "#9E9E9E" }}>길단위 상권</div>
+                                    <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{item.상권명}</div>
+                                    <div style={{ fontSize: 13, color: "#6B7280" }}>길단위 상권</div>
                                   </div>
                                 </div>
                                 <div style={{ textAlign: "right" }}>
-                                  <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#A78BFA" : "#E8E8E8" }}>{item.score}</div>
-                                  <div style={{ fontSize: 12, color: "#9E9E9E" }}>AI 점수</div>
+                                  <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#7C3AED" : "#111827" }}>{item.score}</div>
+                                  <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
                                 </div>
                               </div>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -3756,7 +3754,7 @@ export default function MapPage() {
 
                   {/* ── spot 로딩 ── */}
                   {aiStep === "spot_loading" && (
-                    <div style={{ textAlign: "center", padding: "40px 0", color: "#9E9E9E" }}>
+                    <div style={{ textAlign: "center", padding: "40px 0", color: "#6B7280" }}>
                       <div style={{ fontSize: 32, marginBottom: 12 }}>📍</div>
                       <div style={{ fontSize: 15 }}>{spotDong} 위치 분석 중...</div>
                     </div>
@@ -3768,13 +3766,13 @@ export default function MapPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                         <button
                           onClick={() => { setAiStep("result"); clearSpotMarkers(); }}
-                          style={{ background: "none", border: "none", color: "#9E9E9E", cursor: "pointer", fontSize: 22, lineHeight: 1 }}
+                          style={{ background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 22, lineHeight: 1 }}
                         >←</button>
-                        <div style={{ fontSize: 13, color: "#9E9E9E" }}>
+                        <div style={{ fontSize: 13, color: "#6B7280" }}>
                           {spotDong} · {spotCategory} · 추천 위치 {spotResults.length}곳
                         </div>
                       </div>
-                      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12, background: "#F9FAFB", borderRadius: 8, padding: "8px 10px", border: "1px solid #E5E7EB" }}>
                         지도에 번호 마커로 표시됩니다. 생존율·경쟁·보완업종 데이터 기반 점수입니다.
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3782,34 +3780,34 @@ export default function MapPage() {
                           const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
                           const color = colors[r.rank - 1] || "#6B7280";
                           return (
-                            <div key={r.rank} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", border: `1.5px solid ${color}40` }}>
+                            <div key={r.rank} style={{ background: "#F9FAFB", borderRadius: 12, padding: "14px 16px", border: `1.5px solid ${color}60` }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                   <div style={{ background: color, color: "#fff", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}>{r.rank}</div>
-                                  <div style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8" }}>추천 위치 {r.rank}순위</div>
+                                  <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>추천 위치 {r.rank}순위</div>
                                 </div>
                                 <div style={{ textAlign: "right" }}>
                                   <div style={{ fontSize: 22, fontWeight: 800, color: color }}>{r.score}</div>
-                                  <div style={{ fontSize: 11, color: "#9E9E9E" }}>입지점수</div>
+                                  <div style={{ fontSize: 11, color: "#6B7280" }}>입지점수</div>
                                 </div>
                               </div>
                               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                                 <div style={aiMiniStatStyle}>
-                                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 2 }}>2년 생존율</div>
-                                  <div style={{ fontSize: 14, fontWeight: 600, color: r.생존율 >= 60 ? "#34D399" : r.생존율 >= 40 ? "#FBBF24" : "#F87171" }}>{r.생존율}%</div>
+                                  <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>2년 생존율</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: r.생존율 >= 60 ? "#059669" : r.생존율 >= 40 ? "#D97706" : "#DC2626" }}>{r.생존율}%</div>
                                 </div>
                                 <div style={aiMiniStatStyle}>
-                                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 2 }}>경쟁 수</div>
-                                  <div style={{ fontSize: 14, fontWeight: 600, color: r.경쟁밀도 <= 2 ? "#34D399" : r.경쟁밀도 <= 5 ? "#FBBF24" : "#F87171" }}>{r.경쟁밀도}개</div>
+                                  <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>경쟁 수</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: r.경쟁밀도 <= 2 ? "#059669" : r.경쟁밀도 <= 5 ? "#D97706" : "#DC2626" }}>{r.경쟁밀도}개</div>
                                 </div>
                                 <div style={aiMiniStatStyle}>
-                                  <div style={{ fontSize: 11, color: "#9E9E9E", marginBottom: 2 }}>시너지업종</div>
-                                  <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{r.보완밀도}개</div>
+                                  <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>시너지업종</div>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{r.보완밀도}개</div>
                                 </div>
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                 {r.reasons.map((reason, i) => (
-                                  <div key={i} style={{ fontSize: 13, color: "#C8C8C8", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                                  <div key={i} style={{ fontSize: 13, color: "#374151", display: "flex", alignItems: "flex-start", gap: 6 }}>
                                     <span style={{ color: color, flexShrink: 0 }}>•</span>{reason}
                                   </div>
                                 ))}
@@ -3827,28 +3825,28 @@ export default function MapPage() {
                     return (
                       <div>
                         {/* 종합 점수 */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 16, background: "rgba(59,130,246,0.08)", borderRadius: 14, padding: "16px 20px", marginBottom: 16, border: "1.5px solid rgba(59,130,246,0.25)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 16, background: "#EFF6FF", borderRadius: 14, padding: "16px 20px", marginBottom: 16, border: "1.5px solid #BFDBFE" }}>
                           <div style={{ textAlign: "center" }}>
-                            <div style={{ fontSize: 46, fontWeight: 800, color: "#60A5FA", lineHeight: 1 }}>{r.score}</div>
-                            <div style={{ fontSize: 13, color: "#9E9E9E", marginTop: 4 }}>종합 점수</div>
+                            <div style={{ fontSize: 46, fontWeight: 800, color: "#2563EB", lineHeight: 1 }}>{r.score}</div>
+                            <div style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>종합 점수</div>
                           </div>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E8E8", marginBottom: 4 }}>등급 {r.grade}</div>
-                            <div style={{ fontSize: 14, color: "#C8C8C8", lineHeight: 1.6 }}>{r.summary}</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 4 }}>등급 {r.grade}</div>
+                            <div style={{ fontSize: 14, color: "#374151", lineHeight: 1.6 }}>{r.summary}</div>
                           </div>
                         </div>
 
                         {/* 항목별 점수 */}
                         <div style={{ marginBottom: 16 }}>
-                          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 10 }}>항목별 평가</div>
+                          <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>항목별 평가</div>
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                             {r.breakdown.map((b) => (
                               <div key={b.label}>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                  <span style={{ fontSize: 14, color: "#C8C8C8" }}>{b.label}</span>
-                                  <span style={{ fontSize: 14, color: "#9E9E9E", fontWeight: 600 }}>{b.score} / {b.max}</span>
+                                  <span style={{ fontSize: 14, color: "#374151" }}>{b.label}</span>
+                                  <span style={{ fontSize: 14, color: "#6B7280", fontWeight: 600 }}>{b.score} / {b.max}</span>
                                 </div>
-                                <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 4, height: 6, overflow: "hidden" }}>
+                                <div style={{ background: "#E5E7EB", borderRadius: 4, height: 6, overflow: "hidden" }}>
                                   <div style={{ width: `${(b.score / b.max) * 100}%`, height: "100%", background: b.score >= 80 ? "linear-gradient(90deg,#10B981,#34D399)" : b.score >= 60 ? "linear-gradient(90deg,#3B82F6,#60A5FA)" : "linear-gradient(90deg,#F59E0B,#FBBF24)", borderRadius: 4 }} />
                                 </div>
                               </div>
@@ -3858,13 +3856,13 @@ export default function MapPage() {
 
                         {/* 장단점 */}
                         <div style={{ display: "flex", gap: 8 }}>
-                          <div style={{ flex: 1, background: "rgba(16,185,129,0.07)", borderRadius: 10, padding: "12px", border: "1px solid rgba(16,185,129,0.2)" }}>
-                            <div style={{ fontSize: 13, color: "#34D399", fontWeight: 700, marginBottom: 8 }}>강점</div>
-                            {r.pros.map((p) => <div key={p} style={{ fontSize: 14, color: "#C8C8C8", marginBottom: 4 }}>✓ {p}</div>)}
+                          <div style={{ flex: 1, background: "rgba(16,185,129,0.06)", borderRadius: 10, padding: "12px", border: "1px solid rgba(16,185,129,0.2)" }}>
+                            <div style={{ fontSize: 13, color: "#059669", fontWeight: 700, marginBottom: 8 }}>강점</div>
+                            {r.pros.map((p) => <div key={p} style={{ fontSize: 14, color: "#374151", marginBottom: 4 }}>✓ {p}</div>)}
                           </div>
-                          <div style={{ flex: 1, background: "rgba(239,68,68,0.07)", borderRadius: 10, padding: "12px", border: "1px solid rgba(239,68,68,0.2)" }}>
-                            <div style={{ fontSize: 13, color: "#F87171", fontWeight: 700, marginBottom: 8 }}>유의점</div>
-                            {r.cons.map((c) => <div key={c} style={{ fontSize: 14, color: "#C8C8C8", marginBottom: 4 }}>! {c}</div>)}
+                          <div style={{ flex: 1, background: "rgba(239,68,68,0.06)", borderRadius: 10, padding: "12px", border: "1px solid rgba(239,68,68,0.2)" }}>
+                            <div style={{ fontSize: 13, color: "#DC2626", fontWeight: 700, marginBottom: 8 }}>유의점</div>
+                            {r.cons.map((c) => <div key={c} style={{ fontSize: 14, color: "#374151", marginBottom: 4 }}>! {c}</div>)}
                           </div>
                         </div>
                       </div>
@@ -3890,7 +3888,7 @@ export default function MapPage() {
                       <div>
                         {/* 업종 배지 */}
                         <div style={{ textAlign: "center", marginBottom: 10 }}>
-                          <span style={{ fontSize: 13, background: "rgba(52,211,153,0.12)", color: "#34D399", padding: "4px 12px", borderRadius: 20, fontWeight: 600 }}>
+                          <span style={{ fontSize: 13, background: "rgba(52,211,153,0.10)", color: "#059669", padding: "4px 12px", borderRadius: 20, fontWeight: 600 }}>
                             {CATEGORY_EMOJI[category] ?? "🏪"} {category}
                           </span>
                         </div>
@@ -3898,9 +3896,9 @@ export default function MapPage() {
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
                           <div />
                           {[a, b].map((r, i) => (
-                            <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i === 0 ? "rgba(52,211,153,0.1)" : "rgba(59,130,246,0.1)", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"rgba(59,130,246,0.3)"}` }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#34D399":"#60A5FA" }}>{r.name}</div>
-                              <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 2 }}>등급 {r.등급} · {type === "dong" ? "행정동" : "구"}</div>
+                            <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i === 0 ? "rgba(52,211,153,0.08)" : "#EFF6FF", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"#BFDBFE"}` }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#059669":"#2563EB" }}>{r.name}</div>
+                              <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>등급 {r.등급} · {type === "dong" ? "행정동" : "구"}</div>
                             </div>
                           ))}
                         </div>
@@ -3912,11 +3910,11 @@ export default function MapPage() {
                           const bBetter = isReverse ? vB < vA : vB > vA;
                           return (
                             <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 6, alignItems: "center" }}>
-                              <div style={{ fontSize: 12, color: "#9E9E9E", textAlign: "center" }}>{label}</div>
+                              <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center" }}>{label}</div>
                               {[{ v: vA, better: aBetter }, { v: vB, better: bBetter }].map(({ v, better }, i) => (
-                                <div key={i} style={{ textAlign: "center", padding: "7px 4px", borderRadius: 8, background: better ? (i===0?"rgba(52,211,153,0.1)":"rgba(59,130,246,0.1)") : "rgba(255,255,255,0.03)", border: `1px solid ${better?(i===0?"rgba(52,211,153,0.25)":"rgba(59,130,246,0.25)"):"rgba(255,255,255,0.06)"}` }}>
-                                  <span style={{ fontSize: 13, fontWeight: better ? 700 : 400, color: better ? (i===0?"#34D399":"#60A5FA") : "#C8C8C8" }}>{fmt(v)}</span>
-                                  {better && <span style={{ marginLeft: 3, fontSize: 10, color: i===0?"#34D399":"#60A5FA" }}>▲</span>}
+                                <div key={i} style={{ textAlign: "center", padding: "7px 4px", borderRadius: 8, background: better ? (i===0?"rgba(52,211,153,0.08)":"#EFF6FF") : "#F9FAFB", border: `1px solid ${better?(i===0?"rgba(52,211,153,0.25)":"#BFDBFE"):"#E5E7EB"}` }}>
+                                  <span style={{ fontSize: 13, fontWeight: better ? 700 : 400, color: better ? (i===0?"#059669":"#2563EB") : "#374151" }}>{fmt(v)}</span>
+                                  {better && <span style={{ marginLeft: 3, fontSize: 10, color: i===0?"#059669":"#2563EB" }}>▲</span>}
                                 </div>
                               ))}
                             </div>
@@ -3958,17 +3956,17 @@ export default function MapPage() {
                             reasons.push(`폐업률(${winner.폐업률}%)이 낮아 업종 생존율이 높은 안정적인 상권입니다.`);
                           const topReasons = reasons.slice(0, 3);
                           return (
-                            <div style={{ marginTop: 16, padding: "16px", background: "rgba(52,211,153,0.06)", borderRadius: 12, border: "1.5px solid rgba(52,211,153,0.25)" }}>
+                            <div style={{ marginTop: 16, padding: "16px", background: "#F0FDF4", borderRadius: 12, border: "1.5px solid #86EFAC" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                                 <span style={{ fontSize: 18 }}>💡</span>
-                                <span style={{ fontSize: 13, color: "#9E9E9E" }}>{category} 창업 추천 지역</span>
-                                <span style={{ fontSize: 16, fontWeight: 800, color: winColor, marginLeft: 4 }}>{winner.name}</span>
+                                <span style={{ fontSize: 13, color: "#6B7280" }}>{category} 창업 추천 지역</span>
+                                <span style={{ fontSize: 16, fontWeight: 800, color: scoreA >= scoreB ? "#059669" : "#2563EB", marginLeft: 4 }}>{winner.name}</span>
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                                 {topReasons.map((r, i) => (
                                   <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
-                                    <span style={{ color: winColor, fontSize: 13, flexShrink: 0, marginTop: 1 }}>✔</span>
-                                    <span style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.6 }}>{r}</span>
+                                    <span style={{ color: scoreA >= scoreB ? "#059669" : "#2563EB", fontSize: 13, flexShrink: 0, marginTop: 1 }}>✔</span>
+                                    <span style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r}</span>
                                   </div>
                                 ))}
                               </div>
@@ -3997,15 +3995,15 @@ export default function MapPage() {
                     return (
                       <div>
                         {/* 지역/업종 헤더 */}
-                        <div style={{ textAlign: "center", fontSize: 12, color: "#9E9E9E", marginBottom: 10 }}>
+                        <div style={{ textAlign: "center", fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
                           {region} ({region_type === "dong" ? "행정동" : "구"})
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
                           <div />
                           {[a, b].map((r, i) => (
-                            <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i===0?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"rgba(248,113,113,0.3)"}` }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#34D399":"#F87171" }}>{CATEGORY_EMOJI[r.category] ?? "🏪"} {r.category}</div>
-                              <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 2 }}>등급 {r.등급}</div>
+                            <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i===0?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"rgba(248,113,113,0.3)"}` }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#059669":"#DC2626" }}>{CATEGORY_EMOJI[r.category] ?? "🏪"} {r.category}</div>
+                              <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>등급 {r.등급}</div>
                             </div>
                           ))}
                         </div>
@@ -4016,11 +4014,11 @@ export default function MapPage() {
                           const bBetter = isReverse ? vB < vA : vB > vA;
                           return (
                             <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 6, alignItems: "center" }}>
-                              <div style={{ fontSize: 12, color: "#9E9E9E", textAlign: "center" }}>{label}</div>
+                              <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center" }}>{label}</div>
                               {[{ v: vA, better: aBetter, idx: 0 }, { v: vB, better: bBetter, idx: 1 }].map(({ v, better, idx }) => (
-                                <div key={idx} style={{ textAlign: "center", padding: "7px 4px", borderRadius: 8, background: better?(idx===0?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)"):"rgba(255,255,255,0.03)", border: `1px solid ${better?(idx===0?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"):"rgba(255,255,255,0.06)"}` }}>
-                                  <span style={{ fontSize: 13, fontWeight: better?700:400, color: better?(idx===0?"#34D399":"#F87171"):"#C8C8C8" }}>{fmt(v)}</span>
-                                  {better && <span style={{ marginLeft: 3, fontSize: 10, color: idx===0?"#34D399":"#F87171" }}>▲</span>}
+                                <div key={idx} style={{ textAlign: "center", padding: "7px 4px", borderRadius: 8, background: better?(idx===0?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)"):"#F9FAFB", border: `1px solid ${better?(idx===0?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"):"#E5E7EB"}` }}>
+                                  <span style={{ fontSize: 13, fontWeight: better?700:400, color: better?(idx===0?"#059669":"#DC2626"):"#374151" }}>{fmt(v)}</span>
+                                  {better && <span style={{ marginLeft: 3, fontSize: 10, color: idx===0?"#059669":"#DC2626" }}>▲</span>}
                                 </div>
                               ))}
                             </div>
@@ -4071,18 +4069,18 @@ export default function MapPage() {
                           const topReasons = reasons.slice(0, 3);
 
                           return (
-                            <div style={{ marginTop: 16, padding: "16px", background: "rgba(52,211,153,0.06)", borderRadius: 12, border: `1.5px solid ${winColor}40` }}>
+                            <div style={{ marginTop: 16, padding: "16px", background: "#F0FDF4", borderRadius: 12, border: `1.5px solid ${sA >= sB ? "#86EFAC" : "#FCA5A5"}` }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                                 <span style={{ fontSize: 18 }}>💡</span>
-                                <span style={{ fontSize: 13, color: "#9E9E9E" }}>추천 업종</span>
-                                <span style={{ fontSize: 16, fontWeight: 800, color: winColor, marginLeft: 4 }}>{CATEGORY_EMOJI[winner.category] ?? "🏪"} {winner.category}</span>
-                                <span style={{ fontSize: 12, background: `${winColor}25`, color: winColor, padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>등급 {winner.등급}</span>
+                                <span style={{ fontSize: 13, color: "#6B7280" }}>추천 업종</span>
+                                <span style={{ fontSize: 16, fontWeight: 800, color: sA >= sB ? "#059669" : "#DC2626", marginLeft: 4 }}>{CATEGORY_EMOJI[winner.category] ?? "🏪"} {winner.category}</span>
+                                <span style={{ fontSize: 12, background: sA >= sB ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)", color: sA >= sB ? "#059669" : "#DC2626", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>등급 {winner.등급}</span>
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                                 {topReasons.map((r, i) => (
                                   <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
-                                    <span style={{ color: winColor, fontSize: 13, flexShrink: 0, marginTop: 1 }}>✔</span>
-                                    <span style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.6 }}>{r}</span>
+                                    <span style={{ color: sA >= sB ? "#059669" : "#DC2626", fontSize: 13, flexShrink: 0, marginTop: 1 }}>✔</span>
+                                    <span style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r}</span>
                                   </div>
                                 ))}
                               </div>
@@ -4093,8 +4091,8 @@ export default function MapPage() {
                     );
                   })()}
 
-                  <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid #3A3A3A" }}>
-                    <div style={{ fontSize: 13, color: "#777" }}>
+                  <div style={{ marginTop: 14, padding: "10px 14px", background: "#FFF7ED", borderRadius: 10, border: "1px solid #FED7AA" }}>
+                    <div style={{ fontSize: 13, color: "#92400E" }}>
                       ⚠️ 본 추천 결과는 AI 분석 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
                     </div>
                   </div>
@@ -4116,25 +4114,25 @@ export default function MapPage() {
             left: "auto",
             right: 380,     // AI 패널 왼쪽에 붙음
             width: 300,
-            borderLeft: "1px solid rgba(255,255,255,0.07)",
+            borderLeft: "1px solid #E5E7EB",
             zIndex: 13,
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}>
             <div>
-              <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 2 }}>{aiDong}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#E8E8E8" }}>업종 선택</div>
+              <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>{aiDong}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>업종 선택</div>
             </div>
             <button onClick={() => setShowIndustryPicker(false)} style={closeBtnStyle}>✕</button>
           </div>
-          <div style={{ fontSize: 13, color: "#9E9E9E", marginBottom: 12, flexShrink: 0 }}>업종을 선택하면 해당 지역의 창업 적합도를 분석합니다</div>
+          <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 12, flexShrink: 0 }}>업종을 선택하면 해당 지역의 창업 적합도를 분석합니다</div>
           <div style={{ flex: 1, overflowY: "auto" }}>
             {pickerDrillGroup ? (
               /* 세부 카테고리 */
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <button
                   onClick={() => setPickerDrillGroup(null)}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#9E9E9E", marginBottom: 4 }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", marginBottom: 4 }}
                 >
                   ← {DRILL_GROUP_META[pickerDrillGroup].emoji} {pickerDrillGroup}
                 </button>
@@ -4158,9 +4156,9 @@ export default function MapPage() {
                         })
                         .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
                     }}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.15)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.35)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
                   >
                     <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>
                     {cat}
@@ -4174,9 +4172,9 @@ export default function MapPage() {
                   <button
                     key={group}
                     onClick={() => setPickerDrillGroup(group)}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 14px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.12)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.3)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 14px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
                   >
                     <span style={{ fontSize: 20 }}>{DRILL_GROUP_META[group].emoji}</span>
                     {group}
@@ -4198,7 +4196,7 @@ export default function MapPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 22 }}>💰</span>
-                <span style={{ fontSize: 19, fontWeight: 700, color: "#E8E8E8" }}>창업비용 계산기</span>
+                <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>창업비용 계산기</span>
               </div>
               <button onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcArea(33); setCalcFloor("1층"); setCalcWorkers(1); setCalcSelectedGu(""); setCalcSearchQuery(""); setCalcDrillGroup(null); }} style={closeBtnStyle}>✕</button>
             </div>
@@ -4217,41 +4215,41 @@ export default function MapPage() {
                     onClick={() => setCalcResult(null)} // 결과 초기화 → 입력 폼으로 복귀
                     style={{
                       padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12,
-                      border: "1.5px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)",
-                      color: "#C8C8C8",
+                      border: "1.5px solid #E5E7EB", background: "#F9FAFB",
+                      color: "#374151",
                     }}
                   >← 다시 계산하기</button>
                 </div>
 
                 {/* 초기 창업비용 */}
-                <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ background: "#F9FAFB", borderRadius: 12, padding: "12px 14px", border: "1px solid #E5E7EB" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                     📦 초기 창업비용 <span style={{ fontSize: 11, color: "#6B7280", fontWeight: 400 }}>(일회성)</span>
                   </div>
                   {[["보증금", calcResult.보증금], ["인테리어", calcResult.인테리어], ["설비·집기", calcResult.설비집기], ["초기재고", calcResult.초기재고]].map(([label, val]) => (
                     <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
-                      <span style={{ color: "#9E9E9E" }}>{label}</span>
-                      <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
+                      <span style={{ color: "#6B7280" }}>{label}</span>
+                      <span style={{ color: "#111827", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
                     </div>
                   ))}
-                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
+                  <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>합계</span>
                     <span style={{ fontSize: 17, fontWeight: 700, color: "#60A5FA" }}>{calcResult.초기합계.toLocaleString()}만원</span>
                   </div>
                 </div>
 
                 {/* 월 고정비 */}
-                <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8", marginBottom: 8 }}>📅 월 고정비</div>
+                <div style={{ background: "#F9FAFB", borderRadius: 12, padding: "12px 14px", border: "1px solid #E5E7EB" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 8 }}>📅 월 고정비</div>
                   {[["임대료", calcResult.월임대료], ["관리비·공과금", calcResult.월관리비], ["인건비", calcResult.월인건비]].map(([label, val]) => (
                     <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
-                      <span style={{ color: "#9E9E9E" }}>{label}</span>
-                      <span style={{ color: "#E8E8E8", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
+                      <span style={{ color: "#6B7280" }}>{label}</span>
+                      <span style={{ color: "#111827", fontWeight: 500 }}>{val.toLocaleString()}만원</span>
                     </div>
                   ))}
-                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#E8E8E8" }}>합계</span>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: "#34D399" }}>{calcResult.월고정비합계.toLocaleString()}만원</span>
+                  <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 6, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>합계</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, color: "#059669" }}>{calcResult.월고정비합계.toLocaleString()}만원</span>
                   </div>
                 </div>
 
@@ -4277,7 +4275,7 @@ export default function MapPage() {
               <>
               {/* ① 업종 선택 */}
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 10, letterSpacing: "0.05em" }}>① 업종 선택</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#6B7280", marginBottom: 10, letterSpacing: "0.05em" }}>① 업종 선택</div>
                 {/* 업종 검색창 */}
                 <div style={{ marginBottom: 8 }}>
                   <input
@@ -4305,8 +4303,8 @@ export default function MapPage() {
                     style={{
                       width: "100%", padding: "6px 10px", fontSize: 13,
                       borderRadius: calcSuggestOpen && calcSuggestions.length > 0 ? "8px 8px 0 0" : 8,
-                      background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)",
-                      color: "#E8E8E8", outline: "none", boxSizing: "border-box",
+                      background: "#F9FAFB", border: "1.5px solid #E5E7EB",
+                      color: "#111827", outline: "none", boxSizing: "border-box",
                     }}
                   />
                   <div style={{
@@ -4314,7 +4312,7 @@ export default function MapPage() {
                     maxHeight: calcSuggestOpen && calcSuggestions.length > 0 ? 320 : 0,
                     opacity: calcSuggestOpen && calcSuggestions.length > 0 ? 1 : 0,
                     transition: "max-height 0.22s ease, opacity 0.18s ease",
-                    background: "#1E2330", border: "1.5px solid rgba(255,255,255,0.12)",
+                    background: "#fff", border: "1.5px solid #E5E7EB",
                     borderTop: "none", borderRadius: "0 0 8px 8px",
                   }}>
                     {calcSuggestions.map((s, i) => (
@@ -4328,13 +4326,13 @@ export default function MapPage() {
                         }}
                         style={{
                           padding: "7px 12px", cursor: "pointer", fontSize: 13,
-                          borderBottom: i < calcSuggestions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                          borderBottom: i < calcSuggestions.length - 1 ? "1px solid #F3F4F6" : "none",
                           display: "flex", justifyContent: "space-between", alignItems: "center",
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,130,246,0.15)"}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#EFF6FF"}
                         onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                       >
-                        <span style={{ color: "#E8E8E8" }}>{s.소분류명}</span>
+                        <span style={{ color: "#111827" }}>{s.소분류명}</span>
                         <span style={{
                           fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)",
                           padding: "2px 7px", borderRadius: 10,
@@ -4351,7 +4349,7 @@ export default function MapPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <button
                         onClick={() => setCalcDrillGroup(null)}
-                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#9E9E9E", marginBottom: 4 }}
+                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#6B7280", marginBottom: 4 }}
                       >
                         ← {DRILL_GROUP_META[calcDrillGroup].emoji} {calcDrillGroup}
                       </button>
@@ -4360,9 +4358,9 @@ export default function MapPage() {
                           <button key={cat} onClick={() => { setCalcIndustry(cat); setCalcResult(null); }}
                             style={{
                               padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13,
-                              border: calcIndustry === cat ? "2px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
-                              background: calcIndustry === cat ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
-                              color: calcIndustry === cat ? "#93B8EE" : "#C8C8C8",
+                              border: calcIndustry === cat ? "2px solid #2563EB" : "1.5px solid #E5E7EB",
+                              background: calcIndustry === cat ? "#EFF6FF" : "#F9FAFB",
+                              color: calcIndustry === cat ? "#2563EB" : "#374151",
                               fontWeight: calcIndustry === cat ? 700 : 400,
                               display: "flex", alignItems: "center", gap: 4,
                             }}
@@ -4379,9 +4377,9 @@ export default function MapPage() {
                         <button
                           key={group}
                           onClick={() => setCalcDrillGroup(group)}
-                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(59,130,246,0.12)"; e.currentTarget.style.color = "#93B8EE"; e.currentTarget.style.borderColor = "rgba(59,130,246,0.3)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
                         >
                           <span style={{ fontSize: 18 }}>{DRILL_GROUP_META[group].emoji}</span>
                           {group}
@@ -4397,47 +4395,47 @@ export default function MapPage() {
               {calcIndustry && (
                 <>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#9E9E9E", marginBottom: 10, letterSpacing: "0.05em" }}>② 기본 정보</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#6B7280", marginBottom: 10, letterSpacing: "0.05em" }}>② 기본 정보</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
                       {/* 면적 */}
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>면적</span>
+                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>면적</span>
                         <input
                           type="number" min={10} max={300} value={calcArea}
                           onChange={(e) => { setCalcArea(Number(e.target.value)); setCalcResult(null); }}
                           style={calcInputStyle}
                         />
-                        <span style={{ color: "#9E9E9E", fontSize: 13 }}>㎡ &nbsp;({(calcArea / 3.3).toFixed(1)}평)</span>
+                        <span style={{ color: "#6B7280", fontSize: 13 }}>㎡ &nbsp;({(calcArea / 3.3).toFixed(1)}평)</span>
                       </div>
 
                       {/* 층수 */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>층수</span>
+                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>층수</span>
                         {["지하1층", "1층", "2층"].map((f) => (
                           <button key={f} onClick={() => { setCalcFloor(f); setCalcResult(null); }} style={{
                             padding: "4px 12px", borderRadius: 8, cursor: "pointer", fontSize: 13,
-                            border: calcFloor === f ? "1.5px solid #3B82F6" : "1.5px solid rgba(255,255,255,0.15)",
-                            background: calcFloor === f ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)",
-                            color: calcFloor === f ? "#93B8EE" : "#C8C8C8",
+                            border: calcFloor === f ? "1.5px solid #2563EB" : "1.5px solid #E5E7EB",
+                            background: calcFloor === f ? "#EFF6FF" : "#F9FAFB",
+                            color: calcFloor === f ? "#2563EB" : "#374151",
                           }}>{f}</button>
                         ))}
                       </div>
 
                       {/* 직원수 */}
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>직원수</span>
+                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>직원수</span>
                         <input
                           type="number" min={0} max={10} value={calcWorkers}
                           onChange={(e) => { setCalcWorkers(Number(e.target.value)); setCalcResult(null); }}
                           style={calcInputStyle}
                         />
-                        <span style={{ color: "#9E9E9E", fontSize: 13 }}>명 (사장 포함)</span>
+                        <span style={{ color: "#6B7280", fontSize: 13 }}>명 (사장 포함)</span>
                       </div>
 
                       {/* 지역 */}
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 13, color: "#9E9E9E", width: 54, flexShrink: 0 }}>지역</span>
+                        <span style={{ fontSize: 13, color: "#6B7280", width: 54, flexShrink: 0 }}>지역</span>
                         {selectedDong?.guName ? (
                           <span style={{ fontSize: 13, color: "#93B8EE", fontWeight: 600 }}>
                             {selectedDong.guName} <span style={{ color: "#6B7280", fontWeight: 400 }}>(지도 선택)</span>
@@ -4449,12 +4447,12 @@ export default function MapPage() {
                             style={{
                               ...calcInputStyle,
                               width: 140, cursor: "pointer",
-                              background: "#1E2330",          // 반투명 대신 solid — 브라우저 네이티브 select는 반투명이 흰색으로 렌더링됨
-                              color: "#E8E8E8",
+                              background: "#F9FAFB",
+                              color: "#111827",
                             }}
                           >
-                            <option value="" style={{ background: "#1E2330", color: "#9E9E9E" }}>구 선택...</option>
-                            {REGIONS.map((g) => <option key={g} value={g} style={{ background: "#1E2330", color: "#E8E8E8" }}>{g}</option>)}
+                            <option value="" style={{ background: "#fff", color: "#6B7280" }}>구 선택...</option>
+                            {REGIONS.map((g) => <option key={g} value={g} style={{ background: "#fff", color: "#111827" }}>{g}</option>)}
                           </select>
                         )}
                       </div>
@@ -4643,9 +4641,9 @@ export default function MapPage() {
       {(drawingMode || customPolygonDone) && (
         <div style={{
           position: "absolute", bottom: 32, left: "50%", transform: "translateX(-50%)",
-          width: 340, background: "rgba(18,18,22,0.95)", backdropFilter: "blur(12px)",
+          width: 340, background: "#fff",
           borderRadius: 14, border: "1px solid rgba(245,158,11,0.4)",
-          boxShadow: "0 4px 24px rgba(0,0,0,0.5)", zIndex: 300, padding: "16px 18px",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.12)", zIndex: 300, padding: "16px 18px",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: "#F59E0B" }}>
@@ -4653,12 +4651,12 @@ export default function MapPage() {
             </span>
             <button
               onClick={() => { clearCustomDrawing(); drawingModeRef.current = false; setDrawingMode(false); }}
-              style={{ background: "none", border: "none", color: "#9E9E9E", fontSize: 16, cursor: "pointer" }}
+              style={{ background: "none", border: "none", color: "#6B7280", fontSize: 16, cursor: "pointer" }}
             >✕</button>
           </div>
 
           {drawingMode && (
-            <p style={{ fontSize: 12, color: "#9E9E9E", margin: "0 0 8px" }}>
+            <p style={{ fontSize: 12, color: "#6B7280", margin: "0 0 8px" }}>
               꼭짓점을 3개 이상 찍고 첫 번째 점을 다시 클릭하면 완성돼요.
             </p>
           )}
@@ -4666,20 +4664,20 @@ export default function MapPage() {
           {customPolygonDone && (
             <>
               <div style={{ marginBottom: 10 }}>
-                <p style={{ fontSize: 12, color: "#9E9E9E", margin: "0 0 8px" }}>업종 선택</p>
+                <p style={{ fontSize: 12, color: "#6B7280", margin: "0 0 8px" }}>업종 선택</p>
                 {/* 검색 */}
                 <input
                   type="text"
                   placeholder="업종 검색..."
                   value={customSearchQuery}
                   onChange={(e) => { setCustomSearchQuery(e.target.value); setCustomDrillGroup(e.target.value ? "__search__" : null); }}
-                  style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)", color: "#E8E8E8", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+                  style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "#F9FAFB", border: "1.5px solid #E5E7EB", color: "#111827", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 {customSearchQuery ? (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                     {Object.values(CATEGORY_GROUPS).flat().filter((c, i, a) => a.indexOf(c) === i && c.includes(customSearchQuery)).map(cat => (
                       <button key={cat} onClick={() => { setCustomCategory(cat); setCustomSearchQuery(""); setCustomDrillGroup(null); }}
-                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid rgba(255,255,255,0.15)", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.05)", color: customCategory === cat ? "#F59E0B" : "#C8C8C8" }}>
+                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid #E5E7EB", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "#F9FAFB", color: customCategory === cat ? "#F59E0B" : "#374151" }}>
                         {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
                       </button>
                     ))}
@@ -4692,7 +4690,7 @@ export default function MapPage() {
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                       {CATEGORY_GROUPS[customDrillGroup].map(cat => (
                         <button key={cat} onClick={() => { setCustomCategory(cat); setCustomDrillGroup(null); }}
-                          style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid rgba(255,255,255,0.15)", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.05)", color: customCategory === cat ? "#F59E0B" : "#C8C8C8" }}>
+                          style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid #E5E7EB", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "#F9FAFB", color: customCategory === cat ? "#F59E0B" : "#374151" }}>
                           {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
                         </button>
                       ))}
@@ -4703,14 +4701,14 @@ export default function MapPage() {
                     {customCategory && (
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
                         <span style={{ fontSize: 12, color: "#F59E0B" }}>{CATEGORY_EMOJI[customCategory] ?? "🏪"} {customCategory}</span>
-                        <button onClick={() => setCustomCategory("")} style={{ fontSize: 11, color: "#9E9E9E", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
+                        <button onClick={() => setCustomCategory("")} style={{ fontSize: 11, color: "#6B7280", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
                       </div>
                     )}
                     {DRILL_GROUPS.map(group => (
                       <button key={group} onClick={() => setCustomDrillGroup(group)}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#C8C8C8" }}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(245,158,11,0.1)"; e.currentTarget.style.color = "#F59E0B"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#C8C8C8"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
                       >
                         <span>{DRILL_GROUP_META[group].emoji} {group}</span>
                         <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
@@ -4735,12 +4733,12 @@ export default function MapPage() {
 
               {customResults && (
                 <div style={{ marginTop: 4 }}>
-                  <div style={{ fontSize: 12, color: "#9E9E9E", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
                     입지점수 Top {customResults.length} · 숫자 마커로 지도에 표시됨
                   </div>
                   {customResults.map((r) => (
                     <div key={r.rank} style={{
-                      padding: "10px 0", borderBottom: r.rank < customResults.length ? "1px solid rgba(255,255,255,0.06)" : "none",
+                      padding: "10px 0", borderBottom: r.rank < customResults.length ? "1px solid #E5E7EB" : "none",
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                         <span style={{
@@ -4748,11 +4746,11 @@ export default function MapPage() {
                           color: "#fff", fontSize: 11, fontWeight: 700, width: 20, height: 20,
                           borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
                         }}>{r.rank}</span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#E8E8E8" }}>입지점수 {r.score}점</span>
-                        <span style={{ fontSize: 11, color: "#9E9E9E", marginLeft: "auto" }}>생존율 {r.생존율}%</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>입지점수 {r.score}점</span>
+                        <span style={{ fontSize: 11, color: "#6B7280", marginLeft: "auto" }}>생존율 {r.생존율}%</span>
                       </div>
                       {r.reasons.map((reason, i) => (
-                        <div key={i} style={{ fontSize: 11, color: "#9E9E9E", paddingLeft: 28 }}>· {reason}</div>
+                        <div key={i} style={{ fontSize: 11, color: "#6B7280", paddingLeft: 28 }}>· {reason}</div>
                       ))}
                     </div>
                   ))}
@@ -4930,9 +4928,9 @@ const STORE_CATEGORY_COLORS = {
 const storeFilterChipStyle = (active) => ({
   padding: "5px 8px",
   borderRadius: 8,
-  border: active ? "1px solid #9E9E9E" : "1px solid rgba(255,255,255,0.1)",
-  background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-  color: active ? "#E8E8E8" : "#9E9E9E",
+  border: active ? "1px solid #374151" : "1px solid #E5E7EB",
+  background: active ? "#374151" : "#F9FAFB",
+  color: active ? "#fff" : "#6B7280",
   fontWeight: active ? 600 : 400,
   cursor: "pointer",
   fontSize: 13,
@@ -4951,10 +4949,10 @@ const zoomBtnGroupStyle = {
   right: 20,
   display: "flex",
   flexDirection: "column",
-  background: "rgba(35,35,35,0.97)",
+  background: "#fff",
   borderRadius: 10,
-  boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
-  backdropFilter: "blur(6px)",
+  boxShadow: "0 4px 15px rgba(0,0,0,0.12)",
+  border: "1px solid #E5E7EB",
   overflow: "hidden",
   zIndex: 10,
 };
@@ -4964,7 +4962,7 @@ const zoomBtnStyle = {
   height: 40,
   border: "none",
   background: "none",
-  color: "#E8E8E8",
+  color: "#374151",
   fontSize: 22,
   fontWeight: 400,
   cursor: "pointer",
@@ -4978,12 +4976,11 @@ const tooltipStyle = {
   position: "absolute",
   bottom: 40,
   left: 20,
-  background: "rgba(42,42,52,0.92)",
-  border: "1px solid rgba(255,255,255,0.07)",
+  background: "#fff",
+  border: "1px solid #E5E7EB",
   borderRadius: 12,
   padding: "12px 16px",
-  boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-  backdropFilter: "blur(10px)",
+  boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
   zIndex: 10,
   fontSize: 16,
   pointerEvents: "none",
@@ -4994,8 +4991,8 @@ const tooltipStyle = {
 const tooltipLabel = {
   fontSize: 12,
   fontWeight: 700,
-  color: "#888",
-  background: "rgba(255,255,255,0.07)",
+  color: "#6B7280",
+  background: "#F3F4F6",
   borderRadius: 4,
   padding: "2px 6px",
   letterSpacing: "0.06em",
@@ -5007,13 +5004,12 @@ const dongListPanelStyle = {
   bottom: 32,
   left: "50%",
   transform: "translateX(-50%)",
-  background: "rgba(28,28,38,0.97)",
+  background: "#fff",
   borderRadius: 16,
-  boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
   padding: "14px 18px",
   zIndex: 20,
-  backdropFilter: "blur(10px)",
-  border: "1px solid rgba(255,255,255,0.09)",
+  border: "1px solid #E5E7EB",
   maxWidth: 680,
   minWidth: 340,
 };
@@ -5021,9 +5017,9 @@ const dongListPanelStyle = {
 const dongChipStyle = {
   padding: "5px 11px",
   borderRadius: 8,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.06)",
-  color: "#C8C8C8",
+  border: "1px solid #E5E7EB",
+  background: "#F9FAFB",
+  color: "#374151",
   fontSize: 14,
   fontWeight: 500,
   cursor: "pointer",
@@ -5039,9 +5035,8 @@ const leftSidebarStyle = {
   left: 0,
   width: 320,
   height: `calc(100vh - ${NAV_HEIGHT}px)`,
-  background: "rgba(42,42,52,0.88)",
-  borderRight: "1px solid rgba(255,255,255,0.07)",
-  backdropFilter: "blur(10px)",
+  background: "#fff",
+  borderRight: "1px solid #E5E7EB",
   zIndex: 10,
   display: "flex",
   flexDirection: "column",
@@ -5054,9 +5049,9 @@ const quarterTriggerStyle = {
   gap: 6,
   padding: "5px 12px",
   borderRadius: 8,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.06)",
-  color: "#C0C0C0",
+  border: "1px solid #E5E7EB",
+  background: "#F9FAFB",
+  color: "#374151",
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
@@ -5069,11 +5064,11 @@ const quarterDropdownStyle = {
   left: 0,
   right: 0,
   zIndex: 50,
-  background: "#1E1E2E",
-  border: "1px solid rgba(255,255,255,0.1)",
+  background: "#fff",
+  border: "1px solid #E5E7EB",
   borderRadius: 10,
   padding: "12px 14px",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
 };
 
 const secondPanelStyle = {
@@ -5082,9 +5077,9 @@ const secondPanelStyle = {
   left: 0,
   width: 340,
   height: `calc(100vh - ${NAV_HEIGHT}px)`,
-  background: "rgba(42,42,52,0.88)",
-  borderRight: "1px solid rgba(255,255,255,0.07)",
-  backdropFilter: "blur(10px)",
+  background: "#fff",
+  borderRight: "1px solid #E5E7EB",
+  boxShadow: "4px 0 24px rgba(0,0,0,0.08)",
   zIndex: 11,
   display: "flex",
   flexDirection: "column",
@@ -5095,8 +5090,8 @@ const secondPanelStyle = {
 
 const closeBtnStyle = {
   border: "none",
-  background: "rgba(255,255,255,0.08)",
-  color: "#9E9E9E",
+  background: "#F3F4F6",
+  color: "#6B7280",
   borderRadius: 8,
   width: 32,
   height: 32,
@@ -5110,35 +5105,35 @@ const closeBtnStyle = {
 const searchBoxStyle = {
   display: "flex",
   alignItems: "center",
-  background: "rgba(45,45,45,0.97)",
+  background: "#fff",
   borderRadius: "12px",
-  boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+  boxShadow: "0 4px 15px rgba(0,0,0,0.12)",
+  border: "1px solid #E5E7EB",
   padding: "0 14px",
   height: 48,
-  backdropFilter: "blur(6px)",
 };
 
 const btnStyle = (active) => ({
   height: 44,
   padding: "0 18px",
-  background: active ? "#3B82F6" : "rgba(45,45,45,0.97)",
-  color: active ? "#fff" : "#E8E8E8",
-  border: "none",
+  background: active ? "#3B82F6" : "#fff",
+  color: active ? "#fff" : "#374151",
+  border: active ? "none" : "1px solid #E5E7EB",
   borderRadius: 12,
-  boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+  boxShadow: "0 4px 15px rgba(0,0,0,0.08)",
   fontSize: 16,
   fontWeight: 600,
   cursor: "pointer",
-  backdropFilter: "blur(6px)",
   transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s",
 });
 
 const popupStyle = (extra = {}) => ({
   position: "absolute",
   top: 52,
-  background: "#363636",
+  background: "#fff",
+  border: "1px solid #E5E7EB",
   borderRadius: 14,
-  boxShadow: "0 8px 30px rgba(0,0,0,0.5)",
+  boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
   padding: "16px",
   zIndex: 100,
   width: 260,
@@ -5149,7 +5144,7 @@ const popupSectionLabel = {
   margin: "0 0 8px 0",
   fontSize: 14,
   fontWeight: 700,
-  color: "#9E9E9E",
+  color: "#6B7280",
   textTransform: "uppercase",
   letterSpacing: "0.05em",
 };
@@ -5159,9 +5154,9 @@ const chipGrid = { display: "flex", flexWrap: "wrap", gap: 6 };
 const chipStyle = (active) => ({
   padding: "6px 12px",
   borderRadius: 20,
-  border: active ? "2px solid #3B82F6" : "1.5px solid #4E4E4E",
-  background: active ? "#1E3A5F" : "#424242",
-  color: active ? "#93B8EE" : "#C8C8C8",
+  border: active ? "2px solid #3B82F6" : "1.5px solid #E5E7EB",
+  background: active ? "#EFF6FF" : "#F9FAFB",
+  color: active ? "#2563EB" : "#374151",
   fontSize: 15,
   fontWeight: active ? 600 : 400,
   cursor: "pointer",
@@ -5175,10 +5170,10 @@ const menuItemStyle = {
   border: "none",
   background: "none",
   textAlign: "left",
-  fontSize: 16,
+  fontSize: 14,
   cursor: "pointer",
   borderRadius: 8,
-  color: "#E8E8E8",
+  color: "#374151",
 };
 
 const badgeStyle = {
@@ -5218,10 +5213,10 @@ const inlineViewAllBtnStyle = {
 
 const statCardStyle = {
   flex: 1,
-  background: "rgba(255,255,255,0.05)",
+  background: "#F9FAFB",
   borderRadius: 10,
   padding: "10px 12px",
-  border: "1px solid rgba(255,255,255,0.07)",
+  border: "1px solid #E5E7EB",
 };
 
 /* ── 창업비용 계산기 스타일 ── */
@@ -5229,15 +5224,14 @@ const statCardStyle = {
 const startupCalcBtnStyle = {
   height: 44,
   padding: "0 18px",
-  background: "rgba(45,45,45,0.97)",
-  color: "#E8E8E8",
-  border: "none",
+  background: "#fff",
+  color: "#374151",
+  border: "1px solid #E5E7EB",
   borderRadius: 12,
-  boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+  boxShadow: "0 4px 15px rgba(0,0,0,0.08)",
   fontSize: 16,
   fontWeight: 600,
   cursor: "pointer",
-  backdropFilter: "blur(6px)",
   transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s",
 };
 
@@ -5253,10 +5247,10 @@ const startupCalcOverlayStyle = {
 };
 
 const startupCalcPanelStyle = {
-  background: "rgba(24,24,34,0.99)",
+  background: "#fff",
   borderRadius: 20,
-  boxShadow: "0 20px 70px rgba(0,0,0,0.7)",
-  border: "1px solid rgba(255,255,255,0.09)",
+  boxShadow: "0 20px 70px rgba(0,0,0,0.2)",
+  border: "1px solid #E5E7EB",
   width: 500,
   maxHeight: "85vh",
   overflowY: "auto",   // 패널 자체가 스크롤 — flex:1 자식이 패널을 maxHeight까지 늘리는 문제 방지
@@ -5268,9 +5262,9 @@ const calcInputStyle = {
   width: 80,
   padding: "5px 10px",
   borderRadius: 8,
-  border: "1px solid rgba(255,255,255,0.15)",
-  background: "rgba(255,255,255,0.07)",
-  color: "#E8E8E8",
+  border: "1px solid #E5E7EB",
+  background: "#F9FAFB",
+  color: "#111827",
   fontSize: 14,
   outline: "none",
   boxSizing: "border-box",
@@ -5300,7 +5294,7 @@ const aiSectionLabel = {
   gap: 8,
   fontSize: 15,
   fontWeight: 700,
-  color: "#C8C8C8",
+  color: "#374151",
   marginBottom: 10,
 };
 
@@ -5315,26 +5309,26 @@ const aiRequiredBadge = {
 
 
 const aiResultCardStyle = (isTop) => ({
-  background: isTop ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.03)",
+  background: isTop ? "#EFF6FF" : "#F9FAFB",
   borderRadius: 14,
   padding: "14px 16px",
-  border: isTop ? "1.5px solid rgba(59,130,246,0.35)" : "1px solid rgba(255,255,255,0.07)",
+  border: isTop ? "1.5px solid #BFDBFE" : "1px solid #E5E7EB",
 });
 
 const aiRankBadge = (rank) => ({
   fontSize: rank <= 3 ? 22 : 13,
   fontWeight: 700,
-  color: "#9E9E9E",
+  color: "#6B7280",
   minWidth: 32,
   textAlign: "center",
 });
 
 const aiMiniStatStyle = {
   flex: 1,
-  background: "rgba(255,255,255,0.05)",
+  background: "#F9FAFB",
   borderRadius: 8,
   padding: "7px 10px",
-  border: "1px solid rgba(255,255,255,0.06)",
+  border: "1px solid #E5E7EB",
 };
 
 const aiModeCardStyle = {
@@ -5342,8 +5336,8 @@ const aiModeCardStyle = {
   alignItems: "center",
   gap: 14,
   padding: "16px 18px",
-  background: "rgba(255,255,255,0.03)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  background: "#F9FAFB",
+  border: "1px solid #E5E7EB",
   borderRadius: 14,
   cursor: "pointer",
   textAlign: "left",
