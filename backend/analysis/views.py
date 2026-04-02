@@ -774,15 +774,7 @@ def recommend_location(request):
         )
     }
 
-    # 4. StoreInfo: 통합카테고리 기반 점포수 (행정동별) — 경쟁 밀도 계산용
-    subdiv_stores = {
-        row["행정동명"]: row["cnt"]
-        for row in StoreInfo.objects.filter(통합카테고리=통합카테고리)
-        .values("행정동명")
-        .annotate(cnt=Count("id"))
-    }
-
-    # 5. 후보 행정동: ScoreData + CommercialData 교집합
+    # 4. 후보 행정동: ScoreData + CommercialData 교집합
     candidate_dongs = set(score_map.keys()) & set(commercial_map.keys())
     if not candidate_dongs:
         return JsonResponse({"error": "추천할 수 있는 상권 데이터가 없습니다."}, status=404)
@@ -790,7 +782,7 @@ def recommend_location(request):
     # 로컬 정규화 최대값 (후보 행정동 기준)
     max_유동   = max((commercial_map[d]["총유동인구"] or 0) for d in candidate_dongs) or 1
     max_포화도 = max((commercial_map[d]["업종_포화도"] or 0) for d in candidate_dongs) or 1
-    max_소분류 = max(subdiv_stores.values(), default=0) or 1
+    max_소분류 = max((commercial_map[d]["점포수"] or 0) for d in candidate_dongs) or 1
     max_경쟁   = max((commercial_map[d]["경쟁강도"] or 0) for d in candidate_dongs) or 1
 
     results = []
@@ -800,7 +792,7 @@ def recommend_location(request):
 
         성장확률      = s.get("성장확률") or 50.0
         유동인구      = c.get("총유동인구") or 0
-        소분류_점포수 = subdiv_stores.get(dong, 0)
+        소분류_점포수 = c.get("점포수") or 0
         포화도        = c.get("업종_포화도") or 0.5
         경쟁강도_norm = (c.get("경쟁강도") or 0) / max_경쟁
 

@@ -236,6 +236,12 @@ export default function MapPage() {
   const [cmpIndDrillGroup, setCmpIndDrillGroup] = useState(null);
   const [aiIndustry, setAiIndustry] = useState(null);
   const [aiRegion, setAiRegion] = useState(null);
+  const [guDongRecommends, setGuDongRecommends] = useState(null);       // 구 보고서 내 AI 행정동 추천 결과
+  const [guDongRecommendLoading, setGuDongRecommendLoading] = useState(false);
+  const [guDongRecommendOpen, setGuDongRecommendOpen] = useState(false); // 접기/펼치기
+  const [savedGuReportData, setSavedGuReportData] = useState(null);     // 행정동 보고서 전환 전 구 보고서 캐시
+  const [savedGuReportCategory, setSavedGuReportCategory] = useState("");
+  const [savedGuReportRegion, setSavedGuReportRegion] = useState(null);
   const [aiDong, setAiDong] = useState("");
   const [aiGu, setAiGu] = useState("");            // gu 모드: 선택한 구
   const [aiGuResultTab, setAiGuResultTab] = useState("dong"); // "dong" | "street"
@@ -2413,16 +2419,39 @@ export default function MapPage() {
           }}>
             {/* 뒤로가기 */}
             <button
-              onClick={() => setReportOpen(false)}
+              onClick={() => { setReportOpen(false); setSavedGuReportData(null); setSavedGuReportCategory(""); setSavedGuReportRegion(null); }}
               style={{
                 display: "flex", alignItems: "center", gap: 6,
                 background: "none", border: "none", cursor: "pointer",
                 color: "#6B7280", fontSize: 12, fontWeight: 600,
-                padding: 0, marginBottom: 12,
+                padding: 0, marginBottom: savedGuReportData && reportData?._dong ? 6 : 12,
               }}
             >
               ← 돌아가기
             </button>
+            {savedGuReportData && reportData?._dong && (
+              <button
+                onClick={() => {
+                  setReportData(savedGuReportData);
+                  setReportCategory(savedGuReportCategory);
+                  setReportRegion(savedGuReportRegion);
+                  setSavedGuReportData(null);
+                  setSavedGuReportCategory("");
+                  setSavedGuReportRegion(null);
+                }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  background: "#EFF6FF", border: "1px solid #BFDBFE",
+                  borderRadius: 6, cursor: "pointer",
+                  color: "#2563EB", fontSize: 12, fontWeight: 600,
+                  padding: "4px 10px", marginBottom: 12,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#DBEAFE"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#EFF6FF"}
+              >
+                ← {savedGuReportRegion?.name || "구 보고서"}로 돌아가기
+              </button>
+            )}
             <div style={{ fontSize: 11, color: "#9CA3AF", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
               상권분석 결과
               {reportData?.quarter && (
@@ -2708,6 +2737,8 @@ export default function MapPage() {
                           if (!cat) return;
                           setReportCategory(cat);
                           setReportCategoryLoading(true);
+                          setGuDongRecommends(null);
+                          setGuDongRecommendOpen(false);
                           const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
                           if (selectedDong) {
                             const dong = normalizeDongName(selectedDong.dongName);
@@ -2883,8 +2914,115 @@ export default function MapPage() {
                         );
                       })()}
 
+                    {/* 구 보고서 + 업종 심화분석 하단: AI 행정동 추천 (접기/펼치기) */}
+                    {reportData?._gu && (
+                      <div style={{ marginTop: 20, marginBottom: 4 }}>
+                        <button
+                          onClick={() => {
+                            const next = !guDongRecommendOpen;
+                            setGuDongRecommendOpen(next);
+                            if (!next) setGuDongRecommends(null);
+                          }}
+                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "calc(100% - 24px)", marginLeft: 24, padding: "11px 14px", background: guDongRecommendOpen ? "#EFF6FF" : "#F9FAFB", border: `1px solid ${guDongRecommendOpen ? "#BFDBFE" : "#E5E7EB"}`, borderRadius: 10, fontSize: 13, fontWeight: 700, color: guDongRecommendOpen ? "#2563EB" : "#374151", cursor: "pointer", transition: "all 0.15s" }}
+                          onMouseEnter={(e) => { if (!guDongRecommendOpen) { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; } }}
+                          onMouseLeave={(e) => { if (!guDongRecommendOpen) { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; } }}
+                        >
+                          <span>✨ AI 행정동 추천 보기</span>
+                          <span style={{ fontSize: 11, color: guDongRecommendOpen ? "#2563EB" : "#9CA3AF" }}>{guDongRecommendOpen ? "▲ 닫기" : "▼ 열기"}</span>
+                        </button>
+
+                        {guDongRecommendOpen && (
+                          <div style={{ marginTop: 10, marginLeft: 24 }}>
+                            {guDongRecommendLoading ? (
+                              <div style={{ textAlign: "center", padding: "20px 0", color: "#9CA3AF", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <div style={{ width: 16, height: 16, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                                AI가 최적 입지를 분석하는 중...
+                              </div>
+                            ) : guDongRecommends ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                {guDongRecommends.slice(0, 5).map((item, i) => (
+                                  <div key={item.dongName} style={{ background: "#F9FAFB", border: `1px solid ${i === 0 ? "#BFDBFE" : "#E5E7EB"}`, borderRadius: 10, padding: "12px 14px" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span style={{ fontSize: 11, fontWeight: 700, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: i === 0 ? "#111827" : i === 1 ? "#6B7280" : "#E5E7EB", color: i < 2 ? "#fff" : "#9CA3AF", flexShrink: 0 }}>{i + 1}</span>
+                                        <div>
+                                          <span style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{item.dongName}</span>
+                                          <span style={{ fontSize: 12, color: "#6B7280", marginLeft: 6 }}>{item.guName}</span>
+                                        </div>
+                                      </div>
+                                      <div style={{ textAlign: "right" }}>
+                                        <span style={{ fontSize: 20, fontWeight: 800, color: i === 0 ? "#2563EB" : "#111827" }}>{item.score}</span>
+                                        <span style={{ fontSize: 11, color: "#9CA3AF", marginLeft: 2 }}>점</span>
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize: 12, color: "#374151", background: "#F3F4F6", borderRadius: 6, padding: "6px 8px", marginBottom: 8, lineHeight: 1.6 }}>
+                                      {item.reason}
+                                    </div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                                      {(item.tags || []).map((tag) => (
+                                        <span key={tag} style={{ fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.08)", borderRadius: 10, padding: "2px 7px", border: "1px solid rgba(59,130,246,0.2)" }}>{tag}</span>
+                                      ))}
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        const dong = item.dongName;
+                                        setSavedGuReportData(reportData);
+                                        setSavedGuReportCategory(reportCategory);
+                                        setSavedGuReportRegion(reportRegion);
+                                        setReportLoading(true);
+                                        setGuDongRecommends(null);
+                                        setGuDongRecommendOpen(false);
+                                        const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
+                                        const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
+                                        const tryFetch = (left) => {
+                                          fetch(url).then((r) => r.json()).then((data) => {
+                                            const ai = data.ai_descriptions || {};
+                                            if (catKeys.every((k) => ai[k])) {
+                                              setReportData({ ...data, _dong: dong }); setReportLoading(false);
+                                            } else if (left === 0) {
+                                              setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportLoading(false);
+                                            } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                                          }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                                        };
+                                        tryFetch(9);
+                                      }}
+                                      style={{ width: "100%", padding: "8px 0", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = "#374151"}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = "#111827"}
+                                    >
+                                      이 행정동 보고서 보기 →
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setGuDongRecommendLoading(true);
+                                  fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(reportCategory)}&gu=${encodeURIComponent(reportData._gu)}`)
+                                    .then((r) => r.json())
+                                    .then((data) => {
+                                      if (data.error) { alert(data.error); return; }
+                                      setGuDongRecommends(data.results || []);
+                                    })
+                                    .catch(() => alert("추천 데이터를 불러오지 못했습니다."))
+                                    .finally(() => setGuDongRecommendLoading(false));
+                                }}
+                                style={{ width: "100%", padding: "10px 0", background: "linear-gradient(90deg,#3B82F6,#6366F1)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = "0.9"}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
+                              >
+                                ✨ AI 행정동 추천 받기
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     </>
                   )}
+
                   <Divider />
                   <SectionLabel num="05" title="창업비용 계산기" />
                   <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 12px 36px", wordBreak: "keep-all" }}>
