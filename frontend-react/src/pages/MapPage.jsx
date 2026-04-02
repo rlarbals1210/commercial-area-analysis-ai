@@ -1943,7 +1943,7 @@ export default function MapPage() {
         <div style={{
           position: "absolute",
           bottom: 144,
-          right: aiModalOpen ? 480 : 82,
+          right: 82,
           zIndex: 20,
           background: "#fff",
           border: "1px solid #E5E7EB",
@@ -1965,7 +1965,7 @@ export default function MapPage() {
         <div data-popup className="anim-slide-up" style={{
           position: "absolute",
           bottom: 134,
-          right: aiModalOpen ? 480 : 82,
+          right: 82,
           zIndex: 20,
           width: 240,
           background: "#fff",
@@ -2048,7 +2048,7 @@ export default function MapPage() {
           style={{
             position: "absolute",
             bottom: 134,
-            right: aiModalOpen ? 400 : 20,
+            right: 20,
             zIndex: 10,
             width: 52,
             height: 52,
@@ -2065,7 +2065,10 @@ export default function MapPage() {
           }}
         >
           {storeLoading ? (
-            <span style={{ fontSize: 13, color: "#6B7280", fontWeight: 700 }}>...</span>
+            <svg style={{ width: 22, height: 22, animation: "spin 0.8s linear infinite" }} viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="#E5E7EB" strokeWidth="3"/>
+              <path d="M12 2a10 10 0 0 1 10 10" stroke="#3B82F6" strokeWidth="3" strokeLinecap="round"/>
+            </svg>
           ) : (
             <svg style={{ width: 36, height: 36 }} viewBox="0 0 20 27" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M10 0C4.477 0 0 4.477 0 10c0 7.5 10 17 10 17s10-9.5 10-17C20 4.477 15.523 0 10 0z"
@@ -2077,7 +2080,7 @@ export default function MapPage() {
       )}
 
       {/* ── 줌 버튼 (우하단) ── */}
-      <div style={{ ...zoomBtnGroupStyle, right: aiModalOpen ? 400 : 20, transition: "right 0.22s ease-out" }}>
+      <div style={{ ...zoomBtnGroupStyle, right: 20 }}>
         <button
           style={zoomBtnStyle}
           onClick={() => {
@@ -2913,20 +2916,16 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── AI 추천 사이드 패널 ── */}
-      {/* 사이드바 상태와 무관하게 항상 오른쪽에 고정 */}
+      {/* ── AI 추천 중앙 모달 ── */}
       {aiModalOpen && (
         <div
-          className="anim-panel-slide-in-right"
-          style={{
-            ...secondPanelStyle,
-            left: "auto",   // secondPanelStyle의 left: 320 덮어쓰기
-            right: 0,       // 화면 오른쪽에 고정
-            width: 380,
-            borderRight: "none",
-            borderLeft: "1px solid #E5E7EB",
-            zIndex: 12,
-          }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => { setAiModalOpen(false); clearSpotMarkers(); setShowIndustryPicker(false); }}
+        >
+        <div
+          className="anim-pop-in no-scrollbar"
+          style={{ position: "relative", background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: 520, maxHeight: "88vh", overflowY: "auto", padding: "24px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
+          onClick={(e) => e.stopPropagation()}
         >
             {/* 헤더 */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
@@ -2954,7 +2953,7 @@ export default function MapPage() {
               </div>
             </div>
 
-            <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16, flex: 1, overflowY: "auto" }}>
+            <div className="no-scrollbar" style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16, flex: 1, overflowY: "auto" }}>
 
               {/* ── 모드 선택 단계 ── */}
               {aiStep === "mode" && (
@@ -3925,91 +3924,77 @@ export default function MapPage() {
                 </>
               )}
             </div>
-        </div>
-      )}
 
-
-
-      {/* ── 업종 선택 사이드 패널 ── */}
-      {/* AI 패널(380px) 바로 왼쪽에 붙도록 right: 380 */}
-      {aiModalOpen && showIndustryPicker && (
-        <div
-          className="anim-panel-slide-in-right"
-          style={{
-            ...secondPanelStyle,
-            left: "auto",
-            right: 380,     // AI 패널 왼쪽에 붙음
-            width: 300,
-            borderLeft: "1px solid #E5E7EB",
-            zIndex: 13,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}>
-            <div>
-              <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>{aiDong}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>업종 선택</div>
-            </div>
-            <button onClick={() => setShowIndustryPicker(false)} style={closeBtnStyle}>✕</button>
-          </div>
-          <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 12, flexShrink: 0 }}>업종을 선택하면 해당 지역의 창업 적합도를 분석합니다</div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            {pickerDrillGroup ? (
-              /* 세부 카테고리 */
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <button
-                  onClick={() => setPickerDrillGroup(null)}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", marginBottom: 4 }}
-                >
-                  ← {DRILL_GROUP_META[pickerDrillGroup].emoji} {pickerDrillGroup}
-                </button>
-                {CATEGORY_GROUPS[pickerDrillGroup].map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setAiIndustry(cat);
-                      setAiMode("score");
-                      setShowIndustryPicker(false);
-                      setPickerDrillGroup(null);
-                      setAiStep("loading");
-                      Promise.all([
-                        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
-                        new Promise((res) => setTimeout(res, 1200)),
-                      ])
-                        .then(([data]) => {
-                          if (data.error) { alert(data.error); setAiStep("form"); return; }
-                          setAiResults(data);
-                          setAiStep("result");
-                        })
-                        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
-                    }}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
-                  >
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              /* 대분류 목록 */
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {DRILL_GROUPS.map((group) => (
-                  <button
-                    key={group}
-                    onClick={() => setPickerDrillGroup(group)}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 14px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
-                  >
-                    <span style={{ fontSize: 20 }}>{DRILL_GROUP_META[group].emoji}</span>
-                    {group}
-                    <span style={{ marginLeft: "auto", fontSize: 12, color: "#6B7280" }}>{CATEGORY_GROUPS[group].length}개 →</span>
-                  </button>
-                ))}
+            {/* ── 업종 선택 인라인 레이어 ── */}
+            {showIndustryPicker && (
+              <div style={{ position: "absolute", inset: 0, background: "#fff", borderRadius: 20, padding: "24px", display: "flex", flexDirection: "column", zIndex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 2 }}>{aiDong}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>업종 선택</div>
+                  </div>
+                  <button onClick={() => setShowIndustryPicker(false)} style={closeBtnStyle}>✕</button>
+                </div>
+                <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 12, flexShrink: 0 }}>업종을 선택하면 해당 지역의 창업 적합도를 분석합니다</div>
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  {pickerDrillGroup ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      <button
+                        onClick={() => setPickerDrillGroup(null)}
+                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", marginBottom: 4 }}
+                      >
+                        ← {DRILL_GROUP_META[pickerDrillGroup].emoji} {pickerDrillGroup}
+                      </button>
+                      {CATEGORY_GROUPS[pickerDrillGroup].map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => {
+                            setAiIndustry(cat);
+                            setAiMode("score");
+                            setShowIndustryPicker(false);
+                            setPickerDrillGroup(null);
+                            setAiStep("loading");
+                            Promise.all([
+                              fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
+                              new Promise((res) => setTimeout(res, 1200)),
+                            ])
+                              .then(([data]) => {
+                                if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                setAiResults(data);
+                                setAiStep("result");
+                              })
+                              .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                          }}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                        >
+                          <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {DRILL_GROUPS.map((group) => (
+                        <button
+                          key={group}
+                          onClick={() => setPickerDrillGroup(group)}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 14px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                        >
+                          <span style={{ fontSize: 20 }}>{DRILL_GROUP_META[group].emoji}</span>
+                          {group}
+                          <span style={{ marginLeft: "auto", fontSize: 12, color: "#6B7280" }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </div>
+        </div>
         </div>
       )}
 

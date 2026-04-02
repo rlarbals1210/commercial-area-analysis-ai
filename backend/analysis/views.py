@@ -2028,6 +2028,38 @@ def trend_weekend_industries(request):
     return JsonResponse({"quarter": latest_q, "results": results})
 
 
+def trend_age_breakdown(request):
+    """업종별 연령대 매출 비율 (GET, category 파라미터)"""
+    category = request.GET.get("category", "").strip()
+    latest_q = _latest_quarter()
+    if not latest_q:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q)
+    if category:
+        qs = qs.filter(통합카테고리=category)
+
+    agg = qs.aggregate(
+        a10=Sum("매출_10대합"),
+        a20=Sum("매출_20대합"),
+        a30=Sum("매출_30대합"),
+        a40=Sum("매출_40대합"),
+        a50=Sum("매출_50대합"),
+        a60=Sum("매출_60대이상합"),
+    )
+    vals = {
+        "10대": agg["a10"] or 0,
+        "20대": agg["a20"] or 0,
+        "30대": agg["a30"] or 0,
+        "40대": agg["a40"] or 0,
+        "50대": agg["a50"] or 0,
+        "60대+": agg["a60"] or 0,
+    }
+    total = sum(vals.values()) or 1
+    result = [{"age": k, "value": v, "ratio": round(v / total * 100, 1)} for k, v in vals.items()]
+    return JsonResponse({"category": category or "전체", "quarter": latest_q, "breakdown": result})
+
+
 def report(request):
     dong = normalize_dong(request.GET.get("dong", ""))
     category = request.GET.get("category", "")

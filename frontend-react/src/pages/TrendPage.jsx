@@ -7,6 +7,62 @@ import {
   Zap, Wrench, ChefHat, Croissant, Cookie, Store, Smartphone,
 } from "lucide-react";
 
+const AGE_CAT_LIST = ["PC방","가방","가전제품","가전제품수리","골프연습장","기타 B2B서비스","네일숍","노래방","당구장","미곡판매","미용실","반찬가게","베이커리/디저트","분식/간식","생활용품 소매","섬유제품","세탁소","수산물판매","숙박","슈퍼마켓","스포츠 강습","스포츠클럽","신발","안경","애완동물","양식/기타외식","예술학원","외국어학원","육류판매","의료기기","의약품","인테리어","일반교습학원","일반의류","일반의원","일식","자동차수리/미용","주점","중식","청과상","치과의원","치킨전문점","카페","컴퓨터및주변장치판매","패스트푸드","편의점","피부관리실","한식","한의원","핸드폰","화장품"];
+
+function AgeCategoryDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block", marginBottom: 28 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          padding: "9px 14px", borderRadius: 8, border: "1.5px solid #E5E7EB",
+          fontSize: 14, color: value ? "#111827" : "#9CA3AF", background: "#fff",
+          cursor: "pointer", display: "flex", alignItems: "center", gap: 8, minWidth: 200,
+        }}
+      >
+        <span style={{ flex: 1, textAlign: "left" }}>{value || "전체 업종"}</span>
+        <span style={{ fontSize: 11, color: "#9CA3AF" }}>▼</span>
+      </button>
+      {open && (
+        <div className="no-scrollbar" style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
+          background: "#fff", border: "1px solid #E5E7EB", borderRadius: 8,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.1)", maxHeight: 260, overflowY: "auto",
+          minWidth: 200,
+        }}>
+          {["", ...AGE_CAT_LIST].map((cat) => (
+            <div
+              key={cat || "__all__"}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChange(cat); setOpen(false); }}
+              style={{
+                padding: "9px 14px", fontSize: 14, cursor: "pointer",
+                color: cat === value ? "#1D4ED8" : "#374151",
+                fontWeight: cat === value ? 600 : 400,
+                background: cat === value ? "#EFF6FF" : "transparent",
+              }}
+              onMouseEnter={(e) => { if (cat !== value) e.currentTarget.style.background = "#F9FAFB"; }}
+              onMouseLeave={(e) => { if (cat !== value) e.currentTarget.style.background = "transparent"; }}
+            >
+              {cat || "전체 업종"}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GuDropdown({ guList, selectedGu, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -109,30 +165,6 @@ const CAT_COLOR = {
   "B2B 서비스": "#1E40AF",
 };
 
-function MzDots({ value, tab = "mz" }) {
-  // MZ: max 0.92, min -0.46, avg -0.07
-  // 직장인: 직장인_지수 = 1 - 주말비율, 보통 0.55~0.75 범위
-  const level = tab === "mz"
-    ? (value >= 0.1 ? 5 : value >= 0 ? 4 : value >= -0.05 ? 3 : value >= -0.1 ? 2 : 1)
-    : (value >= 0.88 ? 5 : value >= 0.82 ? 4 : value >= 0.76 ? 3 : value >= 0.70 ? 2 : 1);
-  const MZ_COLORS = { 5: "#4F46E5", 4: "#6366F1", 3: "#818CF8", 2: "#A5B4FC", 1: "#C7D2FE" };
-  const W_COLORS  = { 5: "#0369A1", 4: "#0EA5E9", 3: "#38BDF8", 2: "#7DD3FC", 1: "#BAE6FD" };
-  const filledColor = (tab === "mz" ? MZ_COLORS : W_COLORS)[level];
-  return (
-    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span
-          key={i}
-          style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: i <= level ? filledColor : "#E5E7EB",
-            display: "inline-block",
-          }}
-        />
-      ))}
-    </span>
-  );
-}
 
 function CatIcon({ cat, size = 20 }) {
   const Icon = CAT_ICON[cat] || Store;
@@ -168,11 +200,14 @@ export default function TrendPage() {
   const [guLoading, setGuLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const [mzIndustries, setMzIndustries] = useState([]);
   const [mzVisible, setMzVisible] = useState(PAGE_SIZE);
   const [weekdayIndustries, setWeekdayIndustries] = useState([]);
   const [weekendIndustries, setWeekendIndustries] = useState([]);
-  const [activeTab, setActiveTab] = useState("mz");
+  const [activeTab, setActiveTab] = useState("weekday");
+
+  const [ageCategory, setAgeCategory] = useState("");
+  const [ageData, setAgeData] = useState([]);
+  const [ageLoading, setAgeLoading] = useState(false);
 
   const upCarouselRef = useRef(null);
   const downCarouselRef = useRef(null);
@@ -243,9 +278,6 @@ export default function TrendPage() {
 
   // MZ / 주중 / 주말 인기 업종 로드
   useEffect(() => {
-    fetch(`${API}/api/trend/mz-industries/`)
-      .then((r) => r.json())
-      .then((data) => setMzIndustries(data.results || []));
     fetch(`${API}/api/trend/weekday-industries/`)
       .then((r) => r.json())
       .then((data) => setWeekdayIndustries(data.results || []));
@@ -253,6 +285,15 @@ export default function TrendPage() {
       .then((r) => r.json())
       .then((data) => setWeekendIndustries(data.results || []));
   }, []);
+
+  // 연령대 매출 비율 로드
+  useEffect(() => {
+    setAgeLoading(true);
+    fetch(`${API}/api/trend/age-breakdown/${ageCategory ? `?category=${encodeURIComponent(ageCategory)}` : ""}`)
+      .then((r) => r.json())
+      .then((data) => { setAgeData(data.breakdown || []); setAgeLoading(false); })
+      .catch(() => setAgeLoading(false));
+  }, [ageCategory]);
 
   // 캐러셀 자동 스크롤 헬퍼
   function startCarousel(elRef, animRef, posRef, speed = 0.6) {
@@ -450,12 +491,12 @@ export default function TrendPage() {
           )}
         </section>
 
-        {/* MZ / 주중매출 / 주말매출 인기 업종 */}
+        {/* 주중매출 / 주말매출 인기 업종 */}
         <section style={{ marginTop: 48 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>업종별 매출 순위</h2>
             <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 8, padding: 3, gap: 2 }}>
-              {[{ key: "mz", label: "MZ" }, { key: "weekday", label: "주중 매출" }, { key: "weekend", label: "주말 매출" }].map(({ key, label }) => (
+              {[{ key: "weekday", label: "주중 매출" }, { key: "weekend", label: "주말 매출" }].map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => { setActiveTab(key); setMzVisible(PAGE_SIZE); }}
@@ -474,14 +515,12 @@ export default function TrendPage() {
             </div>
           </div>
           <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
-            {activeTab === "mz" ? "20대 매출 비율이 높은 업종 순위"
-              : activeTab === "weekday" ? "주중(월~금) 매출이 높은 업종 순위"
-              : "주말(토~일) 매출이 높은 업종 순위"}
+            {activeTab === "weekday" ? "주중(월~금) 매출이 높은 업종 순위" : "주말(토~일) 매출이 높은 업종 순위"}
           </p>
 
           <div style={{
             display: "grid",
-            gridTemplateColumns: activeTab === "mz" ? "80px 1fr 1fr 1fr" : "80px 1fr 1fr",
+            gridTemplateColumns: "80px 1fr 1fr",
             padding: "10px 20px",
             fontSize: 13, fontWeight: 600, color: "#6B7280",
             borderBottom: "1px solid #E5E7EB",
@@ -489,84 +528,52 @@ export default function TrendPage() {
           }}>
             <span style={{ textAlign: "center" }}>순위</span>
             <span style={{ textAlign: "center" }}>업종</span>
-            {activeTab === "mz" ? (
-              <>
-                <span style={{ textAlign: "center" }}>20대 매출 비율</span>
-                <span style={{ textAlign: "center" }}>MZ 지수</span>
-              </>
-            ) : activeTab === "weekday" ? (
-              <span style={{ textAlign: "center" }}>주중 매출 비율</span>
-            ) : (
-              <span style={{ textAlign: "center" }}>주말 매출 비율</span>
-            )}
+            <span style={{ textAlign: "center" }}>{activeTab === "weekday" ? "주중 매출 비율" : "주말 매출 비율"}</span>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {(() => {
-              const data = activeTab === "mz" ? mzIndustries : activeTab === "weekday" ? weekdayIndustries : weekendIndustries;
-              const barKey = activeTab === "mz" ? "20대_매출비율" : activeTab === "weekday" ? "주중_매출비율" : "주말_매출비율";
+              const data = activeTab === "weekday" ? weekdayIndustries : weekendIndustries;
+              const barKey = activeTab === "weekday" ? "주중_매출비율" : "주말_매출비율";
               const maxVal = data.length > 0 ? Math.max(...data.map(r => r[barKey] || 0)) : 1;
-              const MEDALS = { 1: "🥇", 2: "🥈", 3: "🥉" };
-              const MEDAL_BG = { 1: "#FFFBEB", 2: "#F9FAFB", 3: "#FFF7ED" };
-              const barColor = activeTab === "mz" ? "#6366F1" : activeTab === "weekday" ? "#0EA5E9" : "#8B5CF6";
-              const cols = activeTab === "mz" ? "80px 1fr 1fr 1fr" : "80px 1fr 1fr";
+              const barColor = activeTab === "weekday" ? "#3B82F6" : "#0EA5E9";
 
               return data.slice(0, mzVisible).map((row) => {
                 const barPct = maxVal > 0 ? ((row[barKey] || 0) / maxVal) * 100 : 0;
-                const isTop3 = row.순위 <= 3;
                 return (
                   <div
                     key={row.순위}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: cols,
+                      gridTemplateColumns: "80px 1fr 1fr",
                       alignItems: "center",
-                      background: isTop3 ? (MEDAL_BG[row.순위] || "#fff") : "#fff",
+                      background: "#fff",
                       borderRadius: 12,
-                      border: isTop3 ? "1px solid #E5E7EB" : "1px solid #F3F4F6",
+                      border: "1px solid #F3F4F6",
                       padding: "12px 20px",
-                      boxShadow: isTop3 ? "0 2px 6px rgba(0,0,0,0.07)" : "0 1px 3px rgba(0,0,0,0.04)",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
                     }}
                   >
-                    {/* 순위 */}
                     <div style={{ textAlign: "center" }}>
-                      {isTop3 ? (
-                        <span style={{ fontSize: 22 }}>{MEDALS[row.순위]}</span>
-                      ) : (
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "#9CA3AF" }}>{row.순위}위</span>
-                      )}
+                      <span style={{ fontSize: 14, fontWeight: 700, color: row.순위 <= 3 ? "#1D4ED8" : "#9CA3AF" }}>{row.순위}위</span>
                     </div>
-                    {/* 업종 */}
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                       <CatIcon cat={row.통합카테고리} size={20} />
-                      <span style={{ fontSize: 15, fontWeight: isTop3 ? 700 : 600, color: "#111827" }}>{row.통합카테고리}</span>
+                      <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
                     </div>
-                    {/* 지표: 비율 (바 차트 포함) */}
                     <div style={{ textAlign: "center" }}>
-                      {activeTab === "mz" ? (
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "#6366F1" }}>{row["20대_매출비율"]}%</span>
-                      ) : activeTab === "weekday" ? (
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "#0EA5E9" }}>{row["주중_매출비율"]}%</span>
-                      ) : (
-                        <span style={{ fontSize: 14, fontWeight: 600, color: "#8B5CF6" }}>{row["주말_매출비율"]}%</span>
-                      )}
+                      <span style={{ fontSize: 14, fontWeight: 600, color: barColor }}>{row[barKey]}%</span>
                       <div style={{ height: 4, background: "#F3F4F6", borderRadius: 2, width: "80%", margin: "5px auto 0" }}>
                         <div style={{ height: "100%", width: `${barPct}%`, background: barColor, borderRadius: 2, transition: "width 0.4s ease" }} />
                       </div>
                     </div>
-                    {/* MZ 탭 전용: MZ 지수 */}
-                    {activeTab === "mz" && (
-                      <span style={{ textAlign: "center", display: "flex", justifyContent: "center" }}>
-                        <MzDots value={row["MZ_지수"]} tab="mz" />
-                      </span>
-                    )}
                   </div>
                 );
               });
             })()}
           </div>
 
-          {mzVisible < (activeTab === "mz" ? mzIndustries : activeTab === "weekday" ? weekdayIndustries : weekendIndustries).length && (
+          {mzVisible < (activeTab === "weekday" ? weekdayIndustries : weekendIndustries).length && (
             <div style={{ marginTop: 12, textAlign: "center" }}>
               <button
                 onClick={() => setMzVisible((v) => v + PAGE_SIZE)}
@@ -583,6 +590,61 @@ export default function TrendPage() {
               </button>
             </div>
           )}
+        </section>
+
+        {/* 연령대별 매출 비율 */}
+        <section style={{ marginTop: 48 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>연령대별 매출 비율</h2>
+          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>업종을 선택하면 해당 업종의 연령대별 매출 비율을 확인할 수 있어요</p>
+
+          {/* 업종 선택 */}
+          <AgeCategoryDropdown value={ageCategory} onChange={setAgeCategory} />
+
+          {/* 도넛 차트 + 범례 */}
+          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #F3F4F6", padding: "28px 32px", display: "flex", alignItems: "center", justifyContent: "center", gap: 56, flexWrap: "wrap", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", minHeight: 260 }}>
+            {ageLoading ? (
+              <div style={{ color: "#9CA3AF", fontSize: 14 }}>불러오는 중...</div>
+            ) : ageData.length > 0 ? (() => {
+              const COLORS = ["#BFDBFE","#93C5FD","#60A5FA","#3B82F6","#2563EB","#1D4ED8"];
+              const size = 200, cx = 100, cy = 100, r = 70, inner = 40;
+              let cumAngle = -Math.PI / 2;
+              const slices = ageData.map((d, i) => {
+                const angle = (d.ratio / 100) * 2 * Math.PI;
+                const x1 = cx + r * Math.cos(cumAngle);
+                const y1 = cy + r * Math.sin(cumAngle);
+                const x2 = cx + r * Math.cos(cumAngle + angle);
+                const y2 = cy + r * Math.sin(cumAngle + angle);
+                const xi1 = cx + inner * Math.cos(cumAngle);
+                const yi1 = cy + inner * Math.sin(cumAngle);
+                const xi2 = cx + inner * Math.cos(cumAngle + angle);
+                const yi2 = cy + inner * Math.sin(cumAngle + angle);
+                const large = angle > Math.PI ? 1 : 0;
+                const path = `M ${xi1} ${yi1} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${inner} ${inner} 0 ${large} 0 ${xi1} ${yi1} Z`;
+                cumAngle += angle;
+                return { path, color: COLORS[i], ...d };
+              });
+              return (
+                <>
+                  <svg width={size} height={size} style={{ flexShrink: 0 }}>
+                    {slices.map((s, i) => <path key={i} d={s.path} fill={s.color} stroke="#fff" strokeWidth={2} />)}
+                    <text x={cx} y={cy - 8} textAnchor="middle" fontSize={13} fill="#6B7280">전체</text>
+                    <text x={cx} y={cy + 10} textAnchor="middle" fontSize={11} fill="#9CA3AF">{ageCategory || "업종"}</text>
+                  </svg>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {slices.map((s, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 14, color: "#374151", width: 44 }}>{s.age}</span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{s.ratio}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })() : (
+              <div style={{ color: "#9CA3AF", fontSize: 14 }}>데이터가 없습니다.</div>
+            )}
+          </div>
         </section>
       </div>
     </div>

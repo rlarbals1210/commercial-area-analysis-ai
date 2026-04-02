@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.urls import path, include
-from analysis.views import analysis, quarters, gu_analysis, gu_quarters, gu_all_ranking, store_list, score, score_all, recommend_location, recommend_industry, recommend_score, suggest_industries, suggest_industries_with_category, recommend_spot, rental_regions, rental_calculate, recommend_street_industry, recommend_street_score, recommend_street_spot, recommend_custom_spot, recommend_gu_streets, trend_categories, trend_gu_industries, trend_mz_industries, trend_weekday_industries, trend_weekend_industries, report, gu_report, compare_region, compare_industry, search_regions
+from analysis.views import analysis, quarters, gu_analysis, gu_quarters, gu_all_ranking, store_list, score, score_all, recommend_location, recommend_industry, recommend_score, suggest_industries, suggest_industries_with_category, recommend_spot, rental_regions, rental_calculate, recommend_street_industry, recommend_street_score, recommend_street_spot, recommend_custom_spot, recommend_gu_streets, trend_categories, trend_gu_industries, trend_mz_industries, trend_weekday_industries, trend_weekend_industries, trend_age_breakdown, report, gu_report, compare_region, compare_industry, search_regions
 
 urlpatterns = [
     path('', include("accounts.urls")),
@@ -45,6 +45,7 @@ urlpatterns = [
     path('api/trend/mz-industries/', trend_mz_industries),
     path('api/trend/weekday-industries/', trend_weekday_industries),
     path('api/trend/weekend-industries/', trend_weekend_industries),
+    path('api/trend/age-breakdown/', trend_age_breakdown),
     path('api/report/', report),
     path('api/gu-report/', gu_report),
     path('api/compare/region/', compare_region),
