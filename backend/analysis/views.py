@@ -841,6 +841,125 @@ def recommend_location(request):
     })
 
 
+def recommend_gu(request):
+    """업종 입력 → 서울 25개 구 랭킹 추천 (GET, 업종=통합카테고리)"""
+    소분류 = request.GET.get("업종", "").strip()
+    if not 소분류:
+        return JsonResponse({"error": "업종 파라미터가 필요합니다."}, status=400)
+
+    # 통합카테고리 확인
+    if StoreInfo.objects.filter(통합카테고리=소분류).exists():
+        통합카테고리 = 소분류
+    else:
+        from django.db.models.functions import Replace
+        from django.db.models import Value
+        cat_rows = list(
+            StoreInfo.objects
+            .filter(상권업종소분류명__icontains=소분류)
+            .values("통합카테고리")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")[:1]
+        )
+        if not cat_rows:
+            return JsonResponse({"error": f'"{소분류}"에 해당하는 업종을 찾을 수 없습니다.'}, status=404)
+        통합카테고리 = cat_rows[0]["통합카테고리"]
+
+    commercial_카테고리 = STORE_TO_COMMERCIAL_CAT.get(통합카테고리, 통합카테고리)
+
+    # 최신 분기
+    latest_q = CommercialData.objects.filter(통합카테고리=commercial_카테고리).aggregate(max=Max("기준_년분기_코드"))["max"]
+    if not latest_q:
+        return JsonResponse({"error": "분석 데이터가 없습니다."}, status=404)
+
+    # CommercialData: 행정동별 지표
+    cd_rows = list(
+        CommercialData.objects
+        .filter(통합카테고리=commercial_카테고리, 기준_년분기_코드=latest_q)
+        .values("행정동명", "행정동코드", "당월매출합", "총유동인구", "업종_포화도", "경쟁강도", "점포수")
+    )
+
+    # ScoreData: 행정동별 성장확률
+    score_map = {
+        row["행정동명"]: row["성장확률"]
+        for row in ScoreData.objects.filter(통합카테고리=commercial_카테고리).values("행정동명", "성장확률")
+    }
+
+    # 행정동 → 구 코드 매핑 후 구별 집계
+    gu_buckets = {}
+    for row in cd_rows:
+        dong_code = row.get("행정동코드") or 0
+        gu_prefix = str(int(dong_code) // 1000) if dong_code else ""
+        gu_name = _GU_CODE_MAP.get(gu_prefix)
+        if not gu_name:
+            continue
+        if gu_name not in gu_buckets:
+            gu_buckets[gu_name] = {"매출합": 0, "유동인구합": 0, "포화도합": 0.0, "점포수합": 0, "성장확률합": 0.0, "행정동수": 0, "score행정동수": 0}
+        b = gu_buckets[gu_name]
+        b["매출합"]    += row.get("당월매출합") or 0
+        b["유동인구합"] += row.get("총유동인구") or 0
+        b["포화도합"]  += row.get("업종_포화도") or 0
+        b["점포수합"]  += row.get("점포수") or 0
+        b["행정동수"]  += 1
+        성장확률 = score_map.get(row["행정동명"])
+        if 성장확률 is not None:
+            b["성장확률합"]   += 성장확률
+            b["score행정동수"] += 1
+
+    if not gu_buckets:
+        return JsonResponse({"error": "추천할 수 있는 구 데이터가 없습니다."}, status=404)
+
+    # 구별 평균값 계산
+    gu_stats = {}
+    for gu_name, b in gu_buckets.items():
+        n = b["행정동수"] or 1
+        sn = b["score행정동수"] or 1
+        gu_stats[gu_name] = {
+            "guName":   gu_name,
+            "매출합":   b["매출합"],
+            "유동인구합": b["유동인구합"],
+            "평균포화도": b["포화도합"] / n,
+            "평균성장확률": b["성장확률합"] / sn,
+            "점포수합":  b["점포수합"],
+            "행정동수":  n,
+        }
+
+    # 정규화 최대값
+    max_매출    = max(v["매출합"]    for v in gu_stats.values()) or 1
+    max_유동    = max(v["유동인구합"] for v in gu_stats.values()) or 1
+    max_포화도  = max(v["평균포화도"] for v in gu_stats.values()) or 1
+
+    results = []
+    for gu_name, s in gu_stats.items():
+        성장확률_점수 = s["평균성장확률"]
+        유동인구_점수 = (s["유동인구합"] / max_유동) * 100
+        포화도_점수   = max(0.0, 1 - s["평균포화도"] / max_포화도) * 100
+        매출_점수     = (s["매출합"] / max_매출) * 100
+
+        composite = round(
+            성장확률_점수 * 0.40 + 포화도_점수 * 0.25 + 유동인구_점수 * 0.20 + 매출_점수 * 0.15, 1
+        )
+        results.append({
+            "guName":    gu_name,
+            "score":     composite,
+            "성장확률":  round(s["평균성장확률"], 1),
+            "당월매출합": s["매출합"],
+            "총유동인구": s["유동인구합"],
+            "평균포화도": round(s["평균포화도"], 3),
+            "점포수":    s["점포수합"],
+            "행정동수":  s["행정동수"],
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    for i, r in enumerate(results):
+        r["rank"] = i + 1
+
+    return JsonResponse({
+        "results": results,
+        "통합카테고리": 통합카테고리,
+        "quarter": latest_q,
+    })
+
+
 def recommend_industry(request):
     """행정동 입력 → 유망 업종 추천 (GET, dong 필수)"""
     dong = normalize_dong(request.GET.get("dong", "").strip())

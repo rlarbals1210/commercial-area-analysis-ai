@@ -4,18 +4,21 @@
 - 격자별 경쟁 밀도, 보완 업종 밀도, 상권 활성도 계산
 - location_scores.csv 저장
 """
+import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from scipy.spatial import cKDTree
+from shapely.geometry import Point, MultiPolygon, Polygon
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-STORE_DIR    = PROJECT_ROOT / "data" / "raw_data" / "store_info"
-CAT_MAP_PATH = PROJECT_ROOT / "data" / "category_maps" / "store_category_map.csv"
-OUT_PATH     = PROJECT_ROOT / "data" / "processed_data" / "location_scores.csv"
+PROJECT_ROOT  = Path(__file__).resolve().parents[1]
+STORE_DIR     = PROJECT_ROOT / "data" / "raw_data" / "store_info"
+CAT_MAP_PATH  = PROJECT_ROOT / "data" / "category_maps" / "store_category_map.csv"
+OUT_PATH      = PROJECT_ROOT / "data" / "processed_data" / "location_scores.csv"
+GEOJSON_PATH  = PROJECT_ROOT / "frontend-react" / "public" / "seoul_hangjeongdong.geojson"
 
-# 격자 해상도: 0.001도 ≈ 100m
-GRID_RES = 0.001
+# 격자 해상도: 0.0005도 ≈ 50m
+GRID_RES = 0.0005
 # 밀도 계산 반경: 0.003도 ≈ 300m
 RADIUS = 0.003
 # 생존 기준: 8분기(2년) 후에도 존재
@@ -179,6 +182,44 @@ def snap_grid(df):
     df["grid_lng"] = (df["경도"] / GRID_RES).round() * GRID_RES
     return df
 
+
+def load_dong_polygons():
+    """GeoJSON에서 행정동명 → shapely Polygon 매핑 로드"""
+    from shapely.ops import unary_union
+    with open(GEOJSON_PATH, encoding="utf-8") as f:
+        gj = json.load(f)
+    dong_polys = {}
+    for feat in gj.get("features", []):
+        name = feat.get("properties", {}).get("dong_name", "")
+        if not name:
+            continue
+        geom = feat.get("geometry", {})
+        polys = []
+        if geom.get("type") == "MultiPolygon":
+            for poly_coords in geom["coordinates"]:
+                shell = [(x, y) for x, y in poly_coords[0]]  # [lng, lat]
+                polys.append(Polygon(shell))
+        elif geom.get("type") == "Polygon":
+            shell = [(x, y) for x, y in geom["coordinates"][0]]
+            polys.append(Polygon(shell))
+        if polys:
+            dong_polys[name] = unary_union(polys)
+    return dong_polys
+
+
+def filter_inside_dong(df, dong_polys):
+    """grid_lat/grid_lng가 해당 행정동 폴리곤 안에 있는 행만 유지"""
+    if dong_polys is None:
+        return df
+    def _inside(row):
+        poly = dong_polys.get(row["행정동명"])
+        if poly is None:
+            return True  # 폴리곤 없으면 그냥 통과
+        # GeoJSON은 (lng, lat) 순서
+        return poly.contains(Point(row["grid_lng"], row["grid_lat"]))
+    mask = df.apply(_inside, axis=1)
+    return df[mask]
+
 print("=" * 50)
 print("1. 카테고리 매핑 로드")
 cat_map = pd.read_csv(CAT_MAP_PATH, encoding="utf-8-sig")
@@ -186,12 +227,17 @@ cat_map.columns = ["상권업종중분류명", "통합카테고리"]
 cat_dict = dict(zip(cat_map["상권업종중분류명"], cat_map["통합카테고리"]))
 
 print("=" * 50)
-print("2. 분기 목록 로드")
+print("2. 행정동 폴리곤 로드")
+dong_polygons = load_dong_polygons()
+print(f"행정동 폴리곤 {len(dong_polygons)}개 로드 완료")
+
+print("=" * 50)
+print("3. 분기 목록 로드")
 quarters = sorted([d.name for d in STORE_DIR.iterdir() if d.is_dir()])
 print(f"총 {len(quarters)}개 분기: {quarters[0]} ~ {quarters[-1]}")
 
 print("=" * 50)
-print("3. 생존율 계산 (2년 간격)")
+print("4. 생존율 계산 (2년 간격)")
 
 survival_records = []
 for i, q_start in enumerate(quarters):
@@ -207,6 +253,7 @@ for i, q_start in enumerate(quarters):
 
     df_start = df_start.dropna(subset=["통합카테고리"])
     df_start = snap_grid(df_start)
+    df_start = filter_inside_dong(df_start, dong_polygons)
 
     survived_ids = set(df_end["상가업소번호"].astype(str))
 
@@ -231,10 +278,11 @@ df_survival = (
 print(f"생존율 격자 수: {len(df_survival):,}")
 
 print("=" * 50)
-print("4. 경쟁/보완 밀도 계산 (최신 분기 기준)")
+print("5. 경쟁/보완 밀도 계산 (최신 분기 기준)")
 df_latest = load_quarter(quarters[-1])
 df_latest = df_latest.dropna(subset=["통합카테고리"])
 df_latest = snap_grid(df_latest)
+df_latest = filter_inside_dong(df_latest, dong_polygons)
 
 # 전체 좌표 KDTree
 all_coords = df_latest[["위도", "경도"]].values
@@ -283,7 +331,7 @@ for cat in categories:
 df_density = pd.DataFrame(density_records)
 
 print("=" * 50)
-print("5. 입지 점수 계산")
+print("6. 입지 점수 계산")
 df = pd.merge(df_survival, df_density, on=["grid_lat", "grid_lng", "통합카테고리"], how="left")
 df = df.fillna({"경쟁밀도": 0, "보완밀도": 0, "상권활성도": 0})
 
