@@ -249,6 +249,8 @@ export default function MapPage() {
   const [aiGuStreetResults, setAiGuStreetResults] = useState(null); // 길단위 상권 결과
   const [aiGuDongError, setAiGuDongError] = useState(null); // 행정동 추천 실패 메시지
   const [aiResults, setAiResults] = useState(null);
+  const [aiDongGuTab, setAiDongGuTab] = useState("dong"); // dong 모드 결과 탭: "dong" | "gu"
+  const [aiGuRankResults, setAiGuRankResults] = useState(null); // dong 모드 구 랭킹 결과
   const [showIndustryPicker, setShowIndustryPicker] = useState(false);
   const [aiSubIndustry, setAiSubIndustry] = useState("");       // dong 모드: 소분류 입력값
   const [aiIndustrySearchQuery, setAiIndustrySearchQuery] = useState("");    // AI 업종 선택 검색어
@@ -1453,6 +1455,8 @@ export default function MapPage() {
     const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
     if (aiMode === "dong") {
+      setAiDongGuTab("dong");
+      setAiGuRankResults(null);
       Promise.all([
         fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
