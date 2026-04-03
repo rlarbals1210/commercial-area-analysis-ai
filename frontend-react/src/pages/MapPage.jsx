@@ -1630,6 +1630,8 @@ export default function MapPage() {
     setAiRegion(region);
     setAiDong(dong);
     setAiResults(null);
+    setAiDongGuTab("dong");
+    setAiGuRankResults(null);
     setAiSubIndustry("");
     setAiIndustrySuggestions([]);
     setAiIndustrySearchQuery("");
@@ -3682,67 +3684,149 @@ export default function MapPage() {
                   </div>
               {/* 모드 "dong" / "industry" — 랭킹 리스트 */}
               {(aiMode === "dong" || aiMode === "industry") && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {aiResults.map((item) => (
-                    <div key={item.rank} style={aiResultCardStyle(item.rank === 1)}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={aiRankBadge(item.rank)}>
-                            {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>
-                              {aiMode === "dong" ? item.dongName : item.industry}
-                            </div>
-                            <div style={{ fontSize: 13, color: "#6B7280" }}>
-                              {aiMode === "dong" ? item.guName : item.category}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#2563EB" : "#111827" }}>{item.score}</div>
-                          <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 14, color: "#374151", background: "#F3F4F6", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
-                        {item.reason}
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                        {item.tags.map((tag) => (
-                          <span key={tag} style={{ fontSize: 13, color: "#93B8EE", background: "rgba(59,130,246,0.12)", borderRadius: 12, padding: "3px 9px", border: "1px solid rgba(59,130,246,0.25)" }}>
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <div style={aiMiniStatStyle}>
-                          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.revenue)}</div>
-                        </div>
-                        <div style={aiMiniStatStyle}>
-                          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 점포</div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: item.점포수 === 0 ? "#059669" : "#111827" }}>
-                            {item.점포수 === 0 ? "0개 (블루오션)" : `${item.점포수}개`}
-                          </div>
-                        </div>
-                        <div style={aiMiniStatStyle}>
-                          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 강도</div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: item.competition === "낮음" ? "#34D399" : item.competition === "중간" ? "#FBBF24" : "#F87171" }}>
-                            {item.competition}
-                          </div>
-                        </div>
-                      </div>
-                      {aiMode === "dong" && (
+                <>
+                  {/* dong 모드 전용: 행정동 / 구 탭 */}
+                  {aiMode === "dong" && (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 14, background: "#F3F4F6", borderRadius: 10, padding: 4 }}>
+                      {[
+                        { key: "dong", label: "🏘️ 행정동 추천" },
+                        { key: "gu",   label: "🗺️ 구 추천" },
+                      ].map(({ key, label }) => (
                         <button
-                          onClick={() => handleSpotRecommend(item.dongName, aiResults[0]?.통합카테고리 || item.통합카테고리 || item.category)}
-                          style={{ marginTop: 10, width: "100%", padding: "9px 0", borderRadius: 10, border: "none", background: "linear-gradient(90deg,#3B82F6,#6366F1)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+                          key={key}
+                          onClick={() => {
+                            setAiDongGuTab(key);
+                            if (key === "gu" && !aiGuRankResults) {
+                              fetch(`http://localhost:8000/api/recommend/gu/?업종=${encodeURIComponent(aiIndustry)}`)
+                                .then((r) => r.json())
+                                .then((data) => { if (!data.error) setAiGuRankResults(data.results || []); })
+                                .catch(() => {});
+                            }
+                          }}
+                          style={{
+                            flex: 1, padding: "9px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
+                            background: aiDongGuTab === key ? "linear-gradient(135deg,#3B82F6,#6366F1)" : "transparent",
+                            color: aiDongGuTab === key ? "#fff" : "#6B7280",
+                            transition: "all 0.18s",
+                          }}
                         >
-                          📍 이 동네 안 위치 추천 보기
+                          {label}
                         </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 행정동 탭 (dong 모드) 또는 industry 모드 */}
+                  {(aiMode === "industry" || (aiMode === "dong" && aiDongGuTab === "dong")) && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {aiResults.map((item) => (
+                        <div key={item.rank} style={aiResultCardStyle(item.rank === 1)}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={aiRankBadge(item.rank)}>
+                                {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>
+                                  {aiMode === "dong" ? item.dongName : item.industry}
+                                </div>
+                                <div style={{ fontSize: 13, color: "#6B7280" }}>
+                                  {aiMode === "dong" ? item.guName : item.category}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#2563EB" : "#111827" }}>{item.score}</div>
+                              <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 14, color: "#374151", background: "#F3F4F6", borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.6 }}>
+                            {item.reason}
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                            {item.tags.map((tag) => (
+                              <span key={tag} style={{ fontSize: 13, color: "#93B8EE", background: "rgba(59,130,246,0.12)", borderRadius: 12, padding: "3px 9px", border: "1px solid rgba(59,130,246,0.25)" }}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <div style={aiMiniStatStyle}>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.revenue)}</div>
+                            </div>
+                            <div style={aiMiniStatStyle}>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 점포</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: item.점포수 === 0 ? "#059669" : "#111827" }}>
+                                {item.점포수 === 0 ? "0개 (블루오션)" : `${item.점포수}개`}
+                              </div>
+                            </div>
+                            <div style={aiMiniStatStyle}>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>경쟁 강도</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: item.competition === "낮음" ? "#34D399" : item.competition === "중간" ? "#FBBF24" : "#F87171" }}>
+                                {item.competition}
+                              </div>
+                            </div>
+                          </div>
+                          {aiMode === "dong" && (
+                            <button
+                              onClick={() => handleSpotRecommend(item.dongName, aiResults[0]?.통합카테고리 || item.통합카테고리 || item.category)}
+                              style={{ marginTop: 10, width: "100%", padding: "9px 0", borderRadius: 10, border: "none", background: "linear-gradient(90deg,#3B82F6,#6366F1)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+                            >
+                              📍 이 동네 안 위치 추천 보기
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 구 탭 (dong 모드) */}
+                  {aiMode === "dong" && aiDongGuTab === "gu" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {!aiGuRankResults ? (
+                        <div style={{ textAlign: "center", padding: "32px 0", color: "#9CA3AF", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                          <div style={{ width: 16, height: 16, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                          구 데이터 분석 중...
+                        </div>
+                      ) : (
+                        aiGuRankResults.map((item) => (
+                          <div key={item.guName} style={{ background: item.rank === 1 ? "linear-gradient(135deg,#EFF6FF,#F5F3FF)" : "#F9FAFB", border: `1px solid ${item.rank === 1 ? "#BFDBFE" : "#E5E7EB"}`, borderRadius: 12, padding: "14px 16px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div style={aiRankBadge(item.rank)}>
+                                  {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{item.guName}</div>
+                                  <div style={{ fontSize: 12, color: "#6B7280" }}>행정동 {item.행정동수}개 분석</div>
+                                </div>
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#2563EB" : "#111827" }}>{item.score}</div>
+                                <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <div style={aiMiniStatStyle}>
+                                <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.당월매출합)}</div>
+                              </div>
+                              <div style={aiMiniStatStyle}>
+                                <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>점포 수</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{item.점포수}개</div>
+                              </div>
+                              <div style={aiMiniStatStyle}>
+                                <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>평균 성장확률</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: item.성장확률 >= 70 ? "#059669" : item.성장확률 >= 55 ? "#D97706" : "#111827" }}>{item.성장확률}%</div>
+                              </div>
+                            </div>
+                          </div>
+                        ))
                       )}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               {/* ── 구 모드 결과 (행정동 / 길단위 탭) ── */}
