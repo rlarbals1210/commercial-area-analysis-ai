@@ -3653,11 +3653,78 @@ export default function MapPage() {
             </div>
           </div>
 
-          {/* 콘텐츠 */}
-          <div style={{ fontSize: 10, color: "red", padding: "2px 8px", background: "#fee" }}>
-            DEBUG: collapsed={String(aiResultCollapsed)} step={aiStep} results={String(!!spotResults)}
-          </div>
-          {!aiResultCollapsed && (
+          {/* spot 단계: 별도 렌더링 */}
+          {(aiStep === "spot_loading" || aiStep === "spot") && !aiResultCollapsed && (
+            <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+              {aiStep === "spot_loading" && (
+                <div style={{ textAlign: "center", padding: "40px 0", color: "#6B7280" }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📍</div>
+                  <div style={{ fontSize: 15 }}>{spotDong} 위치 분석 중...</div>
+                </div>
+              )}
+              {aiStep === "spot" && spotResults && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <button onClick={() => { setAiStep("result"); clearSpotMarkers(); }} style={{ background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 22, lineHeight: 1 }}>←</button>
+                    <div style={{ fontSize: 13, color: "#6B7280" }}>{spotDong} · {spotCategory} · {spotResults.length}곳</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6B7280", background: "#F9FAFB", borderRadius: 8, padding: "8px 10px", border: "1px solid #E5E7EB" }}>
+                    지도에 번호 마커로 표시됩니다. 생존율·경쟁·보완업종 데이터 기반입니다.
+                  </div>
+                  {spotResults.map((r) => {
+                    const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
+                    const color = colors[(r.rank || 1) - 1] || "#6B7280";
+                    return (
+                      <div key={r.rank} style={{ background: "#F9FAFB", borderRadius: 12, padding: "14px 16px", border: `1.5px solid ${color}60` }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ background: color, color: "#fff", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}>{r.rank}</div>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>추천 위치 {r.rank}순위</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 22, fontWeight: 800, color }}>{r.score}</div>
+                            <div style={{ fontSize: 11, color: "#6B7280" }}>입지점수</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                          <div style={{ flex: 1, background: "#fff", borderRadius: 8, padding: "8px", border: "1px solid #E5E7EB", textAlign: "center" }}>
+                            <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>2년 생존율</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: (r.생존율||0) >= 60 ? "#059669" : (r.생존율||0) >= 40 ? "#D97706" : "#DC2626" }}>{r.생존율}%</div>
+                          </div>
+                          <div style={{ flex: 1, background: "#fff", borderRadius: 8, padding: "8px", border: "1px solid #E5E7EB", textAlign: "center" }}>
+                            <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>경쟁 수</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: (r.경쟁밀도||0) <= 2 ? "#059669" : (r.경쟁밀도||0) <= 5 ? "#D97706" : "#DC2626" }}>{r.경쟁밀도}개</div>
+                          </div>
+                          <div style={{ flex: 1, background: "#fff", borderRadius: 8, padding: "8px", border: "1px solid #E5E7EB", textAlign: "center" }}>
+                            <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>시너지업종</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{r.보완밀도}개</div>
+                          </div>
+                        </div>
+                        <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 10 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 6, letterSpacing: "0.05em" }}>추천 근거</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                            {[
+                              (r.생존율||0) >= 60 ? `2년 생존율 ${r.생존율}%로 높은 편입니다` : (r.생존율||0) >= 40 ? `2년 생존율 ${r.생존율}%로 평균 수준입니다` : `2년 생존율 ${r.생존율}%로 낮은 편입니다`,
+                              (r.경쟁밀도||0) <= 2 ? "반경 300m 내 동업종 경쟁이 적습니다" : (r.경쟁밀도||0) <= 5 ? `반경 300m 내 동업종이 ${r.경쟁밀도}개 있습니다` : `반경 300m 내 동업종 ${r.경쟁밀도}개로 경쟁이 많습니다`,
+                              (r.보완밀도||0) >= 10 ? `시너지 업종 ${r.보완밀도}개로 집객에 유리합니다` : (r.보완밀도||0) >= 5 ? `인근에 시너지 업종 ${r.보완밀도}개가 있습니다` : "인근 시너지 업종이 적어 독립 입지입니다",
+                            ].map((text, i) => (
+                              <div key={i} style={{ fontSize: 12, color: "#374151", display: "flex", alignItems: "flex-start", gap: 5, lineHeight: 1.5 }}>
+                                <span style={{ color, flexShrink: 0, fontWeight: 700 }}>•</span>
+                                <span>{text}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* result 단계: 기존 콘텐츠 */}
+          {!aiResultCollapsed && aiStep === "result" && (
             <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "16px", position: "relative" }}>
 
               {/* spot_loading */}
@@ -3955,95 +4022,6 @@ export default function MapPage() {
                       ))}
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* ── spot 로딩 ── */}
-              {aiStep === "spot_loading" && (
-                <div style={{ textAlign: "center", padding: "40px 0", color: "#6B7280" }}>
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>📍</div>
-                  <div style={{ fontSize: 15 }}>{spotDong} 위치 분석 중...</div>
-                </div>
-              )}
-
-              {/* ── spot 결과 ── */}
-              {aiStep === "spot" && !spotResults && (
-                <div style={{ textAlign: "center", padding: "40px 0", color: "#6B7280" }}>
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>📍</div>
-                  <div style={{ fontSize: 13 }}>결과를 불러오는 중... (spotResults=null)</div>
-                </div>
-              )}
-              {aiStep === "spot" && Array.isArray(spotResults) && spotResults.length === 0 && (
-                <div style={{ textAlign: "center", padding: "40px 0", color: "#6B7280" }}>
-                  <div style={{ fontSize: 13 }}>추천 위치 데이터가 없습니다 (빈 배열)</div>
-                </div>
-              )}
-              {aiStep === "spot" && spotResults && (
-                <div>
-                  <div style={{ fontSize: 10, color: "blue", background: "#eef" }}>
-                    type={typeof spotResults} isArray={String(Array.isArray(spotResults))} len={Array.isArray(spotResults) ? spotResults.length : "N/A"}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                    <button
-                      onClick={() => { setAiStep("result"); clearSpotMarkers(); }}
-                      style={{ background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 22, lineHeight: 1 }}
-                    >←</button>
-                    <div style={{ fontSize: 13, color: "#6B7280" }}>
-                      {spotDong} · {spotCategory} · 추천 위치 {spotResults.length}곳
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12, background: "#F9FAFB", borderRadius: 8, padding: "8px 10px", border: "1px solid #E5E7EB" }}>
-                    지도에 번호 마커로 표시됩니다. 생존율·경쟁·보완업종 데이터 기반 점수입니다.
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {spotResults.map((r) => {
-                      const colors = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6"];
-                      const color = colors[r.rank - 1] || "#6B7280";
-                      return (
-                        <div key={r.rank} style={{ background: "#F9FAFB", borderRadius: 12, padding: "14px 16px", border: `1.5px solid ${color}60` }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                              <div style={{ background: color, color: "#fff", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}>{r.rank}</div>
-                              <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>추천 위치 {r.rank}순위</div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 22, fontWeight: 800, color: color }}>{r.score}</div>
-                              <div style={{ fontSize: 11, color: "#6B7280" }}>입지점수</div>
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                            <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>2년 생존율</div>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: r.생존율 >= 60 ? "#059669" : r.생존율 >= 40 ? "#D97706" : "#DC2626" }}>{r.생존율}%</div>
-                            </div>
-                            <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>경쟁 수</div>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: r.경쟁밀도 <= 2 ? "#059669" : r.경쟁밀도 <= 5 ? "#D97706" : "#DC2626" }}>{r.경쟁밀도}개</div>
-                            </div>
-                            <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 2 }}>시너지업종</div>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{r.보완밀도}개</div>
-                            </div>
-                          </div>
-                          <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 10, marginTop: 2 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 6, letterSpacing: "0.05em" }}>추천 근거</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                              {[
-                                r.생존율 >= 60 ? `2년 생존율 ${r.생존율}%로 높은 편입니다` : r.생존율 >= 40 ? `2년 생존율 ${r.생존율}%로 평균 수준입니다` : `2년 생존율 ${r.생존율}%로 낮은 편입니다`,
-                                r.경쟁밀도 <= 2 ? "반경 300m 내 동업종 경쟁이 적습니다" : r.경쟁밀도 <= 5 ? `반경 300m 내 동업종이 ${r.경쟁밀도}개 있습니다` : `반경 300m 내 동업종 ${r.경쟁밀도}개로 경쟁이 많습니다`,
-                                r.보완밀도 >= 10 ? `시너지 업종 ${r.보완밀도}개로 집객에 유리합니다` : r.보완밀도 >= 5 ? `인근에 시너지 업종 ${r.보완밀도}개가 있습니다` : "인근 시너지 업종이 적어 독립 입지입니다",
-                              ].map((text, i) => (
-                                <div key={i} style={{ fontSize: 12, color: "#374151", display: "flex", alignItems: "flex-start", gap: 5, lineHeight: 1.5 }}>
-                                  <span style={{ color: color, flexShrink: 0, fontWeight: 700 }}>•</span>
-                                  <span>{text}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
               )}
 
