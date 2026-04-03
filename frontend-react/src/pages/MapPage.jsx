@@ -1359,12 +1359,16 @@ export default function MapPage() {
     clearSpotMarkers();
     setSpotDong(dongName);
     setSpotCategory(category);
+    setAiStep("spot_loading");
+    console.log("[spot] step → spot_loading");
 
     fetch(`http://localhost:8000/api/recommend/spot/?dong=${encodeURIComponent(dongName)}&category=${encodeURIComponent(category)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.error) { alert(data.error); return; }
+        if (data.error) { setAiStep("result"); alert(data.error); return; }
+        console.log("[spot] results received:", data.results?.length, "→ step: spot");
         setSpotResults(data.results);
+        setAiStep("spot");
 
         const map = mapInstanceRef.current;
         if (!map) return;
@@ -1407,7 +1411,7 @@ export default function MapPage() {
           map.setBounds(bounds, 80);
         }
       })
-      .catch(() => { alert("위치 추천 요청에 실패했습니다."); });
+      .catch(() => { setAiStep("result"); alert("위치 추천 요청에 실패했습니다."); });
   }
 
   // ── 지역 자동완성 검색 헬퍼 ──
@@ -3597,7 +3601,7 @@ export default function MapPage() {
             top: NAV_HEIGHT + 36,
             right: 12,
             width: 380,
-            maxHeight: `calc(100vh - ${NAV_HEIGHT + 60}px)`,
+            height: `calc(100vh - ${NAV_HEIGHT + 60}px)`,
             background: "#fff",
             borderRadius: "16px 16px 16px 16px",
             boxShadow: "-4px 4px 24px rgba(0,0,0,0.12)",
@@ -3650,6 +3654,9 @@ export default function MapPage() {
           </div>
 
           {/* 콘텐츠 */}
+          <div style={{ fontSize: 10, color: "red", padding: "2px 8px", background: "#fee" }}>
+            DEBUG: collapsed={String(aiResultCollapsed)} step={aiStep} results={String(!!spotResults)}
+          </div>
           {!aiResultCollapsed && (
             <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "16px", position: "relative" }}>
 
@@ -3960,8 +3967,22 @@ export default function MapPage() {
               )}
 
               {/* ── spot 결과 ── */}
+              {aiStep === "spot" && !spotResults && (
+                <div style={{ textAlign: "center", padding: "40px 0", color: "#6B7280" }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📍</div>
+                  <div style={{ fontSize: 13 }}>결과를 불러오는 중... (spotResults=null)</div>
+                </div>
+              )}
+              {aiStep === "spot" && Array.isArray(spotResults) && spotResults.length === 0 && (
+                <div style={{ textAlign: "center", padding: "40px 0", color: "#6B7280" }}>
+                  <div style={{ fontSize: 13 }}>추천 위치 데이터가 없습니다 (빈 배열)</div>
+                </div>
+              )}
               {aiStep === "spot" && spotResults && (
                 <div>
+                  <div style={{ fontSize: 10, color: "blue", background: "#eef" }}>
+                    type={typeof spotResults} isArray={String(Array.isArray(spotResults))} len={Array.isArray(spotResults) ? spotResults.length : "N/A"}
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                     <button
                       onClick={() => { setAiStep("result"); clearSpotMarkers(); }}
@@ -4004,12 +4025,20 @@ export default function MapPage() {
                               <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{r.보완밀도}개</div>
                             </div>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {r.reasons.map((reason, i) => (
-                              <div key={i} style={{ fontSize: 13, color: "#374151", display: "flex", alignItems: "flex-start", gap: 6 }}>
-                                <span style={{ color: color, flexShrink: 0 }}>•</span>{reason}
-                              </div>
-                            ))}
+                          <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 10, marginTop: 2 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 6, letterSpacing: "0.05em" }}>추천 근거</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                              {[
+                                r.생존율 >= 60 ? `2년 생존율 ${r.생존율}%로 높은 편입니다` : r.생존율 >= 40 ? `2년 생존율 ${r.생존율}%로 평균 수준입니다` : `2년 생존율 ${r.생존율}%로 낮은 편입니다`,
+                                r.경쟁밀도 <= 2 ? "반경 300m 내 동업종 경쟁이 적습니다" : r.경쟁밀도 <= 5 ? `반경 300m 내 동업종이 ${r.경쟁밀도}개 있습니다` : `반경 300m 내 동업종 ${r.경쟁밀도}개로 경쟁이 많습니다`,
+                                r.보완밀도 >= 10 ? `시너지 업종 ${r.보완밀도}개로 집객에 유리합니다` : r.보완밀도 >= 5 ? `인근에 시너지 업종 ${r.보완밀도}개가 있습니다` : "인근 시너지 업종이 적어 독립 입지입니다",
+                              ].map((text, i) => (
+                                <div key={i} style={{ fontSize: 12, color: "#374151", display: "flex", alignItems: "flex-start", gap: 5, lineHeight: 1.5 }}>
+                                  <span style={{ color: color, flexShrink: 0, fontWeight: 700 }}>•</span>
+                                  <span>{text}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       );
