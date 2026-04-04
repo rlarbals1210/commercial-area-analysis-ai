@@ -372,6 +372,15 @@ export default function MapPage() {
   const [aiGuStreetResults, setAiGuStreetResults] = useState(null); // 길단위 상권 결과
   const [aiGuDongError, setAiGuDongError] = useState(null); // 행정동 추천 실패 메시지
   const [aiResults, setAiResults] = useState(null);
+  // ── 지역/업종 비교 오버레이 (상권분석도구 이동) ──
+  const [compareRegionOpen, setCompareRegionOpen] = useState(false);
+  const [compareRegionStep, setCompareRegionStep] = useState("form"); // "form"|"loading"|"result"
+  const [compareRegionResults, setCompareRegionResults] = useState(null);
+  const [compareIndustryOpen, setCompareIndustryOpen] = useState(false);
+  const [compareIndustryStep, setCompareIndustryStep] = useState("form");
+  const [compareIndustryResults, setCompareIndustryResults] = useState(null);
+  // ── AI 추천 서베이 ──
+  const [surveyHasIndustry, setSurveyHasIndustry] = useState(false);
   const [aiDongGuTab, setAiDongGuTab] = useState("dong"); // dong 모드 결과 탭: "dong" | "gu"
   const [aiGuRankResults, setAiGuRankResults] = useState(null); // dong 모드 구 랭킹 결과
   const [showIndustryPicker, setShowIndustryPicker] = useState(false);
@@ -1577,22 +1586,120 @@ export default function MapPage() {
     const nameA = cmpRegionType === "dong" ? cmpRegionASelected?.dong : cmpRegionASelected;
     const nameB = cmpRegionType === "dong" ? cmpRegionBSelected?.dong : cmpRegionBSelected;
     if (!nameA || !nameB || !cmpRegionCat) return;
-    setAiStep("loading");
+    setCompareRegionStep("loading");
     fetch(`http://localhost:8000/api/compare/region/?type=${cmpRegionType}&a=${encodeURIComponent(nameA)}&b=${encodeURIComponent(nameB)}&category=${encodeURIComponent(cmpRegionCat)}`)
       .then(r => r.json())
-      .then(data => { setAiResults(data); setAiStep("result"); })
-      .catch(() => setAiStep("form"));
+      .then(data => { setCompareRegionResults(data); setCompareRegionStep("result"); })
+      .catch(() => setCompareRegionStep("form"));
   }
 
   // ── 업종 비교 요청 ──
   function handleCompareIndustry() {
     const regionName = cmpIndRegionType === "dong" ? cmpIndRegionSelected?.dong : cmpIndRegionSelected;
     if (!regionName || !cmpIndCatA || !cmpIndCatB) return;
-    setAiStep("loading");
+    setCompareIndustryStep("loading");
     fetch(`http://localhost:8000/api/compare/industry/?region=${encodeURIComponent(regionName)}&region_type=${cmpIndRegionType}&cat_a=${encodeURIComponent(cmpIndCatA)}&cat_b=${encodeURIComponent(cmpIndCatB)}`)
       .then(r => r.json())
-      .then(data => { setAiResults(data); setAiStep("result"); })
-      .catch(() => setAiStep("form"));
+      .then(data => { setCompareIndustryResults(data); setCompareIndustryStep("result"); })
+      .catch(() => setCompareIndustryStep("form"));
+  }
+
+  // ── 서베이 제출 → 모드 결정 후 분석 시작 ──
+  function handleSurveySubmit() {
+    let mode;
+    if (surveyHasIndustry && aiIndustry && aiDong.trim()) mode = "score";
+    else if (surveyHasIndustry && aiIndustry && aiGu) mode = "gu";
+    else if (surveyHasIndustry && aiIndustry) mode = "dong";
+    else if (!surveyHasIndustry && aiDong.trim()) mode = "industry";
+    else if (!surveyHasIndustry && aiGu) mode = "gu_overview";
+    else return;
+    setAiMode(mode);
+    setAiStep("loading");
+    setAiIndustrySuggestions([]);
+    const MIN_LOADING_MS = 1200;
+    const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+    if (mode === "dong") {
+      setAiDongGuTab("dong");
+      setAiGuRankResults(null);
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([data]) => {
+          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          const enriched = data.results.map((r) => ({
+            ...r,
+            guName: polygonGroupsRef.current.find((g) => g.dongName === r.dongName)?.guName ?? "",
+            revenue: r.당월매출합,
+            stores: r.소분류_점포수,
+            통합카테고리: data.통합카테고리,
+          }));
+          setAiResults(enriched);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+    } else if (mode === "industry") {
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([data]) => {
+          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          setAiResults(data.results);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+    } else if (mode === "score") {
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([data]) => {
+          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          setAiResults(data);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+    } else if (mode === "gu") {
+      setAiGuResultTab("dong");
+      setAiGuStreetResults(null);
+      setAiGuDongError(null);
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
+        fetch(`http://localhost:8000/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([dongData, streetData]) => {
+          if (dongData.error && streetData.error) { alert(dongData.error); setAiStep("survey"); return; }
+          if (dongData.error) {
+            setAiGuDongError(dongData.error);
+            setAiResults([]);
+          } else {
+            const enriched = dongData.results.map((r) => ({
+              ...r,
+              guName: polygonGroupsRef.current.find((g) => g.dongName === r.dongName)?.guName ?? "",
+              revenue: r.당월매출합,
+              stores: r.소분류_점포수,
+              통합카테고리: dongData.통합카테고리,
+            }));
+            setAiResults(enriched);
+          }
+          setAiGuStreetResults(streetData.error ? [] : streetData.results || []);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+    } else if (mode === "gu_overview") {
+      Promise.all([
+        fetch(`http://localhost:8000/api/recommend/gu-industry/?gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
+        delay(MIN_LOADING_MS),
+      ])
+        .then(([data]) => {
+          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          setAiResults(data);
+          setAiStep("result");
+        })
+        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+    }
   }
 
   // ── AI 추천 요청 ──
@@ -1777,11 +1884,12 @@ export default function MapPage() {
 
   function openAiModal({ region = null, industry = null, dong = "" } = {}) {
     setAiModalOpen(true);
-    setAiStep("mode");
+    setAiStep("survey");
     setAiMode(null);
     setAiIndustry(industry);
     setAiRegion(region);
     setAiDong(dong);
+    setAiGu("");
     setAiResults(null);
     setAiDongGuTab("dong");
     setAiGuRankResults(null);
@@ -1791,6 +1899,7 @@ export default function MapPage() {
     setAiIndustryDrillGroup(null);
     setAiIndustrySuggestions([]);
     setAiIndustrySuggestOpen(false);
+    setSurveyHasIndustry(industry ? true : false);
     setMenuOpen(false);
   }
 
@@ -3222,6 +3331,421 @@ export default function MapPage() {
         </div>
       )}
 
+      {/* ── 지역 비교 오버레이 ── */}
+      {compareRegionOpen && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setCompareRegionOpen(false)}
+        >
+          <div className="anim-pop-in no-scrollbar" style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: 520, maxHeight: "88vh", overflowY: "auto", padding: "24px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 20 }}>⚖️</span>
+                  <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>지역 비교</span>
+                </div>
+                <div style={{ fontSize: 13, color: "#6B7280", paddingLeft: 28 }}>업종을 선택하고 두 지역의 상권 지표를 비교합니다</div>
+              </div>
+              <button onClick={() => setCompareRegionOpen(false)} style={closeBtnStyle}>✕</button>
+            </div>
+            <div className="no-scrollbar" style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16, flex: 1, overflowY: "auto" }}>
+              {compareRegionStep === "loading" && (
+                <div style={{ textAlign: "center", padding: "48px 0" }}>
+                  <div style={{ fontSize: 38, marginBottom: 16 }}>⚙️</div>
+                  <div style={{ fontSize: 17, color: "#111827", fontWeight: 600, marginBottom: 8 }}>비교 분석 중입니다</div>
+                  <div style={{ fontSize: 14, color: "#6B7280" }}>두 지역의 상권 지표를 비교하고 있습니다...</div>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 20 }}>
+                    {[0, 1, 2].map((i) => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#34D399", opacity: 0.3 + i * 0.35 }} />)}
+                  </div>
+                </div>
+              )}
+              {compareRegionStep === "form" && (
+                <div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    {["dong", "gu"].map(t => (
+                      <button key={t} onClick={() => { setCmpRegionType(t); setCmpRegionASelected(null); setCmpRegionBSelected(null); setCmpRegionAQuery(""); setCmpRegionBQuery(""); setCmpRegionASugg([]); setCmpRegionBSugg([]); }}
+                        style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpRegionType === t ? "2px solid #34D399" : "1.5px solid #E5E7EB", background: cmpRegionType === t ? "rgba(52,211,153,0.12)" : "#F9FAFB", color: cmpRegionType === t ? "#059669" : "#6B7280" }}>
+                        {t === "dong" ? "🏘 행정동" : "🏙 구"}
+                      </button>
+                    ))}
+                  </div>
+                  {[
+                    { label: "지역 A", query: cmpRegionAQuery, setQuery: setCmpRegionAQuery, sugg: cmpRegionASugg, setSugg: setCmpRegionASugg, selected: cmpRegionASelected, setSelected: setCmpRegionASelected, timer: cmpRegionATimer },
+                    { label: "지역 B", query: cmpRegionBQuery, setQuery: setCmpRegionBQuery, sugg: cmpRegionBSugg, setSugg: setCmpRegionBSugg, selected: cmpRegionBSelected, setSelected: setCmpRegionBSelected, timer: cmpRegionBTimer },
+                  ].map(({ label, query, setQuery, sugg, setSugg, selected, setSelected, timer }) => (
+                    <div key={label} style={{ marginBottom: 14, position: "relative" }}>
+                      <div style={aiSectionLabel}>
+                        <span style={aiRequiredBadge}>필수</span> {label}
+                        {selected && <span style={{ marginLeft: 8, color: "#34D399", fontWeight: 600, fontSize: 13 }}>{cmpRegionType === "dong" ? `${selected.dong} (${selected.gu})` : selected}</span>}
+                      </div>
+                      <input value={query}
+                        onChange={e => { const v = e.target.value; setQuery(v); setSelected(null); clearTimeout(timer.current); timer.current = setTimeout(() => searchRegionSuggest(v, cmpRegionType, setSugg), 200); }}
+                        onBlur={() => setTimeout(() => setSugg([]), 150)}
+                        placeholder={cmpRegionType === "dong" ? "예: 역삼, 합정" : "예: 강남, 마포"}
+                        style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", borderRadius: sugg.length > 0 ? "8px 8px 0 0" : 8, color: "#111827", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                      />
+                      {sugg.length > 0 && (
+                        <div style={{ position: "absolute", zIndex: 10, width: "100%", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto" }}>
+                          {sugg.map((s, i) => (
+                            <div key={i} onMouseDown={() => { setSelected(s); setQuery(cmpRegionType === "dong" ? s.dong : s); setSugg([]); }}
+                              style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < sugg.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between" }}
+                              onMouseEnter={e => e.currentTarget.style.background = "rgba(52,211,153,0.08)"}
+                              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                            >
+                              <span style={{ color: "#111827" }}>{cmpRegionType === "dong" ? s.dong : s}</span>
+                              {cmpRegionType === "dong" && <span style={{ fontSize: 11, color: "#34D399", background: "rgba(52,211,153,0.15)", padding: "2px 7px", borderRadius: 10 }}>{s.gu}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={aiSectionLabel}>
+                      <span style={aiRequiredBadge}>필수</span> 비교 업종
+                      {cmpRegionCat && <span style={{ marginLeft: 8, color: "#34D399", fontWeight: 600, fontSize: 13 }}>{CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} {cmpRegionCat}</span>}
+                    </div>
+                    <button onClick={() => setCmpRegionPickerOpen(o => !o)} style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: `1.5px solid ${cmpRegionPickerOpen ? "#34D399" : "#E5E7EB"}`, borderRadius: 8, color: cmpRegionCat ? "#059669" : "#9CA3AF", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
+                      {cmpRegionCat ? `${CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} ${cmpRegionCat}` : "업종을 선택하세요 ▾"}
+                    </button>
+                    {cmpRegionPickerOpen && (
+                      <div style={{ marginTop: 8 }}>
+                        {cmpRegionDrillGroup ? (
+                          <>
+                            <button onClick={() => setCmpRegionDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>← {cmpRegionDrillGroup}</button>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                              {CATEGORY_GROUPS[cmpRegionDrillGroup].map(c => (
+                                <button key={c} onClick={() => { setCmpRegionCat(c); setCmpRegionPickerOpen(false); setCmpRegionDrillGroup(null); }}
+                                  style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cmpRegionCat === c ? "#34D399" : "#E5E7EB"}`, background: cmpRegionCat === c ? "rgba(52,211,153,0.15)" : "#F9FAFB", color: cmpRegionCat === c ? "#059669" : "#374151" }}>
+                                  {CATEGORY_EMOJI[c] ?? "🏪"} {c}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {DRILL_GROUPS.map(group => (
+                              <button key={group} onClick={() => setCmpRegionDrillGroup(group)}
+                                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
+                                onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.08)"; e.currentTarget.style.color = "#059669"; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
+                              >
+                                <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                                <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {(() => {
+                    const nameA = cmpRegionType === "dong" ? cmpRegionASelected?.dong : cmpRegionASelected;
+                    const nameB = cmpRegionType === "dong" ? cmpRegionBSelected?.dong : cmpRegionBSelected;
+                    const disabled = !nameA || !nameB || !cmpRegionCat;
+                    return (
+                      <button onClick={handleCompareRegion} disabled={disabled} style={{ width: "100%", padding: "13px 0", background: disabled ? "#E5E7EB" : "linear-gradient(135deg,#34D399,#059669)", color: disabled ? "#9CA3AF" : "#fff", border: "none", borderRadius: 12, fontSize: 17, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", marginTop: 4 }}>
+                        ⚖️ 비교 시작
+                      </button>
+                    );
+                  })()}
+                </div>
+              )}
+              {compareRegionStep === "result" && compareRegionResults?.a && (() => {
+                const { a, b, type, category, quarter } = compareRegionResults;
+                const METRICS = [
+                  { key: "점포수", label: "점포수", fmt: v => `${v}개` },
+                  { key: "월매출", label: "월 매출합", fmt: v => v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${(v/1e4).toFixed(0)}만` },
+                  { key: "점포당매출", label: "점포당 매출", fmt: v => v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${Math.round(v/1e4)}만` },
+                  { key: "경쟁강도", label: "경쟁강도", fmt: v => `${v}` },
+                  { key: "업종_포화도", label: "업종 포화도", fmt: v => `${v}%` },
+                  { key: "업종_매출점유율", label: "매출 점유율", fmt: v => `${v}%` },
+                  { key: "개업률", label: "개업률", fmt: v => `${v}%` },
+                  { key: "폐업률", label: "폐업률", fmt: v => `${v}%` },
+                  { key: "성장확률", label: "AI 성장확률", fmt: v => `${v}%` },
+                ];
+                const reverseKeys = new Set(["경쟁강도", "업종_포화도", "폐업률"]);
+                return (
+                  <div>
+                    <button onClick={() => setCompareRegionStep("form")} style={{ fontSize: 14, color: "#34D399", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 16px 0" }}>← 다시 비교</button>
+                    <div style={{ textAlign: "center", marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, background: "rgba(52,211,153,0.10)", color: "#059669", padding: "4px 12px", borderRadius: 20, fontWeight: 600 }}>{CATEGORY_EMOJI[category] ?? "🏪"} {category}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
+                      <div />
+                      {[a, b].map((r, i) => (
+                        <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i===0?"rgba(52,211,153,0.08)":"#EFF6FF", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"#BFDBFE"}` }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#059669":"#2563EB" }}>{r.name}</div>
+                          <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>등급 {r.등급} · {type==="dong"?"행정동":"구"}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {METRICS.map(({ key, label, fmt }) => {
+                      const vA = a[key]??0, vB = b[key]??0;
+                      const isReverse = reverseKeys.has(key);
+                      const aBetter = isReverse ? vA < vB : vA > vB;
+                      const bBetter = isReverse ? vB < vA : vB > vA;
+                      return (
+                        <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 6, alignItems: "center" }}>
+                          <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center" }}>{label}</div>
+                          {[{v:vA,better:aBetter},{v:vB,better:bBetter}].map(({v,better},i) => (
+                            <div key={i} style={{ textAlign: "center", padding: "7px 4px", borderRadius: 8, background: better?(i===0?"rgba(52,211,153,0.08)":"#EFF6FF"):"#F9FAFB", border: `1px solid ${better?(i===0?"rgba(52,211,153,0.25)":"#BFDBFE"):"#E5E7EB"}` }}>
+                              <span style={{ fontSize: 13, fontWeight: better?700:400, color: better?(i===0?"#059669":"#2563EB"):"#374151" }}>{fmt(v)}</span>
+                              {better && <span style={{ marginLeft: 3, fontSize: 10, color: i===0?"#059669":"#2563EB" }}>▲</span>}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#666", textAlign: "center" }}>기준 분기: {quarter}</div>
+                    {(() => {
+                      const weights = { 성장확률: 3, 월매출: 2.5, 점포당매출: 2, 개업률: 1 };
+                      const reverseW = new Set(["경쟁강도","업종_포화도","폐업률"]);
+                      let sA = 0, sB = 0;
+                      for (const [k, w] of Object.entries(weights)) { if ((a[k]??0)>(b[k]??0)) sA+=w; else if ((b[k]??0)>(a[k]??0)) sB+=w; }
+                      for (const k of reverseW) { if ((a[k]??0)<(b[k]??0)) sA+=1; else if ((b[k]??0)<(a[k]??0)) sB+=1; }
+                      const winner = sA>=sB?a:b, loser = sA>=sB?b:a;
+                      const fmtM = v => v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원`:`${Math.round(v/1e4)}만원`;
+                      const reasons = [];
+                      if (winner.성장확률>loser.성장확률) reasons.push(`AI 성장확률(${winner.성장확률}%)이 ${loser.name}(${loser.성장확률}%)보다 높아 향후 성장 가능성이 큽니다.`);
+                      if (winner.월매출>loser.월매출) { const r=loser.월매출>0?((winner.월매출/loser.월매출-1)*100).toFixed(0):100; reasons.push(`${category} 업종 월매출이 ${loser.name}보다 ${r}% 높은 ${fmtM(winner.월매출)}입니다.`); }
+                      if (winner.점포당매출>loser.점포당매출) reasons.push(`점포당 매출(${fmtM(winner.점포당매출)})이 더 높아 개별 점포의 수익성이 우수합니다.`);
+                      if ((winner.경쟁강도??0)<(loser.경쟁강도??0)) reasons.push(`경쟁강도(${winner.경쟁강도})가 낮아 ${category} 창업 시 경쟁 부담이 적습니다.`);
+                      if ((winner.폐업률??0)<(loser.폐업률??0)) reasons.push(`폐업률(${winner.폐업률}%)이 낮아 업종 생존율이 높은 안정적인 상권입니다.`);
+                      const top = reasons.slice(0,3);
+                      return (
+                        <div style={{ marginTop: 16, padding: "16px", background: "#F0FDF4", borderRadius: 12, border: "1.5px solid #86EFAC" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                            <span style={{ fontSize: 18 }}>💡</span>
+                            <span style={{ fontSize: 13, color: "#6B7280" }}>{category} 창업 추천 지역</span>
+                            <span style={{ fontSize: 16, fontWeight: 800, color: sA>=sB?"#059669":"#2563EB", marginLeft: 4 }}>{winner.name}</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                            {top.map((r,i) => (
+                              <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                                <span style={{ color: sA>=sB?"#059669":"#2563EB", fontSize: 13, flexShrink: 0, marginTop: 1 }}>✔</span>
+                                <span style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 업종 비교 오버레이 ── */}
+      {compareIndustryOpen && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setCompareIndustryOpen(false)}
+        >
+          <div className="anim-pop-in no-scrollbar" style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: 520, maxHeight: "88vh", overflowY: "auto", padding: "24px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexShrink: 0 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 20 }}>📈</span>
+                  <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>업종 비교</span>
+                </div>
+                <div style={{ fontSize: 13, color: "#6B7280", paddingLeft: 28 }}>한 지역 안에서 두 업종의 주요 지표를 비교합니다</div>
+              </div>
+              <button onClick={() => setCompareIndustryOpen(false)} style={closeBtnStyle}>✕</button>
+            </div>
+            <div className="no-scrollbar" style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16, flex: 1, overflowY: "auto" }}>
+              {compareIndustryStep === "loading" && (
+                <div style={{ textAlign: "center", padding: "48px 0" }}>
+                  <div style={{ fontSize: 38, marginBottom: 16 }}>⚙️</div>
+                  <div style={{ fontSize: 17, color: "#111827", fontWeight: 600, marginBottom: 8 }}>비교 분석 중입니다</div>
+                  <div style={{ fontSize: 14, color: "#6B7280" }}>두 업종의 상권 지표를 비교하고 있습니다...</div>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 20 }}>
+                    {[0, 1, 2].map((i) => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#F59E0B", opacity: 0.3 + i * 0.35 }} />)}
+                  </div>
+                </div>
+              )}
+              {compareIndustryStep === "form" && (
+                <div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    {["dong", "gu"].map(t => (
+                      <button key={t} onClick={() => { setCmpIndRegionType(t); setCmpIndRegionSelected(null); setCmpIndRegionQuery(""); setCmpIndRegionSugg([]); }}
+                        style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpIndRegionType === t ? "2px solid #F59E0B" : "1.5px solid #E5E7EB", background: cmpIndRegionType === t ? "rgba(245,158,11,0.12)" : "#F9FAFB", color: cmpIndRegionType === t ? "#D97706" : "#6B7280" }}>
+                        {t === "dong" ? "🏘 행정동" : "🏙 구"}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginBottom: 16, position: "relative" }}>
+                    <div style={aiSectionLabel}>
+                      <span style={aiRequiredBadge}>필수</span> 비교할 지역
+                      {cmpIndRegionSelected && <span style={{ marginLeft: 8, color: "#F59E0B", fontWeight: 600, fontSize: 13 }}>{cmpIndRegionType==="dong"?`${cmpIndRegionSelected.dong} (${cmpIndRegionSelected.gu})`:cmpIndRegionSelected}</span>}
+                    </div>
+                    <input value={cmpIndRegionQuery}
+                      onChange={e => { const v=e.target.value; setCmpIndRegionQuery(v); setCmpIndRegionSelected(null); clearTimeout(cmpIndRegionTimer.current); cmpIndRegionTimer.current=setTimeout(()=>searchRegionSuggest(v,cmpIndRegionType,setCmpIndRegionSugg),200); }}
+                      onBlur={() => setTimeout(()=>setCmpIndRegionSugg([]),150)}
+                      placeholder={cmpIndRegionType==="dong"?"예: 역삼, 합정":"예: 강남, 마포"}
+                      style={{ width:"100%", padding:"8px 12px", background:"#F9FAFB", border:"1.5px solid #E5E7EB", borderRadius:cmpIndRegionSugg.length>0?"8px 8px 0 0":8, color:"#111827", fontSize:14, outline:"none", boxSizing:"border-box" }}
+                    />
+                    {cmpIndRegionSugg.length > 0 && (
+                      <div style={{ position:"absolute", zIndex:10, width:"100%", background:"#fff", border:"1.5px solid #E5E7EB", borderTop:"none", borderRadius:"0 0 8px 8px", maxHeight:180, overflowY:"auto" }}>
+                        {cmpIndRegionSugg.map((s,i) => (
+                          <div key={i} onMouseDown={() => { setCmpIndRegionSelected(s); setCmpIndRegionQuery(cmpIndRegionType==="dong"?s.dong:s); setCmpIndRegionSugg([]); }}
+                            style={{ padding:"7px 12px", cursor:"pointer", fontSize:13, borderBottom:i<cmpIndRegionSugg.length-1?"1px solid #F3F4F6":"none", display:"flex", justifyContent:"space-between" }}
+                            onMouseEnter={e=>e.currentTarget.style.background="rgba(245,158,11,0.08)"}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                          >
+                            <span style={{ color:"#111827" }}>{cmpIndRegionType==="dong"?s.dong:s}</span>
+                            {cmpIndRegionType==="dong"&&<span style={{ fontSize:11, color:"#F59E0B", background:"rgba(245,158,11,0.15)", padding:"2px 7px", borderRadius:10 }}>{s.gu}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {[
+                    { label:"업종 A", cat:cmpIndCatA, setCat:setCmpIndCatA, target:"a", color:"#34D399" },
+                    { label:"업종 B", cat:cmpIndCatB, setCat:setCmpIndCatB, target:"b", color:"#F87171" },
+                  ].map(({label,cat,setCat,target,color}) => (
+                    <div key={label} style={{ marginBottom: 12 }}>
+                      <div style={aiSectionLabel}>
+                        <span style={aiRequiredBadge}>필수</span> {label}
+                        {cat && <span style={{ marginLeft:8, color, fontWeight:600, fontSize:13 }}>{CATEGORY_EMOJI[cat]??"🏪"} {cat}</span>}
+                      </div>
+                      <button onClick={() => setCmpIndPickerTarget(cmpIndPickerTarget===target?null:target)}
+                        style={{ width:"100%", padding:"8px 12px", background:"#F9FAFB", border:`1.5px solid ${cmpIndPickerTarget===target?color:"#E5E7EB"}`, borderRadius:8, color:cat?color:"#9CA3AF", fontSize:14, cursor:"pointer", textAlign:"left" }}>
+                        {cat?`${CATEGORY_EMOJI[cat]??"🏪"} ${cat}`:"업종을 선택하세요 ▾"}
+                      </button>
+                      {cmpIndPickerTarget===target && (
+                        <div style={{ marginTop:8 }}>
+                          {cmpIndDrillGroup ? (
+                            <>
+                              <button onClick={()=>setCmpIndDrillGroup(null)} style={{ fontSize:12, color:"#3B82F6", background:"none", border:"none", cursor:"pointer", fontWeight:600, padding:"0 0 8px 0" }}>← {cmpIndDrillGroup}</button>
+                              <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                                {CATEGORY_GROUPS[cmpIndDrillGroup].map(c=>(
+                                  <button key={c} onClick={()=>{setCat(c);setCmpIndPickerTarget(null);setCmpIndDrillGroup(null);}}
+                                    style={{ padding:"4px 9px", borderRadius:16, cursor:"pointer", fontSize:12, border:`1.5px solid ${cat===c?color:"#E5E7EB"}`, background:cat===c?`rgba(${target==="a"?"52,211,153":"248,113,113"},0.15)`:"#F9FAFB", color:cat===c?color:"#374151" }}>
+                                    {CATEGORY_EMOJI[c]??"🏪"} {c}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                              {DRILL_GROUPS.map(group=>(
+                                <button key={group} onClick={()=>setCmpIndDrillGroup(group)}
+                                  style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 12px", borderRadius:8, fontSize:13, cursor:"pointer", border:"1px solid #E5E7EB", background:"#F9FAFB", color:"#374151" }}
+                                  onMouseEnter={e=>{e.currentTarget.style.background="#EFF6FF";e.currentTarget.style.color="#2563EB";}}
+                                  onMouseLeave={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.style.color="#374151";}}
+                                >
+                                  <span>{DRILL_GROUP_META[group].emoji} {group}</span>
+                                  <span style={{ color:"#6B7280", fontSize:11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {(() => {
+                    const rName = cmpIndRegionType==="dong"?cmpIndRegionSelected?.dong:cmpIndRegionSelected;
+                    const disabled = !rName || !cmpIndCatA || !cmpIndCatB;
+                    return (
+                      <button onClick={handleCompareIndustry} disabled={disabled} style={{ width:"100%", padding:"13px 0", background:disabled?"#E5E7EB":"linear-gradient(135deg,#F59E0B,#D97706)", color:disabled?"#9CA3AF":"#fff", border:"none", borderRadius:12, fontSize:17, fontWeight:700, cursor:disabled?"not-allowed":"pointer", marginTop:4 }}>
+                        📈 비교 시작
+                      </button>
+                    );
+                  })()}
+                </div>
+              )}
+              {compareIndustryStep === "result" && compareIndustryResults?.a && (() => {
+                const { a, b, region, region_type } = compareIndustryResults;
+                const METRICS = [
+                  { key:"점포수", label:"점포수", fmt:v=>`${v}개` },
+                  { key:"월매출", label:"월 매출합", fmt:v=>v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억`:`${(v/1e4).toFixed(0)}만` },
+                  { key:"점포당매출", label:"점포당 매출", fmt:v=>v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억`:`${Math.round(v/1e4)}만` },
+                  { key:"경쟁강도", label:"경쟁강도", fmt:v=>`${v}` },
+                  { key:"업종_포화도", label:"업종 포화도", fmt:v=>`${v}%` },
+                  { key:"업종_매출점유율", label:"매출 점유율", fmt:v=>`${v}%` },
+                  { key:"개업률", label:"개업률", fmt:v=>`${v}%` },
+                  { key:"폐업률", label:"폐업률", fmt:v=>`${v}%` },
+                  { key:"성장확률", label:"AI 성장확률", fmt:v=>`${v}%` },
+                ];
+                const reverseKeys = new Set(["경쟁강도","업종_포화도","폐업률"]);
+                return (
+                  <div>
+                    <button onClick={()=>setCompareIndustryStep("form")} style={{ fontSize:14, color:"#F59E0B", background:"none", border:"none", cursor:"pointer", fontWeight:600, padding:"0 0 16px 0" }}>← 다시 비교</button>
+                    <div style={{ textAlign:"center", fontSize:12, color:"#6B7280", marginBottom:10 }}>{region} ({region_type==="dong"?"행정동":"구"})</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:12 }}>
+                      <div />
+                      {[a,b].map((r,i)=>(
+                        <div key={i} style={{ textAlign:"center", padding:"10px 6px", borderRadius:10, background:i===0?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)", border:`1.5px solid ${i===0?"rgba(52,211,153,0.3)":"rgba(248,113,113,0.3)"}` }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:i===0?"#059669":"#DC2626" }}>{CATEGORY_EMOJI[r.category]??"🏪"} {r.category}</div>
+                          <div style={{ fontSize:11, color:"#6B7280", marginTop:2 }}>등급 {r.등급}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {METRICS.map(({key,label,fmt})=>{
+                      const vA=a[key]??0, vB=b[key]??0;
+                      const isRev=reverseKeys.has(key);
+                      const aBetter=isRev?vA<vB:vA>vB, bBetter=isRev?vB<vA:vB>vA;
+                      return (
+                        <div key={key} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:6, alignItems:"center" }}>
+                          <div style={{ fontSize:12, color:"#6B7280", textAlign:"center" }}>{label}</div>
+                          {[{v:vA,better:aBetter,idx:0},{v:vB,better:bBetter,idx:1}].map(({v,better,idx})=>(
+                            <div key={idx} style={{ textAlign:"center", padding:"7px 4px", borderRadius:8, background:better?(idx===0?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)"):"#F9FAFB", border:`1px solid ${better?(idx===0?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"):"#E5E7EB"}` }}>
+                              <span style={{ fontSize:13, fontWeight:better?700:400, color:better?(idx===0?"#059669":"#DC2626"):"#374151" }}>{fmt(v)}</span>
+                              {better&&<span style={{ marginLeft:3, fontSize:10, color:idx===0?"#059669":"#DC2626" }}>▲</span>}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                    {(() => {
+                      const W={성장확률:3,점포당매출:2.5,업종_매출점유율:2,개업률:1.5}, REV={경쟁강도:2,업종_포화도:1.5,폐업률:1};
+                      let sA=0,sB=0;
+                      for(const[k,w]of Object.entries(W)){if((a[k]??0)>(b[k]??0))sA+=w;else if((b[k]??0)>(a[k]??0))sB+=w;}
+                      for(const[k,w]of Object.entries(REV)){if((a[k]??0)<(b[k]??0))sA+=w;else if((b[k]??0)<(a[k]??0))sB+=w;}
+                      const winner=sA>=sB?a:b, loser=sA>=sB?b:a;
+                      const fmtM=v=>v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원`:`${Math.round(v/1e4)}만원`;
+                      const reasons=[];
+                      if((winner.성장확률??0)>(loser.성장확률??0))reasons.push(`AI 성장확률이 ${winner.성장확률}%로 ${loser.category}(${loser.성장확률}%)보다 높아 향후 매출 성장 가능성이 큽니다.`);
+                      if((winner.점포당매출??0)>(loser.점포당매출??0)){const r=((winner.점포당매출/loser.점포당매출-1)*100).toFixed(0);reasons.push(`점포당 월 평균 매출이 ${fmtM(winner.점포당매출)}으로 ${loser.category}보다 ${r}% 높아 수익성이 우수합니다.`);}
+                      if((winner.경쟁강도??0)<(loser.경쟁강도??0))reasons.push(`경쟁강도(${winner.경쟁강도})가 낮아 신규 진입 시 경쟁 부담이 적습니다.`);
+                      if((winner.폐업률??0)<(loser.폐업률??0))reasons.push(`폐업률(${winner.폐업률}%)이 낮아 ${region}에서 안정적으로 운영되는 업종입니다.`);
+                      const top=reasons.slice(0,3);
+                      return (
+                        <div style={{ marginTop:16, padding:"16px", background:"#F0FDF4", borderRadius:12, border:`1.5px solid ${sA>=sB?"#86EFAC":"#FCA5A5"}` }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                            <span style={{ fontSize:18 }}>💡</span>
+                            <span style={{ fontSize:13, color:"#6B7280" }}>추천 업종</span>
+                            <span style={{ fontSize:16, fontWeight:800, color:sA>=sB?"#059669":"#DC2626", marginLeft:4 }}>{CATEGORY_EMOJI[winner.category]??"🏪"} {winner.category}</span>
+                            <span style={{ fontSize:12, background:sA>=sB?"rgba(52,211,153,0.12)":"rgba(248,113,113,0.12)", color:sA>=sB?"#059669":"#DC2626", padding:"2px 8px", borderRadius:10, fontWeight:600 }}>등급 {winner.등급}</span>
+                          </div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+                            {top.map((r,i)=>(
+                              <div key={i} style={{ display:"flex", gap:7, alignItems:"flex-start" }}>
+                                <span style={{ color:sA>=sB?"#059669":"#DC2626", fontSize:13, flexShrink:0, marginTop:1 }}>✔</span>
+                                <span style={{ fontSize:13, color:"#374151", lineHeight:1.6 }}>{r}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── AI 추천 모달 — 블록 1: 모드선택/폼/로딩 (중앙 모달) ── */}
       {aiModalOpen && !["result", "spot_loading", "spot"].includes(aiStep) && (
         <div
@@ -3241,9 +3765,9 @@ export default function MapPage() {
                   <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>AI 상권 추천</span>
                 </div>
                 <div style={{ fontSize: 13, color: "#6B7280", paddingLeft: 28 }}>
-                  {aiStep === "mode" && "분석 방식을 선택하세요"}
+                  {aiStep === "survey" && "업종과 지역을 선택하세요"}
                   {aiStep === "form" && AI_MODE_META[aiMode]?.desc}
-                  {aiStep === "loading" && AI_MODE_META[aiMode]?.title}
+                  {aiStep === "loading" && "AI가 분석하고 있습니다"}
                 </div>
               </div>
               <button onClick={() => { setAiModalOpen(false); clearSpotMarkers(); }} style={closeBtnStyle}>✕</button>
@@ -3251,33 +3775,190 @@ export default function MapPage() {
 
             <div className="no-scrollbar" style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16, flex: 1, overflowY: "auto" }}>
 
-              {/* ── 모드 선택 단계 ── */}
-              {aiStep === "mode" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {Object.entries(AI_MODE_META).map(([mode, { icon, title, desc, color, rgb }]) => (
+              {/* ── 서베이 단계 ── */}
+              {aiStep === "survey" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+                  {/* 업종 선택 섹션 */}
+                  <div>
+                    {/* 업종 토글 */}
                     <button
-                      key={mode}
-                      onClick={() => { setAiMode(mode); setAiStep("form"); }}
+                      onClick={() => { setSurveyHasIndustry(v => !v); if (surveyHasIndustry) setAiIndustry(null); }}
                       style={{
-                        ...aiModeCardStyle,
-                        borderLeft: `3px solid ${color}`,
-                        background: `rgba(${rgb},0.06)`,
+                        display: "flex", alignItems: "center", gap: 10, width: "100%",
+                        padding: "12px 14px", borderRadius: 12, cursor: "pointer", fontSize: 14,
+                        border: surveyHasIndustry ? "2px solid #3B82F6" : "1.5px solid #E5E7EB",
+                        background: surveyHasIndustry ? "rgba(59,130,246,0.07)" : "#F9FAFB",
+                        color: surveyHasIndustry ? "#2563EB" : "#374151", fontWeight: surveyHasIndustry ? 700 : 500,
+                        transition: "all 0.15s",
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = `rgba(${rgb},0.14)`; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = `rgba(${rgb},0.06)`; }}
                     >
-                      <div style={{
-                        fontSize: 22, flexShrink: 0, width: 44, height: 44,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        borderRadius: 10, background: `rgba(${rgb},0.15)`,
-                      }}>{icon}</div>
-                      <div style={{ textAlign: "left", flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 3 }}>{title}</div>
-                        <div style={{ fontSize: 13, color: "#6B7280" }}>{desc}</div>
-                      </div>
-                      <span style={{ color: color, fontSize: 18, flexShrink: 0 }}>›</span>
+                      <span style={{
+                        width: 20, height: 20, borderRadius: 4, border: surveyHasIndustry ? "none" : "2px solid #D1D5DB",
+                        background: surveyHasIndustry ? "#3B82F6" : "transparent",
+                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                        transition: "all 0.15s",
+                      }}>
+                        {surveyHasIndustry && <span style={{ color: "#fff", fontSize: 13, lineHeight: 1 }}>✓</span>}
+                      </span>
+                      창업 희망 업종이 있어요
+                      {aiIndustry && surveyHasIndustry && (
+                        <span style={{ marginLeft: "auto", fontSize: 13, color: "#3B82F6", fontWeight: 700 }}>
+                          {CATEGORY_EMOJI[aiIndustry] ?? "🏪"} {aiIndustry}
+                        </span>
+                      )}
                     </button>
-                  ))}
+
+                    {/* 업종 선택 드릴다운 */}
+                    {surveyHasIndustry && (
+                      <div style={{ marginTop: 12 }}>
+                        <input type="text" placeholder="업종 검색... (예: 치킨, 네일, 한의원)"
+                          value={aiIndustrySearchQuery}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setAiIndustrySearchQuery(v);
+                            clearTimeout(aiIndustrySuggestTimer.current);
+                            if (v.trim().length >= 1) {
+                              aiIndustrySuggestTimer.current = setTimeout(() => {
+                                fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                                  .then((r) => r.json())
+                                  .then((d) => { setAiIndustrySuggestions(d.suggestions || []); setAiIndustrySuggestOpen(true); })
+                                  .catch(() => setAiIndustrySuggestions([]));
+                              }, 200);
+                            } else {
+                              setAiIndustrySuggestions([]);
+                              setAiIndustrySuggestOpen(false);
+                            }
+                          }}
+                          onBlur={() => setTimeout(() => setAiIndustrySuggestOpen(false), 150)}
+                          style={{
+                            width: "100%", padding: "7px 11px", fontSize: 13, marginBottom: 8,
+                            borderRadius: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? "8px 8px 0 0" : 8,
+                            background: "#F9FAFB", border: "1.5px solid #E5E7EB",
+                            color: "#111827", outline: "none", boxSizing: "border-box",
+                          }}
+                        />
+                        <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 220 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
+                          {aiIndustrySuggestions.map((s, i) => (
+                            <div key={i} onMouseDown={() => { setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
+                              style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "#EFF6FF"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                            >
+                              <span style={{ color: "#111827" }}>{s.소분류명}</span>
+                              <span style={{ fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)", padding: "2px 7px", borderRadius: 10 }}>{s.통합카테고리}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {!aiIndustrySearchQuery && (
+                          aiIndustryDrillGroup ? (
+                            <>
+                              <button onClick={() => setAiIndustryDrillGroup(null)} style={{ fontSize: 13, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 10px 0" }}>
+                                ← {aiIndustryDrillGroup}
+                              </button>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {CATEGORY_GROUPS[aiIndustryDrillGroup].map((cat) => (
+                                  <button key={cat}
+                                    onClick={() => { const next = aiIndustry === cat ? null : cat; setAiIndustry(next); }}
+                                    style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: aiIndustry === cat ? "#2563EB" : "#374151", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
+                                  >
+                                    <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              {DRILL_GROUPS.map(group => (
+                                <button key={group} onClick={() => setAiIndustryDrillGroup(group)}
+                                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "background 0.15s" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
+                                >
+                                  <span style={{ fontSize: 15 }}>{DRILL_GROUP_META[group].emoji} {group}</span>
+                                  <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 지역 선택 섹션 */}
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 10 }}>
+                      📍 지역 선택 <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 400 }}>(선택사항)</span>
+                      {aiGu && (
+                        <span style={{ marginLeft: 8, color: "#6B7280", fontWeight: 400, fontSize: 12 }}>
+                          {aiGu}{aiDong ? ` · ${aiDong}` : ""}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 구 선택 */}
+                    {!aiGu ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
+                        {REGIONS.map(gu => (
+                          <button key={gu}
+                            onClick={() => { setAiGu(gu); setAiDong(""); }}
+                            style={{ padding: "6px 2px", borderRadius: 8, fontSize: 11, cursor: "pointer", border: "1.5px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "all 0.15s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                          >{gu.replace("구","")}</button>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => { setAiGu(""); setAiDong(""); }}
+                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "2px solid #3B82F6", background: "rgba(59,130,246,0.07)", color: "#2563EB", fontWeight: 600, marginBottom: 8 }}
+                        >
+                          ← 📍 {aiGu} <span style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>구 변경</span>
+                        </button>
+                        {/* 동 목록 */}
+                        <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 6 }}>행정동 선택 <span style={{ color: "#9CA3AF" }}>(선택사항)</span></div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+                          {(guToDongsRef.current[aiGu] || []).map(dong => (
+                            <button key={dong}
+                              onClick={() => setAiDong(aiDong === dong ? "" : dong)}
+                              style={{ padding: "5px 9px", borderRadius: 16, fontSize: 12, cursor: "pointer", border: aiDong === dong ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiDong === dong ? "#EFF6FF" : "#F9FAFB", color: aiDong === dong ? "#2563EB" : "#374151", fontWeight: aiDong === dong ? 700 : 400 }}
+                            >{dong}</button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 분석 시작 버튼 */}
+                  {(() => {
+                    const canSubmit =
+                      (surveyHasIndustry && aiIndustry) ||
+                      (!surveyHasIndustry && aiDong.trim()) ||
+                      (!surveyHasIndustry && aiGu);
+                    const hint = !canSubmit
+                      ? "업종 또는 지역(구/행정동)을 선택해주세요"
+                      : null;
+                    return (
+                      <>
+                        {hint && <div style={{ fontSize: 12, color: "#9CA3AF", textAlign: "center", marginTop: -8 }}>{hint}</div>}
+                        <button
+                          onClick={handleSurveySubmit}
+                          disabled={!canSubmit}
+                          style={{
+                            width: "100%", padding: "13px 0",
+                            background: canSubmit ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" : "#E5E7EB",
+                            color: canSubmit ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12,
+                            fontSize: 17, fontWeight: 700, cursor: canSubmit ? "pointer" : "not-allowed",
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          ✨ 분석 시작
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -3285,10 +3966,10 @@ export default function MapPage() {
               {aiStep === "form" && (
                 <>
                   <button
-                    onClick={() => { setAiStep("mode"); setAiMode(null); }}
+                    onClick={() => { setAiStep("survey"); setAiMode(null); }}
                     style={{ fontSize: 14, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 16px 0" }}
                   >
-                    ← 방식 다시 선택
+                    ← 다시 선택
                   </button>
 
                   {/* 모드별 폼 — dong/score/gu 공통 업종 선택 UI */}
@@ -3422,228 +4103,25 @@ export default function MapPage() {
                     </div>
                   )}
 
-                  {/* ── 지역 비교 폼 ── */}
-                  {aiMode === "compare_region" && (
-                    <div>
-                      {/* 단위 선택 */}
-                      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                        {["dong", "gu"].map(t => (
-                          <button key={t} onClick={() => { setCmpRegionType(t); setCmpRegionASelected(null); setCmpRegionBSelected(null); setCmpRegionAQuery(""); setCmpRegionBQuery(""); setCmpRegionASugg([]); setCmpRegionBSugg([]); }}
-                            style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpRegionType === t ? "2px solid #34D399" : "1.5px solid #E5E7EB", background: cmpRegionType === t ? "rgba(52,211,153,0.12)" : "#F9FAFB", color: cmpRegionType === t ? "#059669" : "#6B7280" }}>
-                            {t === "dong" ? "🏘 행정동" : "🏙 구"}
-                          </button>
-                        ))}
-                      </div>
-                      {/* 지역 A / B */}
-                      {[
-                        { label: "지역 A", query: cmpRegionAQuery, setQuery: setCmpRegionAQuery, sugg: cmpRegionASugg, setSugg: setCmpRegionASugg, selected: cmpRegionASelected, setSelected: setCmpRegionASelected, timer: cmpRegionATimer },
-                        { label: "지역 B", query: cmpRegionBQuery, setQuery: setCmpRegionBQuery, sugg: cmpRegionBSugg, setSugg: setCmpRegionBSugg, selected: cmpRegionBSelected, setSelected: setCmpRegionBSelected, timer: cmpRegionBTimer },
-                      ].map(({ label, query, setQuery, sugg, setSugg, selected, setSelected, timer }) => (
-                        <div key={label} style={{ marginBottom: 14, position: "relative" }}>
-                          <div style={aiSectionLabel}>
-                            <span style={aiRequiredBadge}>필수</span> {label}
-                            {selected && <span style={{ marginLeft: 8, color: "#34D399", fontWeight: 600, fontSize: 13 }}>{cmpRegionType === "dong" ? `${selected.dong} (${selected.gu})` : selected}</span>}
-                          </div>
-                          <input
-                            value={query}
-                            onChange={e => {
-                              const v = e.target.value;
-                              setQuery(v);
-                              setSelected(null);
-                              clearTimeout(timer.current);
-                              timer.current = setTimeout(() => searchRegionSuggest(v, cmpRegionType, setSugg), 200);
-                            }}
-                            onBlur={() => setTimeout(() => setSugg([]), 150)}
-                            placeholder={cmpRegionType === "dong" ? "예: 역삼, 합정" : "예: 강남, 마포"}
-                            style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", borderRadius: sugg.length > 0 ? "8px 8px 0 0" : 8, color: "#111827", fontSize: 14, outline: "none", boxSizing: "border-box" }}
-                          />
-                          {sugg.length > 0 && (
-                            <div style={{ position: "absolute", zIndex: 10, width: "100%", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto" }}>
-                              {sugg.map((s, i) => (
-                                <div key={i} onMouseDown={() => { setSelected(cmpRegionType === "dong" ? s : s); setQuery(cmpRegionType === "dong" ? s.dong : s); setSugg([]); }}
-                                  style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < sugg.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between" }}
-                                  onMouseEnter={e => e.currentTarget.style.background = "rgba(52,211,153,0.08)"}
-                                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                                >
-                                  <span style={{ color: "#111827" }}>{cmpRegionType === "dong" ? s.dong : s}</span>
-                                  {cmpRegionType === "dong" && <span style={{ fontSize: 11, color: "#34D399", background: "rgba(52,211,153,0.15)", padding: "2px 7px", borderRadius: 10 }}>{s.gu}</span>}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {/* 업종 선택 */}
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={aiSectionLabel}>
-                          <span style={aiRequiredBadge}>필수</span> 비교 업종
-                          {cmpRegionCat && <span style={{ marginLeft: 8, color: "#34D399", fontWeight: 600, fontSize: 13 }}>{CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} {cmpRegionCat}</span>}
-                        </div>
-                        <button onClick={() => setCmpRegionPickerOpen(o => !o)}
-                          style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: `1.5px solid ${cmpRegionPickerOpen ? "#34D399" : "#E5E7EB"}`, borderRadius: 8, color: cmpRegionCat ? "#059669" : "#9CA3AF", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
-                          {cmpRegionCat ? `${CATEGORY_EMOJI[cmpRegionCat] ?? "🏪"} ${cmpRegionCat}` : "업종을 선택하세요 ▾"}
-                        </button>
-                        {cmpRegionPickerOpen && (
-                          <div style={{ marginTop: 8 }}>
-                            {cmpRegionDrillGroup ? (
-                              <>
-                                <button onClick={() => setCmpRegionDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>← {cmpRegionDrillGroup}</button>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                                  {CATEGORY_GROUPS[cmpRegionDrillGroup].map(c => (
-                                    <button key={c} onClick={() => { setCmpRegionCat(c); setCmpRegionPickerOpen(false); setCmpRegionDrillGroup(null); }}
-                                      style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cmpRegionCat === c ? "#34D399" : "#E5E7EB"}`, background: cmpRegionCat === c ? "rgba(52,211,153,0.15)" : "#F9FAFB", color: cmpRegionCat === c ? "#059669" : "#374151" }}>
-                                      {CATEGORY_EMOJI[c] ?? "🏪"} {c}
-                                    </button>
-                                  ))}
-                                </div>
-                              </>
-                            ) : (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                {DRILL_GROUPS.map(group => (
-                                  <button key={group} onClick={() => setCmpRegionDrillGroup(group)}
-                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.08)"; e.currentTarget.style.color = "#059669"; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
-                                  >
-                                    <span>{DRILL_GROUP_META[group].emoji} {group}</span>
-                                    <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── 업종 비교 폼 ── */}
-                  {aiMode === "compare_industry" && (
-                    <div>
-                      {/* 단위 선택 */}
-                      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                        {["dong", "gu"].map(t => (
-                          <button key={t} onClick={() => { setCmpIndRegionType(t); setCmpIndRegionSelected(null); setCmpIndRegionQuery(""); setCmpIndRegionSugg([]); }}
-                            style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", border: cmpIndRegionType === t ? "2px solid #F59E0B" : "1.5px solid #E5E7EB", background: cmpIndRegionType === t ? "rgba(245,158,11,0.12)" : "#F9FAFB", color: cmpIndRegionType === t ? "#D97706" : "#6B7280" }}>
-                            {t === "dong" ? "🏘 행정동" : "🏙 구"}
-                          </button>
-                        ))}
-                      </div>
-                      {/* 지역 선택 */}
-                      <div style={{ marginBottom: 16, position: "relative" }}>
-                        <div style={aiSectionLabel}>
-                          <span style={aiRequiredBadge}>필수</span> 비교할 지역
-                          {cmpIndRegionSelected && <span style={{ marginLeft: 8, color: "#F59E0B", fontWeight: 600, fontSize: 13 }}>{cmpIndRegionType === "dong" ? `${cmpIndRegionSelected.dong} (${cmpIndRegionSelected.gu})` : cmpIndRegionSelected}</span>}
-                        </div>
-                        <input
-                          value={cmpIndRegionQuery}
-                          onChange={e => {
-                            const v = e.target.value;
-                            setCmpIndRegionQuery(v);
-                            setCmpIndRegionSelected(null);
-                            clearTimeout(cmpIndRegionTimer.current);
-                            cmpIndRegionTimer.current = setTimeout(() => searchRegionSuggest(v, cmpIndRegionType, setCmpIndRegionSugg), 200);
-                          }}
-                          onBlur={() => setTimeout(() => setCmpIndRegionSugg([]), 150)}
-                          placeholder={cmpIndRegionType === "dong" ? "예: 역삼, 합정" : "예: 강남, 마포"}
-                          style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", borderRadius: cmpIndRegionSugg.length > 0 ? "8px 8px 0 0" : 8, color: "#111827", fontSize: 14, outline: "none", boxSizing: "border-box" }}
-                        />
-                        {cmpIndRegionSugg.length > 0 && (
-                          <div style={{ position: "absolute", zIndex: 10, width: "100%", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto" }}>
-                            {cmpIndRegionSugg.map((s, i) => (
-                              <div key={i} onMouseDown={() => { setCmpIndRegionSelected(cmpIndRegionType === "dong" ? s : s); setCmpIndRegionQuery(cmpIndRegionType === "dong" ? s.dong : s); setCmpIndRegionSugg([]); }}
-                                style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < cmpIndRegionSugg.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between" }}
-                                onMouseEnter={e => e.currentTarget.style.background = "rgba(245,158,11,0.08)"}
-                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                              >
-                                <span style={{ color: "#111827" }}>{cmpIndRegionType === "dong" ? s.dong : s}</span>
-                                {cmpIndRegionType === "dong" && <span style={{ fontSize: 11, color: "#F59E0B", background: "rgba(245,158,11,0.15)", padding: "2px 7px", borderRadius: 10 }}>{s.gu}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      {/* 업종 A / B 선택 */}
-                      {[
-                        { label: "업종 A", cat: cmpIndCatA, setCat: setCmpIndCatA, target: "a", color: "#34D399" },
-                        { label: "업종 B", cat: cmpIndCatB, setCat: setCmpIndCatB, target: "b", color: "#F87171" },
-                      ].map(({ label, cat, setCat, target, color }) => (
-                        <div key={label} style={{ marginBottom: 12 }}>
-                          <div style={aiSectionLabel}>
-                            <span style={aiRequiredBadge}>필수</span> {label}
-                            {cat && <span style={{ marginLeft: 8, color, fontWeight: 600, fontSize: 13 }}>{CATEGORY_EMOJI[cat] ?? "🏪"} {cat}</span>}
-                          </div>
-                          <button onClick={() => setCmpIndPickerTarget(cmpIndPickerTarget === target ? null : target)}
-                            style={{ width: "100%", padding: "8px 12px", background: "#F9FAFB", border: `1.5px solid ${cmpIndPickerTarget === target ? color : "#E5E7EB"}`, borderRadius: 8, color: cat ? color : "#9CA3AF", fontSize: 14, cursor: "pointer", textAlign: "left" }}>
-                            {cat ? `${CATEGORY_EMOJI[cat] ?? "🏪"} ${cat}` : "업종을 선택하세요 ▾"}
-                          </button>
-                          {cmpIndPickerTarget === target && (
-                            <div style={{ marginTop: 8 }}>
-                              {cmpIndDrillGroup ? (
-                                <>
-                                  <button onClick={() => setCmpIndDrillGroup(null)} style={{ fontSize: 12, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>← {cmpIndDrillGroup}</button>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                                    {CATEGORY_GROUPS[cmpIndDrillGroup].map(c => (
-                                      <button key={c} onClick={() => { setCat(c); setCmpIndPickerTarget(null); setCmpIndDrillGroup(null); }}
-                                        style={{ padding: "4px 9px", borderRadius: 16, cursor: "pointer", fontSize: 12, border: `1.5px solid ${cat === c ? color : "#E5E7EB"}`, background: cat === c ? `rgba(${target==="a"?"52,211,153":"248,113,113"},0.15)` : "#F9FAFB", color: cat === c ? color : "#374151" }}>
-                                        {CATEGORY_EMOJI[c] ?? "🏪"} {c}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </>
-                              ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                  {DRILL_GROUPS.map(group => (
-                                    <button key={group} onClick={() => setCmpIndDrillGroup(group)}
-                                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
-                                      onMouseEnter={e => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
-                                      onMouseLeave={e => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
-                                    >
-                                      <span>{DRILL_GROUP_META[group].emoji} {group}</span>
-                                      <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   {(() => {
-                    const cmpRegionNameA = cmpRegionType === "dong" ? cmpRegionASelected?.dong : cmpRegionASelected;
-                    const cmpRegionNameB = cmpRegionType === "dong" ? cmpRegionBSelected?.dong : cmpRegionBSelected;
-                    const cmpIndRegionName = cmpIndRegionType === "dong" ? cmpIndRegionSelected?.dong : cmpIndRegionSelected;
                     const disabled =
                       (aiMode === "dong" && !aiIndustry) ||
                       (aiMode === "industry" && !aiDong.trim()) ||
                       (aiMode === "score" && (!aiDong.trim() || !aiIndustry)) ||
-                      (aiMode === "gu" && (!aiGu || !aiIndustry)) ||
-                      (aiMode === "compare_region" && (!cmpRegionNameA || !cmpRegionNameB || !cmpRegionCat)) ||
-                      (aiMode === "compare_industry" && (!cmpIndRegionName || !cmpIndCatA || !cmpIndCatB));
-                    const onClick =
-                      aiMode === "compare_region" ? handleCompareRegion :
-                      aiMode === "compare_industry" ? handleCompareIndustry :
-                      handleAiRecommend;
-                    const btnColor =
-                      aiMode === "compare_region" ? "linear-gradient(135deg, #34D399, #059669)" :
-                      aiMode === "compare_industry" ? "linear-gradient(135deg, #F59E0B, #D97706)" :
-                      "linear-gradient(135deg, #3B82F6, #8B5CF6)";
+                      (aiMode === "gu" && (!aiGu || !aiIndustry));
                     return (
                       <button
-                        onClick={onClick}
+                        onClick={handleAiRecommend}
                         disabled={disabled}
                         style={{
                           width: "100%", padding: "13px 0",
-                          background: disabled ? "#E5E7EB" : btnColor,
+                          background: disabled ? "#E5E7EB" : "linear-gradient(135deg, #3B82F6, #8B5CF6)",
                           color: disabled ? "#9CA3AF" : "#fff", border: "none", borderRadius: 12,
                           fontSize: 17, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
                           transition: "all 0.2s", letterSpacing: "0.02em",
                         }}
                       >
-                        {aiMode === "compare_region" || aiMode === "compare_industry" ? "⚖️ 비교 시작" : "✨ 분석 시작"}
+                        ✨ 분석 시작
                       </button>
                     );
                   })()}
@@ -3769,7 +4247,7 @@ export default function MapPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
-                onClick={() => { setAiStep("mode"); setAiResults(null); clearSpotMarkers(); }}
+                onClick={() => { setAiStep("survey"); setAiMode(null); setAiResults(null); clearSpotMarkers(); }}
                 style={{ fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 5, padding: "3px 8px", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
               >다시 선택</button>
               <button
@@ -3890,10 +4368,9 @@ export default function MapPage() {
                       {aiMode === "industry" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> 추천 업종</>}
                       {aiMode === "score" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> · <span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span> 적합도</>}
                       {aiMode === "gu" && <><span style={{ color: "#A78BFA", fontWeight: 600 }}>{aiGu}</span> · <span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span> 추천</>}
-                      {aiMode === "compare_region" && <><span style={{ color: "#34D399", fontWeight: 600 }}>{aiResults?.a?.name}</span> vs <span style={{ color: "#34D399", fontWeight: 600 }}>{aiResults?.b?.name}</span> 비교</>}
-                      {aiMode === "compare_industry" && <><span style={{ color: "#F59E0B", fontWeight: 600 }}>{aiResults?.region}</span> · 업종 비교</>}
+                      {aiMode === "gu_overview" && <><span style={{ color: "#A78BFA", fontWeight: 600 }}>{aiGu}</span> 업종별 상권 현황</>}
                     </span>
-                    {aiMode !== "dong" && aiMode !== "compare_region" && aiMode !== "compare_industry" && (
+                    {aiMode !== "dong" && aiMode !== "gu_overview" && (
                       <button
                         onClick={() => setShowIndustryPicker((v) => !v)}
                         style={{ fontSize: 13, color: showIndustryPicker ? "#34D399" : "#3B82F6", background: showIndustryPicker ? "rgba(16,185,129,0.1)" : "rgba(59,130,246,0.1)", border: `1px solid ${showIndustryPicker ? "rgba(16,185,129,0.3)" : "rgba(59,130,246,0.3)"}`, borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontWeight: 600, flexShrink: 0 }}
@@ -4221,224 +4698,47 @@ export default function MapPage() {
                 );
               })()}
 
-              {/* ── 지역 비교 결과 ── */}
-              {aiMode === "compare_region" && aiResults?.a && (() => {
-                const { a, b, type, category } = aiResults;
-                const METRICS = [
-                  { key: "점포수",         label: "점포수",       fmt: v => `${v}개` },
-                  { key: "월매출",          label: "월 매출합",    fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${(v/1e4).toFixed(0)}만` },
-                  { key: "점포당매출",      label: "점포당 매출",  fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${Math.round(v/1e4)}만` },
-                  { key: "경쟁강도",        label: "경쟁강도",     fmt: v => `${v}` },
-                  { key: "업종_포화도",     label: "업종 포화도",  fmt: v => `${v}%` },
-                  { key: "업종_매출점유율", label: "매출 점유율",  fmt: v => `${v}%` },
-                  { key: "개업률",          label: "개업률",       fmt: v => `${v}%` },
-                  { key: "폐업률",          label: "폐업률",       fmt: v => `${v}%` },
-                  { key: "성장확률",        label: "AI 성장확률",  fmt: v => `${v}%` },
-                ];
-                const reverseKeys = new Set(["경쟁강도", "업종_포화도", "폐업률"]);
+              {/* 모드 "gu_overview" — 구 기준 업종 AI 추천 */}
+              {aiMode === "gu_overview" && aiResults?.results && (() => {
+                const { results, quarter } = aiResults;
+                const fmtRev = v => v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${Math.round(v/1e4).toLocaleString()}만`;
+                const maxScore = results[0]?.score ?? 1;
                 return (
                   <div>
-                    {/* 업종 배지 */}
-                    <div style={{ textAlign: "center", marginBottom: 10 }}>
-                      <span style={{ fontSize: 13, background: "rgba(52,211,153,0.10)", color: "#059669", padding: "4px 12px", borderRadius: 20, fontWeight: 600 }}>
-                        {CATEGORY_EMOJI[category] ?? "🏪"} {category}
-                      </span>
-                    </div>
-                    {/* 지역명 헤더 */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
-                      <div />
-                      {[a, b].map((r, i) => (
-                        <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i === 0 ? "rgba(52,211,153,0.08)" : "#EFF6FF", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"#BFDBFE"}` }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#059669":"#2563EB" }}>{r.name}</div>
-                          <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>등급 {r.등급} · {type === "dong" ? "행정동" : "구"}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* 지표 행 */}
-                    {METRICS.map(({ key, label, fmt }) => {
-                      const vA = a[key] ?? 0, vB = b[key] ?? 0;
-                      const isReverse = reverseKeys.has(key);
-                      const aBetter = isReverse ? vA < vB : vA > vB;
-                      const bBetter = isReverse ? vB < vA : vB > vA;
-                      return (
-                        <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 6, alignItems: "center" }}>
-                          <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center" }}>{label}</div>
-                          {[{ v: vA, better: aBetter }, { v: vB, better: bBetter }].map(({ v, better }, i) => (
-                            <div key={i} style={{ textAlign: "center", padding: "7px 4px", borderRadius: 8, background: better ? (i===0?"rgba(52,211,153,0.08)":"#EFF6FF") : "#F9FAFB", border: `1px solid ${better?(i===0?"rgba(52,211,153,0.25)":"#BFDBFE"):"#E5E7EB"}` }}>
-                              <span style={{ fontSize: 13, fontWeight: better ? 700 : 400, color: better ? (i===0?"#059669":"#2563EB") : "#374151" }}>{fmt(v)}</span>
-                              {better && <span style={{ marginLeft: 3, fontSize: 10, color: i===0?"#059669":"#2563EB" }}>▲</span>}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-                    <div style={{ marginTop: 10, fontSize: 12, color: "#666", textAlign: "center" }}>기준 분기: {aiResults.quarter}</div>
-
-                    {/* 추천 박스 */}
-                    {(() => {
-                      const weights = { 성장확률: 3, 월매출: 2.5, 점포당매출: 2, 개업률: 1 };
-                      const reverseW = new Set(["경쟁강도", "업종_포화도", "폐업률"]);
-                      let scoreA = 0, scoreB = 0;
-                      for (const [key, w] of Object.entries(weights)) {
-                        const vA = a[key] ?? 0, vB = b[key] ?? 0;
-                        if (vA > vB) scoreA += w;
-                        else if (vB > vA) scoreB += w;
-                      }
-                      for (const key of reverseW) {
-                        const vA = a[key] ?? 0, vB = b[key] ?? 0;
-                        if (vA < vB) scoreA += 1;
-                        else if (vB < vA) scoreB += 1;
-                      }
-                      const winner = scoreA >= scoreB ? a : b;
-                      const loser  = scoreA >= scoreB ? b : a;
-                      const winColor = scoreA >= scoreB ? "#34D399" : "#60A5FA";
-                      const fmtMoney = v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}원` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원` : `${Math.round(v/1e4)}만원`;
-                      const reasons = [];
-                      if (winner.성장확률 > loser.성장확률)
-                        reasons.push(`AI 성장확률(${winner.성장확률}%)이 ${loser.name}(${loser.성장확률}%)보다 높아 향후 성장 가능성이 큽니다.`);
-                      if (winner.월매출 > loser.월매출) {
-                        const ratio = loser.월매출 > 0 ? ((winner.월매출 / loser.월매출 - 1) * 100).toFixed(0) : 100;
-                        reasons.push(`${category} 업종 월매출이 ${loser.name}보다 ${ratio}% 높은 ${fmtMoney(winner.월매출)}입니다.`);
-                      }
-                      if (winner.점포당매출 > loser.점포당매출)
-                        reasons.push(`점포당 매출(${fmtMoney(winner.점포당매출)})이 더 높아 개별 점포의 수익성이 우수합니다.`);
-                      if ((winner.경쟁강도 ?? 0) < (loser.경쟁강도 ?? 0))
-                        reasons.push(`경쟁강도(${winner.경쟁강도})가 낮아 ${category} 창업 시 경쟁 부담이 적습니다.`);
-                      if ((winner.폐업률 ?? 0) < (loser.폐업률 ?? 0))
-                        reasons.push(`폐업률(${winner.폐업률}%)이 낮아 업종 생존율이 높은 안정적인 상권입니다.`);
-                      const topReasons = reasons.slice(0, 3);
-                      return (
-                        <div style={{ marginTop: 16, padding: "16px", background: "#F0FDF4", borderRadius: 12, border: "1.5px solid #86EFAC" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                            <span style={{ fontSize: 18 }}>💡</span>
-                            <span style={{ fontSize: 13, color: "#6B7280" }}>{category} 창업 추천 지역</span>
-                            <span style={{ fontSize: 16, fontWeight: 800, color: scoreA >= scoreB ? "#059669" : "#2563EB", marginLeft: 4 }}>{winner.name}</span>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                            {topReasons.map((r, i) => (
-                              <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
-                                <span style={{ color: scoreA >= scoreB ? "#059669" : "#2563EB", fontSize: 13, flexShrink: 0, marginTop: 1 }}>✔</span>
-                                <span style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r}</span>
+                    <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center", marginBottom: 12 }}>기준 분기: {quarter} · {aiGu} 창업 추천 업종 Top 10</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {results.map((item, i) => {
+                        const barW = maxScore > 0 ? (item.score / maxScore * 100) : 0;
+                        const compColor = item.경쟁강도 === "낮음" ? "#34D399" : item.경쟁강도 === "중간" ? "#FBBF24" : "#F87171";
+                        return (
+                          <div key={item.통합카테고리} style={{ background: i === 0 ? "rgba(167,139,250,0.06)" : "#F9FAFB", borderRadius: 10, padding: "10px 12px", border: `1px solid ${i===0?"#C4B5FD":"#E5E7EB"}` }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: i===0?"#7C3AED":"#9CA3AF", minWidth: 22 }}>
+                                  {i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
+                                </span>
+                                <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{CATEGORY_EMOJI[item.통합카테고리] ?? "🏪"} {item.통합카테고리}</span>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                );
-              })()}
-
-              {/* ── 업종 비교 결과 ── */}
-              {aiMode === "compare_industry" && aiResults?.a && (() => {
-                const { a, b, region, region_type } = aiResults;
-                const METRICS = [
-                  { key: "점포수",          label: "점포수",        fmt: v => `${v}개` },
-                  { key: "월매출",           label: "월 매출합",     fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${(v/1e4).toFixed(0)}만` },
-                  { key: "점포당매출",       label: "점포당 매출",   fmt: v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${Math.round(v/1e4)}만` },
-                  { key: "경쟁강도",         label: "경쟁강도",      fmt: v => `${v}` },
-                  { key: "업종_포화도",      label: "업종 포화도",   fmt: v => `${v}%` },
-                  { key: "업종_매출점유율",  label: "매출 점유율",   fmt: v => `${v}%` },
-                  { key: "개업률",           label: "개업률",        fmt: v => `${v}%` },
-                  { key: "폐업률",           label: "폐업률",        fmt: v => `${v}%` },
-                  { key: "성장확률",         label: "AI 성장확률",   fmt: v => `${v}%` },
-                ];
-                const reverseKeys = new Set(["경쟁강도", "업종_포화도", "폐업률"]);
-                return (
-                  <div>
-                    {/* 지역/업종 헤더 */}
-                    <div style={{ textAlign: "center", fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
-                      {region} ({region_type === "dong" ? "행정동" : "구"})
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
-                      <div />
-                      {[a, b].map((r, i) => (
-                        <div key={i} style={{ textAlign: "center", padding: "10px 6px", borderRadius: 10, background: i===0?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)", border: `1.5px solid ${i===0?"rgba(52,211,153,0.3)":"rgba(248,113,113,0.3)"}` }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: i===0?"#059669":"#DC2626" }}>{CATEGORY_EMOJI[r.category] ?? "🏪"} {r.category}</div>
-                          <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>등급 {r.등급}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {METRICS.map(({ key, label, fmt }) => {
-                      const vA = a[key] ?? 0, vB = b[key] ?? 0;
-                      const isReverse = reverseKeys.has(key);
-                      const aBetter = isReverse ? vA < vB : vA > vB;
-                      const bBetter = isReverse ? vB < vA : vB > vA;
-                      return (
-                        <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 6, alignItems: "center" }}>
-                          <div style={{ fontSize: 12, color: "#6B7280", textAlign: "center" }}>{label}</div>
-                          {[{ v: vA, better: aBetter, idx: 0 }, { v: vB, better: bBetter, idx: 1 }].map(({ v, better, idx }) => (
-                            <div key={idx} style={{ textAlign: "center", padding: "7px 4px", borderRadius: 8, background: better?(idx===0?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)"):"#F9FAFB", border: `1px solid ${better?(idx===0?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"):"#E5E7EB"}` }}>
-                              <span style={{ fontSize: 13, fontWeight: better?700:400, color: better?(idx===0?"#059669":"#DC2626"):"#374151" }}>{fmt(v)}</span>
-                              {better && <span style={{ marginLeft: 3, fontSize: 10, color: idx===0?"#059669":"#DC2626" }}>▲</span>}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-
-                    {/* 업종 추천 박스 */}
-                    {(() => {
-                      // 가중치 기반 점수 계산
-                      const W = { 성장확률: 3, 점포당매출: 2.5, 업종_매출점유율: 2, 개업률: 1.5 };
-                      const REV = { 경쟁강도: 2, 업종_포화도: 1.5, 폐업률: 1 };
-                      let sA = 0, sB = 0;
-                      for (const [k, w] of Object.entries(W)) {
-                        if ((a[k]??0) > (b[k]??0)) sA += w;
-                        else if ((b[k]??0) > (a[k]??0)) sB += w;
-                      }
-                      for (const [k, w] of Object.entries(REV)) {
-                        if ((a[k]??0) < (b[k]??0)) sA += w;
-                        else if ((b[k]??0) < (a[k]??0)) sB += w;
-                      }
-                      const winner = sA >= sB ? a : b;
-                      const loser  = sA >= sB ? b : a;
-                      const winColor = sA >= sB ? "#34D399" : "#F87171";
-
-                      const fmtMoney = v => v >= 1e12 ? `${Math.floor(v/1e12)}조${Math.round((v%1e12)/1e8) > 0 ? ` ${Math.round((v%1e12)/1e8).toLocaleString()}억` : ""}원` : v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원` : `${Math.round(v/1e4)}만원`;
-                      const reasons = [];
-
-                      if ((winner.성장확률??0) > (loser.성장확률??0)) {
-                        reasons.push(`AI 성장확률이 ${winner.성장확률}%로 ${loser.category}(${loser.성장확률}%)보다 높아 향후 매출 성장 가능성이 큽니다.`);
-                      }
-                      if ((winner.점포당매출??0) > (loser.점포당매출??0)) {
-                        const ratio = ((winner.점포당매출/loser.점포당매출 - 1)*100).toFixed(0);
-                        reasons.push(`점포당 월 평균 매출이 ${fmtMoney(winner.점포당매출)}으로 ${loser.category}보다 ${ratio}% 높아 수익성이 우수합니다.`);
-                      }
-                      if ((winner.경쟁강도??0) < (loser.경쟁강도??0)) {
-                        reasons.push(`경쟁강도(${winner.경쟁강도})가 낮아 신규 진입 시 경쟁 부담이 적습니다.`);
-                      }
-                      if ((winner.업종_포화도??0) < (loser.업종_포화도??0)) {
-                        reasons.push(`업종 포화도(${winner.업종_포화도}%)가 낮아 아직 시장 여유가 있습니다.`);
-                      }
-                      if ((winner.폐업률??0) < (loser.폐업률??0)) {
-                        reasons.push(`폐업률(${winner.폐업률}%)이 낮아 ${region}에서 안정적으로 운영되는 업종입니다.`);
-                      }
-                      if ((winner.업종_매출점유율??0) > (loser.업종_매출점유율??0)) {
-                        reasons.push(`지역 내 매출 점유율(${winner.업종_매출점유율}%)이 높아 이미 검증된 수요가 있습니다.`);
-                      }
-
-                      const topReasons = reasons.slice(0, 3);
-
-                      return (
-                        <div style={{ marginTop: 16, padding: "16px", background: "#F0FDF4", borderRadius: 12, border: `1.5px solid ${sA >= sB ? "#86EFAC" : "#FCA5A5"}` }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                            <span style={{ fontSize: 18 }}>💡</span>
-                            <span style={{ fontSize: 13, color: "#6B7280" }}>추천 업종</span>
-                            <span style={{ fontSize: 16, fontWeight: 800, color: sA >= sB ? "#059669" : "#DC2626", marginLeft: 4 }}>{CATEGORY_EMOJI[winner.category] ?? "🏪"} {winner.category}</span>
-                            <span style={{ fontSize: 12, background: sA >= sB ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)", color: sA >= sB ? "#059669" : "#DC2626", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>등급 {winner.등급}</span>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                            {topReasons.map((r, i) => (
-                              <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
-                                <span style={{ color: sA >= sB ? "#059669" : "#DC2626", fontSize: 13, flexShrink: 0, marginTop: 1 }}>✔</span>
-                                <span style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r}</span>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 15, fontWeight: 800, color: i===0?"#7C3AED":"#374151" }}>{item.avg_성장확률}%</div>
+                                <div style={{ fontSize: 11, color: "#9CA3AF" }}>AI 성장확률</div>
                               </div>
-                            ))}
+                            </div>
+                            <div style={{ background: "#E5E7EB", borderRadius: 3, height: 4, overflow: "hidden", marginBottom: 6 }}>
+                              <div style={{ width: `${barW}%`, height: "100%", background: i===0?"linear-gradient(90deg,#7C3AED,#A78BFA)":"linear-gradient(90deg,#93C5FD,#3B82F6)", borderRadius: 3 }} />
+                            </div>
+                            <div style={{ display: "flex", gap: 8, fontSize: 12 }}>
+                              <span style={{ color: "#6B7280" }}>월매출 <b style={{ color: "#374151" }}>{fmtRev(item.총매출)}원</b></span>
+                              <span style={{ color: "#6B7280" }}>점포 <b style={{ color: "#374151" }}>{item.총점포수?.toLocaleString()}개</b></span>
+                              <span style={{ color: compColor, fontWeight: 600 }}>경쟁 {item.경쟁강도}</span>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 12, fontSize: 12, color: "#9CA3AF", textAlign: "center" }}>
+                      업종을 선택하면 더 자세한 AI 추천 분석을 받을 수 있습니다
+                    </div>
                   </div>
                 );
               })()}
@@ -4943,6 +5243,19 @@ export default function MapPage() {
                   onClick={() => { setToolMenuOpen(false); setStartupCalcOpen((v) => !v); }}
                 >
                   💰 창업비용 계산기
+                </button>
+                <div style={{ borderTop: "1px solid #F3F4F6", margin: "4px 0" }} />
+                <button
+                  style={{ ...menuItemStyle, color: "#374151" }}
+                  onClick={() => { setToolMenuOpen(false); setCompareRegionOpen(true); setCompareRegionStep("form"); setCompareRegionResults(null); }}
+                >
+                  ⚖️ 지역 비교
+                </button>
+                <button
+                  style={{ ...menuItemStyle, color: "#374151" }}
+                  onClick={() => { setToolMenuOpen(false); setCompareIndustryOpen(true); setCompareIndustryStep("form"); setCompareIndustryResults(null); }}
+                >
+                  📈 업종 비교
                 </button>
               </div>
             )}

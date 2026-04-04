@@ -1067,6 +1067,93 @@ def recommend_industry(request):
     return JsonResponse({"results": top, "dong": dong, "quarter": latest_q})
 
 
+def recommend_gu_industry(request):
+    """구 입력 → 유망 업종 추천 (GET, gu 필수) — ScoreData 구 내 행정동 평균 성장확률 기반"""
+    gu = request.GET.get("gu", "").strip()
+    if not gu:
+        return JsonResponse({"error": "gu 파라미터가 필요합니다."}, status=400)
+
+    gu_code = next((k for k, v in _GU_CODE_MAP.items() if v == gu), None)
+    if not gu_code:
+        return JsonResponse({"error": "알 수 없는 구 이름입니다."}, status=404)
+
+    code_min = int(gu_code) * 1000
+    code_max = (int(gu_code) + 1) * 1000
+
+    # 구 내 행정동명 목록 (CommercialData 기준)
+    latest_q = (
+        CommercialData.objects
+        .filter(행정동코드__gte=code_min, 행정동코드__lt=code_max)
+        .aggregate(max=Max("기준_년분기_코드"))["max"]
+    )
+    if not latest_q:
+        return JsonResponse({"error": "해당 구의 상권 데이터가 없습니다."}, status=404)
+
+    dongs_in_gu = list(
+        CommercialData.objects
+        .filter(행정동코드__gte=code_min, 행정동코드__lt=code_max, 기준_년분기_코드=latest_q)
+        .values_list("행정동명", flat=True)
+        .distinct()
+    )
+
+    # ScoreData: 구 내 행정동 평균 성장확률 per 통합카테고리
+    score_agg = list(
+        ScoreData.objects
+        .filter(행정동명__in=dongs_in_gu)
+        .values("통합카테고리")
+        .annotate(
+            avg_성장확률=Avg("성장확률"),
+            dong_count=Count("행정동명"),
+        )
+    )
+    if not score_agg:
+        return JsonResponse({"error": "AI 점수 데이터가 없습니다."}, status=404)
+
+    # CommercialData: 구 내 업종별 최신 분기 합계
+    commercial_agg = {
+        row["통합카테고리"]: row
+        for row in CommercialData.objects
+        .filter(행정동코드__gte=code_min, 행정동코드__lt=code_max, 기준_년분기_코드=latest_q)
+        .values("통합카테고리")
+        .annotate(
+            총매출=Sum("당월매출합"),
+            총점포수=Sum("점포수"),
+            avg_경쟁강도=Avg("경쟁강도"),
+            avg_포화도=Avg("업종_포화도"),
+        )
+    }
+
+    results = []
+    for row in score_agg:
+        cat = row["통합카테고리"]
+        comm = commercial_agg.get(cat, {})
+        avg_growth = round(row["avg_성장확률"] or 0, 1)
+        avg_comp = round(comm.get("avg_경쟁강도") or 0, 2)
+        avg_sat = round(comm.get("avg_포화도") or 0, 2)
+
+        # 종합 점수: 성장확률(60%) + 경쟁강도 역수(20%) + 포화도 역수(20%)
+        score = avg_growth * 0.6 + max(0, 100 - avg_comp * 100) * 0.2 + max(0, 100 - avg_sat) * 0.2
+
+        competition = "낮음" if avg_comp < 0.33 else "중간" if avg_comp < 0.66 else "높음"
+        results.append({
+            "통합카테고리": cat,
+            "avg_성장확률": avg_growth,
+            "총매출": comm.get("총매출") or 0,
+            "총점포수": comm.get("총점포수") or 0,
+            "경쟁강도": competition,
+            "업종_포화도": avg_sat,
+            "score": round(score, 1),
+            "dong_count": row["dong_count"],
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    top = results[:10]
+    for i, r in enumerate(top):
+        r["rank"] = i + 1
+
+    return JsonResponse({"results": top, "gu": gu, "quarter": latest_q})
+
+
 def recommend_score(request):
     """행정동+업종 적합도 점수 (GET, dong + category 필수)"""
     dong = normalize_dong(request.GET.get("dong", "").strip())

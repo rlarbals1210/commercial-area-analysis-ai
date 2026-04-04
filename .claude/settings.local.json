@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(python *)",
+      "Bash(pip *)",
+      "Bash(npm *)",
+      "Bash(cmd.exe *)",
+      "Bash(curl *)",
+      "Bash(netstat *)",
+      "Bash(sleep *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(echo *)",
+      "Bash(cd *)",
+      "Bash(powershell *)",
+      "Bash(\"c:/Users/김성광/Desktop/commercial-area-analysis-ai/.venv/Scripts/python.exe\" *)",
+      "Bash(\"c:/Users/김성광/Desktop/commercial-area-analysis-ai/.venv/Scripts/jupyter.exe\" *)",
+      "Bash(\"c:/Users/김성광/Desktop/commercial-area-analysis-ai/.venv/Scripts/python.exe\" build_merged_dataset.py)",
+      "Bash(\"c:/Users/김성광/Desktop/commercial-area-analysis-ai/.venv/Scripts/python.exe\" manage.py import_scores)"
+    ]
+  }
+}
