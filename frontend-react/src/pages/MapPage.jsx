@@ -370,6 +370,11 @@ export default function MapPage() {
   const [savedGuReportCategory, setSavedGuReportCategory] = useState("");
   const [savedGuReportRegion, setSavedGuReportRegion] = useState(null);
   const [aiDong, setAiDong] = useState("");
+  const [aiDongSuggestions, setAiDongSuggestions] = useState([]);
+  const [aiDongSuggestOpen, setAiDongSuggestOpen] = useState(false);
+  const [aiDongSuggestIdx, setAiDongSuggestIdx] = useState(-1);
+  const [aiGuDropdownOpen, setAiGuDropdownOpen] = useState(false);
+  const aiGuDropdownRef = useRef(null);
   const [aiGu, setAiGu] = useState("");            // gu 모드: 선택한 구
   const [aiGuResultTab, setAiGuResultTab] = useState("dong"); // "dong" | "street"
   const [aiGuStreetResults, setAiGuStreetResults] = useState(null); // 길단위 상권 결과
@@ -385,7 +390,10 @@ export default function MapPage() {
   // ── AI 추천 서베이 ──
   const [surveyHasIndustry, setSurveyHasIndustry] = useState(false);
   const [aiDongGuTab, setAiDongGuTab] = useState("dong"); // dong 모드 결과 탭: "dong" | "gu"
+  const [dongLocReady, setDongLocReady] = useState(false); // dong 모드 서브스텝: 업종 선택 완료 여부
+  const [dongLocChoice, setDongLocChoice] = useState(null); // "gu" | "dong"
   const [aiGuRankResults, setAiGuRankResults] = useState(null); // dong 모드 구 랭킹 결과
+  const [aiDongSubMode, setAiDongSubMode] = useState(null); // dong 서브스텝 결과 타입: "gu_rank" | null
   const [showIndustryPicker, setShowIndustryPicker] = useState(false);
   const [aiSubIndustry, setAiSubIndustry] = useState("");       // dong 모드: 소분류 입력값
   const [aiIndustrySearchQuery, setAiIndustrySearchQuery] = useState("");    // AI 업종 선택 검색어
@@ -1706,19 +1714,19 @@ export default function MapPage() {
   }
 
   // ── AI 추천 요청 ──
-  function handleAiRecommend() {
-    if (aiMode === "dong" && !aiIndustry) return;
-    if (aiMode === "industry" && !aiDong.trim()) return;
-    if (aiMode === "score" && (!aiDong.trim() || !aiIndustry)) return;
-    if (aiMode === "gu" && (!aiGu || !aiIndustry)) return;
+  function handleAiRecommend(overrideMode = null) {
+    const mode = overrideMode || aiMode;
+    if (mode === "dong" && !aiIndustry) return;
+    if (mode === "industry" && !aiDong.trim()) return;
+    if (mode === "score" && (!aiDong.trim() || !aiIndustry)) return;
+    if (mode === "gu" && (!aiGu || !aiIndustry)) return;
     setAiStep("loading");
     setAiIndustrySuggestions([]);
 
     const MIN_LOADING_MS = 1200;
     const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-    if (aiMode === "dong") {
-      setAiDongGuTab("dong");
+    if (mode === "dong") {
       setAiGuRankResults(null);
       Promise.all([
         fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
@@ -1740,7 +1748,7 @@ export default function MapPage() {
       return;
     }
 
-    if (aiMode === "industry") {
+    if (mode === "industry") {
       Promise.all([
         fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
@@ -1754,7 +1762,7 @@ export default function MapPage() {
       return;
     }
 
-    if (aiMode === "score") {
+    if (mode === "score") {
       Promise.all([
         fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
@@ -1768,7 +1776,7 @@ export default function MapPage() {
       return;
     }
 
-    if (aiMode === "gu") {
+    if (mode === "gu") {
       setAiGuResultTab("dong");
       setAiGuStreetResults(null);
       setAiGuDongError(null);
@@ -1887,7 +1895,7 @@ export default function MapPage() {
 
   function openAiModal({ region = null, industry = null, dong = "" } = {}) {
     setAiModalOpen(true);
-    setAiStep("survey");
+    setAiStep("mode");
     setAiMode(null);
     setAiIndustry(industry);
     setAiRegion(region);
@@ -3757,7 +3765,7 @@ export default function MapPage() {
         >
         <div
           className="anim-pop-in"
-          style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: 520, maxHeight: "88vh", overflowY: "auto", padding: "24px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
+          style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: 600, maxHeight: "88vh", overflowY: "auto", padding: "28px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
           onClick={(e) => e.stopPropagation()}
         >
             {/* 기존 헤더 */}
@@ -3768,7 +3776,7 @@ export default function MapPage() {
                   <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>AI 상권 추천</span>
                 </div>
                 <div style={{ fontSize: 13, color: "#6B7280", paddingLeft: 28 }}>
-                  {aiStep === "survey" && "업종과 지역을 선택하세요"}
+                  {aiStep === "mode" && "어떤 도움이 필요하세요?"}
                   {aiStep === "form" && AI_MODE_META[aiMode]?.desc}
                   {aiStep === "loading" && "AI가 분석하고 있습니다"}
                 </div>
@@ -3778,190 +3786,38 @@ export default function MapPage() {
 
             <div className="no-scrollbar" style={{ borderTop: "1px solid #E5E7EB", paddingTop: 16, flex: 1, overflowY: "auto" }}>
 
-              {/* ── 서베이 단계 ── */}
-              {aiStep === "survey" && (
+              {/* ── 모드 선택 단계 ── */}
+              {aiStep === "mode" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-                  {/* 업종 선택 섹션 */}
-                  <div>
-                    {/* 업종 토글 */}
-                    <button
-                      onClick={() => { setSurveyHasIndustry(v => !v); if (surveyHasIndustry) setAiIndustry(null); }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10, width: "100%",
-                        padding: "12px 14px", borderRadius: 12, cursor: "pointer", fontSize: 14,
-                        border: surveyHasIndustry ? "2px solid #3B82F6" : "1.5px solid #E5E7EB",
-                        background: surveyHasIndustry ? "rgba(59,130,246,0.07)" : "#F9FAFB",
-                        color: surveyHasIndustry ? "#2563EB" : "#374151", fontWeight: surveyHasIndustry ? 700 : 500,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      <span style={{
-                        width: 20, height: 20, borderRadius: 4, border: surveyHasIndustry ? "none" : "2px solid #D1D5DB",
-                        background: surveyHasIndustry ? "#3B82F6" : "transparent",
-                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                        transition: "all 0.15s",
-                      }}>
-                        {surveyHasIndustry && <span style={{ color: "#fff", fontSize: 13, lineHeight: 1 }}>✓</span>}
-                      </span>
-                      창업 희망 업종이 있어요
-                      {aiIndustry && surveyHasIndustry && (
-                        <span style={{ marginLeft: "auto", fontSize: 13, color: "#3B82F6", fontWeight: 700 }}>
-                          {CATEGORY_EMOJI[aiIndustry] ?? "🏪"} {aiIndustry}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* 업종 선택 드릴다운 */}
-                    {surveyHasIndustry && (
-                      <div style={{ marginTop: 12 }}>
-                        <input type="text" placeholder="업종 검색... (예: 치킨, 네일, 한의원)"
-                          value={aiIndustrySearchQuery}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setAiIndustrySearchQuery(v);
-                            clearTimeout(aiIndustrySuggestTimer.current);
-                            if (v.trim().length >= 1) {
-                              aiIndustrySuggestTimer.current = setTimeout(() => {
-                                fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
-                                  .then((r) => r.json())
-                                  .then((d) => { setAiIndustrySuggestions(d.suggestions || []); setAiIndustrySuggestOpen(true); })
-                                  .catch(() => setAiIndustrySuggestions([]));
-                              }, 200);
-                            } else {
-                              setAiIndustrySuggestions([]);
-                              setAiIndustrySuggestOpen(false);
-                            }
-                          }}
-                          onBlur={() => setTimeout(() => setAiIndustrySuggestOpen(false), 150)}
-                          style={{
-                            width: "100%", padding: "7px 11px", fontSize: 13, marginBottom: 8,
-                            borderRadius: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? "8px 8px 0 0" : 8,
-                            background: "#F9FAFB", border: "1.5px solid #E5E7EB",
-                            color: "#111827", outline: "none", boxSizing: "border-box",
-                          }}
-                        />
-                        <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 220 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
-                          {aiIndustrySuggestions.map((s, i) => (
-                            <div key={i} onMouseDown={() => { setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
-                              style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = "#EFF6FF"}
-                              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                            >
-                              <span style={{ color: "#111827" }}>{s.소분류명}</span>
-                              <span style={{ fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)", padding: "2px 7px", borderRadius: 10 }}>{s.통합카테고리}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {!aiIndustrySearchQuery && (
-                          aiIndustryDrillGroup ? (
-                            <>
-                              <button onClick={() => setAiIndustryDrillGroup(null)} style={{ fontSize: 13, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 10px 0" }}>
-                                ← {aiIndustryDrillGroup}
-                              </button>
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                {CATEGORY_GROUPS[aiIndustryDrillGroup].map((cat) => (
-                                  <button key={cat}
-                                    onClick={() => { const next = aiIndustry === cat ? null : cat; setAiIndustry(next); }}
-                                    style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: aiIndustry === cat ? "#2563EB" : "#374151", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
-                                  >
-                                    <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
-                                  </button>
-                                ))}
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                              {DRILL_GROUPS.map(group => (
-                                <button key={group} onClick={() => setAiIndustryDrillGroup(group)}
-                                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "background 0.15s" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
-                                >
-                                  <span style={{ fontSize: 15 }}>{DRILL_GROUP_META[group].emoji} {group}</span>
-                                  <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
-                                </button>
-                              ))}
-                            </div>
-                          )
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 지역 선택 섹션 */}
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 10 }}>
-                      📍 지역 선택 <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 400 }}>(선택사항)</span>
-                      {aiGu && (
-                        <span style={{ marginLeft: 8, color: "#6B7280", fontWeight: 400, fontSize: 12 }}>
-                          {aiGu}{aiDong ? ` · ${aiDong}` : ""}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 구 선택 */}
-                    {!aiGu ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
-                        {REGIONS.map(gu => (
-                          <button key={gu}
-                            onClick={() => { setAiGu(gu); setAiDong(""); }}
-                            style={{ padding: "6px 2px", borderRadius: 8, fontSize: 11, cursor: "pointer", border: "1.5px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "all 0.15s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
-                          >{gu.replace("구","")}</button>
-                        ))}
-                      </div>
-                    ) : (
-                      <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {[
+                      { mode: "dong",     label: "업종은 정했는데, 구를 못정했어요" },
+                      { mode: "industry", label: "행정동은 정했는데, 업종을 못정했어요" },
+                      { mode: "gu",       label: "업종·구는 정했는데, 행정동을 못정했어요" },
+                      { mode: "score",    label: "업종·구·행정동 모두 정했어요" },
+                    ].map(({ mode, label }) => {
+                      const checked = aiMode === mode;
+                      return (
                         <button
-                          onClick={() => { setAiGu(""); setAiDong(""); }}
-                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "2px solid #3B82F6", background: "rgba(59,130,246,0.07)", color: "#2563EB", fontWeight: 600, marginBottom: 8 }}
+                          key={mode}
+                          onClick={() => setAiMode(mode)}
+                          style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "13px 16px", borderRadius: 12, border: checked ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: checked ? "rgba(59,130,246,0.06)" : "#F9FAFB", cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}
                         >
-                          ← 📍 {aiGu} <span style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>구 변경</span>
+                          <span style={{ width: 20, height: 20, borderRadius: "50%", border: checked ? "none" : "2px solid #D1D5DB", background: checked ? "#3B82F6" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
+                            {checked && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff", display: "block" }} />}
+                          </span>
+                          <span style={{ fontSize: 14, fontWeight: checked ? 600 : 400, color: checked ? "#1D4ED8" : "#374151" }}>{label}</span>
                         </button>
-                        {/* 동 목록 */}
-                        <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 6 }}>행정동 선택 <span style={{ color: "#9CA3AF" }}>(선택사항)</span></div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 160, overflowY: "auto" }}>
-                          {(guToDongsRef.current[aiGu] || []).map(dong => (
-                            <button key={dong}
-                              onClick={() => setAiDong(aiDong === dong ? "" : dong)}
-                              style={{ padding: "5px 9px", borderRadius: 16, fontSize: 12, cursor: "pointer", border: aiDong === dong ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiDong === dong ? "#EFF6FF" : "#F9FAFB", color: aiDong === dong ? "#2563EB" : "#374151", fontWeight: aiDong === dong ? 700 : 400 }}
-                            >{dong}</button>
-                          ))}
-                        </div>
-                      </>
-                    )}
+                      );
+                    })}
                   </div>
-
-                  {/* 분석 시작 버튼 */}
-                  {(() => {
-                    const canSubmit =
-                      (surveyHasIndustry && aiIndustry) ||
-                      (!surveyHasIndustry && aiDong.trim()) ||
-                      (!surveyHasIndustry && aiGu);
-                    const hint = !canSubmit
-                      ? "업종 또는 지역(구/행정동)을 선택해주세요"
-                      : null;
-                    return (
-                      <>
-                        {hint && <div style={{ fontSize: 12, color: "#9CA3AF", textAlign: "center", marginTop: -8 }}>{hint}</div>}
-                        <button
-                          onClick={handleSurveySubmit}
-                          disabled={!canSubmit}
-                          style={{
-                            width: "100%", padding: "13px 0",
-                            background: canSubmit ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" : "#E5E7EB",
-                            color: canSubmit ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12,
-                            fontSize: 17, fontWeight: 700, cursor: canSubmit ? "pointer" : "not-allowed",
-                            transition: "all 0.2s",
-                          }}
-                        >
-                          ✨ 분석 시작
-                        </button>
-                      </>
-                    );
-                  })()}
+                  <button
+                    disabled={!aiMode}
+                    onClick={() => { setAiStep("form"); setAiIndustry(null); setAiDong(""); setAiGu(""); setAiIndustrySearchQuery(""); setAiIndustryDrillGroup(null); setDongLocReady(false); setDongLocChoice(null); setAiDongSubMode(null); }}
+                    style={{ width: "100%", padding: "13px 0", background: aiMode ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" : "#E5E7EB", color: aiMode ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: aiMode ? "pointer" : "not-allowed", transition: "all 0.2s" }}
+                  >
+                    다음 →
+                  </button>
                 </div>
               )}
 
@@ -3969,14 +3825,105 @@ export default function MapPage() {
               {aiStep === "form" && (
                 <>
                   <button
-                    onClick={() => { setAiStep("survey"); setAiMode(null); }}
+                    onClick={() => {
+                      if (aiMode === "dong" && dongLocReady) {
+                        setDongLocReady(false); setDongLocChoice(null);
+                      } else {
+                        setAiStep("mode"); setAiMode(null); setDongLocReady(false); setDongLocChoice(null); setAiDongSubMode(null);
+                      }
+                    }}
                     style={{ fontSize: 14, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 16px 0" }}
                   >
                     ← 다시 선택
                   </button>
 
-                  {/* 모드별 폼 — dong/score/gu 공통 업종 선택 UI */}
-                  {(aiMode === "dong" || aiMode === "score" || aiMode === "gu") && (
+                  {/* ── dong 모드: 업종 선택 → 구 추천 ── */}
+                  {aiMode === "dong" && (
+                    <div>
+                      <div style={aiSectionLabel}>
+                        <span style={aiRequiredBadge}>필수</span> 창업 업종 선택
+                        {aiIndustry && <span style={{ marginLeft: 8, fontSize: 13, color: "#93B8EE", fontWeight: 600 }}>{aiIndustry}</span>}
+                      </div>
+                      <input type="text" placeholder="업종 검색... (예: 치킨, 네일, 한의원)"
+                        value={aiIndustrySearchQuery}
+                        onChange={(e) => {
+                          const v = e.target.value; setAiIndustrySearchQuery(v);
+                          clearTimeout(aiIndustrySuggestTimer.current);
+                          if (v.trim().length >= 1) {
+                            aiIndustrySuggestTimer.current = setTimeout(() => {
+                              fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                                .then((r) => r.json())
+                                .then((d) => { setAiIndustrySuggestions(d.suggestions || []); setAiIndustrySuggestOpen(true); })
+                                .catch(() => setAiIndustrySuggestions([]));
+                            }, 200);
+                          } else { setAiIndustrySuggestions([]); setAiIndustrySuggestOpen(false); }
+                        }}
+                        onBlur={() => setTimeout(() => setAiIndustrySuggestOpen(false), 150)}
+                        style={{ width: "100%", padding: "7px 11px", fontSize: 13, marginBottom: 8, borderRadius: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? "8px 8px 0 0" : 8, background: "#F9FAFB", border: "1.5px solid #E5E7EB", color: "#111827", outline: "none", boxSizing: "border-box" }}
+                      />
+                      <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 220 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
+                        {aiIndustrySuggestions.map((s, i) => (
+                          <div key={i} onMouseDown={() => { setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
+                            style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "#EFF6FF"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                          >
+                            <span style={{ color: "#111827" }}>{s.소분류명}</span>
+                            <span style={{ fontSize: 11, color: "#93B8EE", background: "rgba(59,130,246,0.18)", padding: "2px 7px", borderRadius: 10 }}>{s.통합카테고리}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {!aiIndustrySearchQuery && (aiIndustryDrillGroup ? (
+                        <>
+                          <button onClick={() => setAiIndustryDrillGroup(null)} style={{ fontSize: 13, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 10px 0" }}>← {aiIndustryDrillGroup}</button>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {CATEGORY_GROUPS[aiIndustryDrillGroup].map((cat) => (
+                              <button key={cat} onClick={() => setAiIndustry(aiIndustry === cat ? null : cat)}
+                                style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: aiIndustry === cat ? "#2563EB" : "#374151", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 5 }}
+                              ><CalcCatIcon cat={cat} size={13} />{cat}</button>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {DRILL_GROUPS.map(group => {
+                            const Meta = DRILL_GROUP_META[group];
+                            const GroupIcon = Meta.icon;
+                            return (
+                              <button key={group} onClick={() => setAiIndustryDrillGroup(group)}
+                                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "background 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
+                              >
+                                <span style={{ display: "flex", alignItems: "center", gap: 7 }}><GroupIcon size={15} color={Meta.iconColor} strokeWidth={1.8} />{group}</span>
+                                <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                      <button
+                        disabled={!aiIndustry}
+                        onClick={() => {
+                          setAiDongSubMode("gu_rank");
+                          setAiGuRankResults(null);
+                          setAiStep("loading");
+                          fetch(`http://localhost:8000/api/recommend/gu/?업종=${encodeURIComponent(aiIndustry)}`)
+                            .then((r) => r.json())
+                            .then((data) => {
+                              if (data.error) { alert(data.error); setAiStep("form"); return; }
+                              setAiGuRankResults(data.results || []);
+                              setAiStep("result");
+                            })
+                            .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                        }}
+                        style={{ width: "100%", marginTop: 20, padding: "13px 0", background: aiIndustry ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" : "#E5E7EB", color: aiIndustry ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: aiIndustry ? "pointer" : "not-allowed", transition: "all 0.2s" }}
+                      >✨ 분석 시작</button>
+                    </div>
+                  )}
+
+                  {/* 모드별 폼 — score/gu 업종 선택 UI (dong은 위에서 별도 처리) */}
+                  {(aiMode === "score" || aiMode === "gu") && (
                     <div style={{ marginBottom: 20 }}>
                       <div style={aiSectionLabel}>
                         <span style={aiRequiredBadge}>필수</span> 창업 업종 선택
@@ -4042,7 +3989,7 @@ export default function MapPage() {
                                   onClick={() => { const next = aiIndustry === cat ? null : cat; setAiIndustry(next); }}
                                   style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: aiIndustry === cat ? "#2563EB" : "#374151", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
                                 >
-                                  <span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}
+                                  <CalcCatIcon cat={cat} size={13} />{cat}
                                 </button>
                               ))}
                             </div>
@@ -4050,16 +3997,20 @@ export default function MapPage() {
                         ) : (
                           /* 대분류 목록 */
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {DRILL_GROUPS.map(group => (
-                              <button key={group} onClick={() => setAiIndustryDrillGroup(group)}
-                                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "background 0.15s" }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
-                              >
-                                <span style={{ fontSize: 15 }}>{DRILL_GROUP_META[group].emoji} {group}</span>
-                                <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
-                              </button>
-                            ))}
+                            {DRILL_GROUPS.map(group => {
+                              const Meta = DRILL_GROUP_META[group];
+                              const GroupIcon = Meta.icon;
+                              return (
+                                <button key={group} onClick={() => setAiIndustryDrillGroup(group)}
+                                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", borderRadius: 10, fontSize: 14, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "background 0.15s" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
+                                >
+                                  <span style={{ display: "flex", alignItems: "center", gap: 7 }}><GroupIcon size={15} color={Meta.iconColor} strokeWidth={1.8} />{group}</span>
+                                  <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         )
                       )}
@@ -4067,20 +4018,72 @@ export default function MapPage() {
                   )}
 
                   {(aiMode === "industry" || aiMode === "score") && (
-                    <div style={{ marginBottom: 20 }}>
+                    <div style={{ marginBottom: 20, position: "relative" }}>
                       <div style={aiSectionLabel}>
                         <span style={aiRequiredBadge}>필수</span> 행정동 입력
                       </div>
                       <input
                         value={aiDong}
-                        onChange={(e) => setAiDong(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setAiDong(v);
+                          setAiDongSuggestIdx(-1);
+                          if (v.trim().length >= 1) {
+                            const all = polygonGroupsRef.current || [];
+                            const filtered = all
+                              .filter((g) => g.dongName && g.dongName.includes(v.trim()))
+                              .slice(0, 8)
+                              .map((g) => ({ dongName: g.dongName, guName: g.guName }));
+                            setAiDongSuggestions(filtered);
+                            setAiDongSuggestOpen(filtered.length > 0);
+                          } else {
+                            setAiDongSuggestions([]);
+                            setAiDongSuggestOpen(false);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (!aiDongSuggestOpen || aiDongSuggestions.length === 0) return;
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setAiDongSuggestIdx((i) => Math.min(i + 1, aiDongSuggestions.length - 1));
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setAiDongSuggestIdx((i) => Math.max(i - 1, 0));
+                          } else if (e.key === "Tab" || e.key === "Enter") {
+                            const idx = aiDongSuggestIdx >= 0 ? aiDongSuggestIdx : 0;
+                            if (aiDongSuggestions[idx]) {
+                              e.preventDefault();
+                              setAiDong(aiDongSuggestions[idx].dongName);
+                              setAiDongSuggestOpen(false);
+                              setAiDongSuggestIdx(-1);
+                            }
+                          } else if (e.key === "Escape") {
+                            setAiDongSuggestOpen(false);
+                          }
+                        }}
+                        onBlur={() => setTimeout(() => setAiDongSuggestOpen(false), 150)}
                         placeholder="예: 역삼1동, 합정동"
                         style={{
                           width: "100%", padding: "10px 14px", background: "#F9FAFB",
-                          border: "1.5px solid #E5E7EB", borderRadius: 10, color: "#111827",
-                          fontSize: 16, outline: "none", boxSizing: "border-box",
+                          border: "1.5px solid #E5E7EB", borderRadius: aiDongSuggestOpen ? "10px 10px 0 0" : 10,
+                          color: "#111827", fontSize: 16, outline: "none", boxSizing: "border-box",
                         }}
                       />
+                      {aiDongSuggestOpen && aiDongSuggestions.length > 0 && (
+                        <div style={{ position: "absolute", left: 0, right: 0, background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 10px 10px", zIndex: 10, maxHeight: 220, overflowY: "auto" }}>
+                          {aiDongSuggestions.map((s, i) => (
+                            <div
+                              key={s.dongName}
+                              onMouseDown={() => { setAiDong(s.dongName); setAiDongSuggestOpen(false); setAiDongSuggestIdx(-1); }}
+                              style={{ padding: "9px 14px", cursor: "pointer", fontSize: 14, display: "flex", justifyContent: "space-between", alignItems: "center", background: i === aiDongSuggestIdx ? "#EFF6FF" : "transparent", borderBottom: i < aiDongSuggestions.length - 1 ? "1px solid #F3F4F6" : "none" }}
+                              onMouseEnter={() => setAiDongSuggestIdx(i)}
+                            >
+                              <span style={{ color: "#111827", fontWeight: i === aiDongSuggestIdx ? 600 : 400 }}>{s.dongName}</span>
+                              <span style={{ fontSize: 12, color: "#6B7280" }}>{s.guName}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -4089,32 +4092,24 @@ export default function MapPage() {
                       <div style={aiSectionLabel}>
                         <span style={aiRequiredBadge}>필수</span> 구 선택
                       </div>
-                      <select
-                        value={aiGu}
-                        onChange={(e) => setAiGu(e.target.value)}
-                        style={{
-                          width: "100%", padding: "10px 14px", background: "#F9FAFB",
-                          border: "1.5px solid #E5E7EB", borderRadius: 10, color: aiGu ? "#111827" : "#9CA3AF",
-                          fontSize: 16, outline: "none", boxSizing: "border-box", cursor: "pointer",
-                        }}
-                      >
-                        <option value="">구를 선택하세요</option>
-                        {SEOUL_GU_LIST.map((gu) => (
-                          <option key={gu} value={gu}>{gu}</option>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
+                        {REGIONS.map((gu) => (
+                          <button key={gu} onClick={() => setAiGu(aiGu === gu ? "" : gu)}
+                            style={{ padding: "7px 2px", borderRadius: 8, fontSize: 11, cursor: "pointer", border: aiGu === gu ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiGu === gu ? "#EFF6FF" : "#F9FAFB", color: aiGu === gu ? "#2563EB" : "#374151", fontWeight: aiGu === gu ? 700 : 400, transition: "all 0.15s" }}
+                          >{gu.replace("구", "")}</button>
                         ))}
-                      </select>
+                      </div>
                     </div>
                   )}
 
-                  {(() => {
+                  {aiMode !== "dong" && (() => {
                     const disabled =
-                      (aiMode === "dong" && !aiIndustry) ||
                       (aiMode === "industry" && !aiDong.trim()) ||
                       (aiMode === "score" && (!aiDong.trim() || !aiIndustry)) ||
                       (aiMode === "gu" && (!aiGu || !aiIndustry));
                     return (
                       <button
-                        onClick={handleAiRecommend}
+                        onClick={() => handleAiRecommend()}
                         disabled={disabled}
                         style={{
                           width: "100%", padding: "13px 0",
@@ -4250,7 +4245,7 @@ export default function MapPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
-                onClick={() => { setAiStep("survey"); setAiMode(null); setAiResults(null); clearSpotMarkers(); }}
+                onClick={() => { setAiStep("mode"); setAiMode(null); setAiResults(null); setAiDongSubMode(null); clearSpotMarkers(); }}
                 style={{ fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 5, padding: "3px 8px", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
               >다시 선택</button>
               <button
@@ -4363,7 +4358,7 @@ export default function MapPage() {
               )}
 
               {/* 결과 단계 */}
-              {aiStep === "result" && aiResults && (
+              {aiStep === "result" && (aiResults || aiDongSubMode === "gu_rank") && (
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                     <span style={{ fontSize: 15, color: "#6B7280" }}>
@@ -4382,42 +4377,48 @@ export default function MapPage() {
                       </button>
                     )}
                   </div>
-              {/* 모드 "dong" / "industry" — 랭킹 리스트 */}
-              {(aiMode === "dong" || aiMode === "industry") && (
-                <>
-                  {/* dong 모드 전용: 행정동 / 구 탭 */}
-                  {aiMode === "dong" && (
-                    <div style={{ display: "flex", gap: 6, marginBottom: 14, background: "#F3F4F6", borderRadius: 10, padding: 4 }}>
-                      {[
-                        { key: "dong", label: "🏘️ 행정동 추천" },
-                        { key: "gu",   label: "🗺️ 구 추천" },
-                      ].map(({ key, label }) => (
-                        <button
-                          key={key}
-                          onClick={() => {
-                            setAiDongGuTab(key);
-                            if (key === "gu" && !aiGuRankResults) {
-                              fetch(`http://localhost:8000/api/recommend/gu/?업종=${encodeURIComponent(aiIndustry)}`)
-                                .then((r) => r.json())
-                                .then((data) => { if (!data.error) setAiGuRankResults(data.results || []); })
-                                .catch(() => {});
-                            }
-                          }}
-                          style={{
-                            flex: 1, padding: "9px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
-                            background: aiDongGuTab === key ? "linear-gradient(135deg,#3B82F6,#6366F1)" : "transparent",
-                            color: aiDongGuTab === key ? "#fff" : "#6B7280",
-                            transition: "all 0.18s",
-                          }}
-                        >
-                          {label}
-                        </button>
-                      ))}
+              {/* 구를 못정했어요 → 구 랭킹 단독 표시 */}
+              {aiDongSubMode === "gu_rank" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {!aiGuRankResults ? (
+                    <div style={{ textAlign: "center", padding: "32px 0", color: "#9CA3AF", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                      <div style={{ width: 16, height: 16, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                      구 데이터 분석 중...
                     </div>
+                  ) : (
+                    aiGuRankResults.map((item) => (
+                      <div key={item.guName} style={{ background: item.rank === 1 ? "linear-gradient(135deg,#EFF6FF,#F5F3FF)" : "#F9FAFB", border: `1px solid ${item.rank === 1 ? "#BFDBFE" : "#E5E7EB"}`, borderRadius: 12, padding: "14px 16px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={aiRankBadge(item.rank)}>
+                              {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{item.guName}</div>
+                              <div style={{ fontSize: 12, color: "#6B7280" }}>행정동 {item.행정동수}개 분석</div>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#2563EB" : "#111827" }}>{item.score}</div>
+                            <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <div style={aiMiniStatStyle}><div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div><div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.당월매출합)}</div></div>
+                          <div style={aiMiniStatStyle}><div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>점포 수</div><div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{item.점포수}개</div></div>
+                          <div style={aiMiniStatStyle}><div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>평균 성장확률</div><div style={{ fontSize: 14, fontWeight: 600, color: (item.성장확률||0) >= 60 ? "#059669" : "#D97706" }}>{item.성장확률}%</div></div>
+                        </div>
+                      </div>
+                    ))
                   )}
+                </div>
+              )}
 
-                  {/* 행정동 탭 (dong 모드) 또는 industry 모드 */}
-                  {(aiMode === "industry" || (aiMode === "dong" && aiDongGuTab === "dong")) && (
+              {/* 모드 "dong" / "industry" — 랭킹 리스트 */}
+              {aiDongSubMode !== "gu_rank" && (aiMode === "dong" || aiMode === "industry") && (
+                <>
+                  {/* 행정동 추천 — industry 모드 또는 dong 모드 */}
+                  {(aiMode === "industry" || aiMode === "dong") && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {aiResults.map((item) => (
                         <div key={item.rank} style={aiResultCardStyle(item.rank === 1)}>
@@ -4481,51 +4482,6 @@ export default function MapPage() {
                     </div>
                   )}
 
-                  {/* 구 탭 (dong 모드) */}
-                  {aiMode === "dong" && aiDongGuTab === "gu" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {!aiGuRankResults ? (
-                        <div style={{ textAlign: "center", padding: "32px 0", color: "#9CA3AF", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                          <div style={{ width: 16, height: 16, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                          구 데이터 분석 중...
-                        </div>
-                      ) : (
-                        aiGuRankResults.map((item) => (
-                          <div key={item.guName} style={{ background: item.rank === 1 ? "linear-gradient(135deg,#EFF6FF,#F5F3FF)" : "#F9FAFB", border: `1px solid ${item.rank === 1 ? "#BFDBFE" : "#E5E7EB"}`, borderRadius: 12, padding: "14px 16px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <div style={aiRankBadge(item.rank)}>
-                                  {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : `#${item.rank}`}
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: 17, fontWeight: 700, color: "#111827" }}>{item.guName}</div>
-                                  <div style={{ fontSize: 12, color: "#6B7280" }}>행정동 {item.행정동수}개 분석</div>
-                                </div>
-                              </div>
-                              <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 24, fontWeight: 800, color: item.rank === 1 ? "#2563EB" : "#111827" }}>{item.score}</div>
-                                <div style={{ fontSize: 12, color: "#6B7280" }}>AI 점수</div>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <div style={aiMiniStatStyle}>
-                                <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.당월매출합)}</div>
-                              </div>
-                              <div style={aiMiniStatStyle}>
-                                <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>점포 수</div>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{item.점포수}개</div>
-                              </div>
-                              <div style={aiMiniStatStyle}>
-                                <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>평균 성장확률</div>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: item.성장확률 >= 70 ? "#059669" : item.성장확률 >= 55 ? "#D97706" : "#111827" }}>{item.성장확률}%</div>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
                 </>
               )}
 
@@ -6065,7 +6021,7 @@ const aiModeCardStyle = {
 
 const AI_MODE_META = {
   // color: 카드 왼쪽 border + 아이콘 배경 틴트에 사용
-  dong:            { icon: "📍", title: "업종 선택 → 행정동 추천",   desc: "창업할 업종을 선택하면 최적의 상권을 추천합니다", color: "#93C5FD", rgb: "147,197,253"  },
+  dong:            { icon: "📍", title: "업종 선택 → 구 추천",   desc: "창업할 업종을 선택하면 최적의 구를 추천합니다", color: "#93C5FD", rgb: "147,197,253"  },
   industry:        { icon: "🏪", title: "행정동 선택 → 업종 추천",   desc: "관심 지역을 입력하면 유망 업종을 추천합니다",   color: "#3B82F6", rgb: "59,130,246"   },
   score:           { icon: "📊", title: "행정동 · 업종 적합도 점수", desc: "특정 지역과 업종 조합의 상세 점수를 분석합니다", color: "#60A5FA", rgb: "56,189,248"   },
   gu:              { icon: "🗺️", title: "구 · 업종 선택 → 상권 추천", desc: "구와 업종을 선택하면 행정동·길단위 상권을 추천합니다", color: "#A78BFA", rgb: "167,139,250" },
