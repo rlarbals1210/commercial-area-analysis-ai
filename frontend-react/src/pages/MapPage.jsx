@@ -280,6 +280,9 @@ export default function MapPage() {
   const [fadeOut, setFadeOut] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("user")); } catch { return null; }
+  });
 
   const [cardSearchQuery, setCardSearchQuery] = useState("");
   const [cardSearchResults, setCardSearchResults] = useState([]);
@@ -5307,10 +5310,33 @@ export default function MapPage() {
               메뉴
             </button>
             {menuOpen && (
-              <div data-popup className="anim-slide-down" style={popupStyle({ right: 0, width: 180 })}>
-                <button style={menuItemStyle} onClick={() => navigate("/login")}>🔐 로그인</button>
-                <div style={{ borderTop: "1px solid #4A4A4A", margin: "4px 0" }} />
-                <button style={menuItemStyle} onClick={() => navigate("/signup")}>📝 회원가입</button>
+              <div data-popup className="anim-slide-down" style={popupStyle({ right: 0, width: 200 })}>
+                {currentUser ? (
+                  <>
+                    <div style={{ padding: "10px 12px 6px", fontSize: 13, color: "#374151" }}>
+                      <span style={{ fontWeight: 700 }}>{currentUser.nickname || currentUser.username}</span>님
+                      {currentUser.login_type === "kakao" && (
+                        <span style={{ marginLeft: 6, fontSize: 11, background: "#FEE500", color: "#3C1E1E", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>카카오</span>
+                      )}
+                    </div>
+                    <div style={{ borderTop: "1px solid #4A4A4A", margin: "4px 0" }} />
+                    <button style={menuItemStyle} onClick={() => navigate("/profile")}>⚙️ 개인정보 설정</button>
+                    <div style={{ borderTop: "1px solid #4A4A4A", margin: "4px 0" }} />
+                    <button style={menuItemStyle} onClick={() => {
+                      localStorage.removeItem("access");
+                      localStorage.removeItem("refresh");
+                      localStorage.removeItem("user");
+                      setCurrentUser(null);
+                      setMenuOpen(false);
+                    }}>🚪 로그아웃</button>
+                  </>
+                ) : (
+                  <>
+                    <button style={menuItemStyle} onClick={() => navigate("/login")}>🔐 로그인</button>
+                    <div style={{ borderTop: "1px solid #4A4A4A", margin: "4px 0" }} />
+                    <button style={menuItemStyle} onClick={() => navigate("/signup")}>📝 회원가입</button>
+                  </>
+                )}
               </div>
             )}
           </div>

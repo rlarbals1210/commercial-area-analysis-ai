@@ -21,15 +21,48 @@ export default function SignupPage() {
 
   const handleNext = (e) => {
     e.preventDefault();
+    setError("");
+    if (form.password !== form.passwordConfirm) {
+      setError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    if (form.password.length < 8) {
+      setError("비밀번호는 8자 이상이어야 합니다.");
+      return;
+    }
     setStep(2);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: 회원가입 API 연동
-    setStep(3);
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/accounts/signup/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: form.userId,
+          password: form.password,
+          nickname: form.name,   // 이름을 닉네임으로 저장
+          email: form.email,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "회원가입에 실패했습니다.");
+        return;
+      }
+      setStep(3);
+    } catch {
+      setError("서버에 연결할 수 없습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [fading, setFading] = useState(false);
   const [expanding, setExpanding] = useState(false);
 
@@ -135,6 +168,9 @@ export default function SignupPage() {
                   required
                 />
               </div>
+              {error && (
+                <p style={{ margin: 0, fontSize: 13, color: "#EF4444", textAlign: "center" }}>{error}</p>
+              )}
               <button type="submit" style={primaryBtnStyle}>
                 다음 단계 →
               </button>
@@ -185,16 +221,19 @@ export default function SignupPage() {
                   required
                 />
               </div>
+              {error && (
+                <p style={{ margin: 0, fontSize: 13, color: "#EF4444", textAlign: "center" }}>{error}</p>
+              )}
               <div style={{ display: "flex", gap: 10 }}>
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => { setStep(1); setError(""); }}
                   style={ghostBtnStyle}
                 >
                   ← 이전
                 </button>
-                <button type="submit" style={{ ...primaryBtnStyle, flex: 1 }}>
-                  가입 완료
+                <button type="submit" style={{ ...primaryBtnStyle, flex: 1 }} disabled={loading}>
+                  {loading ? "처리 중..." : "가입 완료"}
                 </button>
               </div>
             </motion.form>

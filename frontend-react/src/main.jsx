@@ -6,6 +6,8 @@ import MapPage from './pages/MapPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import SignupPage from './pages/SignupPage.jsx'
 import TrendPage from './pages/TrendPage.jsx'
+import SocialCallbackPage from './pages/SocialCallbackPage.jsx'
+import ProfilePage from './pages/ProfilePage.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -15,6 +17,8 @@ createRoot(document.getElementById('root')).render(
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/trend" element={<TrendPage />} />
+        <Route path="/social-callback" element={<SocialCallbackPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,6 +36,7 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', os.environ.get('RENDER_EXTERNAL_HOSTN
 # Application definition
 
 INSTALLED_APPS = [
+    'django.contrib.admin',       # 관리자 페이지 (/admin/)
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -44,7 +45,9 @@ INSTALLED_APPS = [
     "analysis",
     "accounts",
     "recommendation",
-    "corsheaders"
+    "corsheaders",
+    "rest_framework",                            # Django REST Framework
+    "rest_framework_simplejwt.token_blacklist",  # 로그아웃 시 토큰 무효화
 ]
 
 MIDDLEWARE = [
@@ -144,4 +147,27 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# 커스텀 User 모델 지정 — 이 설정이 없으면 Django 기본 User를 씀
+AUTH_USER_MODEL = 'accounts.User'
+
+# JWT 설정
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=2),    # access 토큰 유효시간 2시간
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # refresh 토큰 유효시간 7일
+    'ROTATE_REFRESH_TOKENS': True,                  # refresh 쓸 때마다 새 refresh 발급
+}
+
+# 카카오 소셜 로그인
+KAKAO_REST_API_KEY = os.environ.get('KAKAO_REST_API_KEY', '')
+KAKAO_CLIENT_SECRET = os.environ.get('KAKAO_CLIENT_SECRET', '')
+KAKAO_REDIRECT_URI = 'http://localhost:8000/api/accounts/kakao/callback/'
+
+# DRF 기본 인증 방식: JWT
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
 

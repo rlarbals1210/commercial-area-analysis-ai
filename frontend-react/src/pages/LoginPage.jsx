@@ -5,15 +5,39 @@ import { motion } from "framer-motion";
 export default function LoginPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ userId: "", password: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: 로그인 API 연동
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/accounts/login/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: form.userId, password: form.password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "로그인에 실패했습니다.");
+        return;
+      }
+      // 토큰을 localStorage에 저장 → 이후 API 호출 시 헤더에 포함
+      localStorage.setItem("access", data.access);
+      localStorage.setItem("refresh", data.refresh);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      navigate("/");
+    } catch {
+      setError("서버에 연결할 수 없습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -63,8 +87,11 @@ export default function LoginPage() {
               required
             />
           </div>
-          <button type="submit" style={primaryBtnStyle}>
-            로그인
+          {error && (
+            <p style={{ margin: 0, fontSize: 13, color: "#EF4444", textAlign: "center" }}>{error}</p>
+          )}
+          <button type="submit" style={primaryBtnStyle} disabled={loading}>
+            {loading ? "로그인 중..." : "로그인"}
           </button>
         </form>
 
@@ -75,9 +102,17 @@ export default function LoginPage() {
           <div style={{ flex: 1, height: 1, background: "#E5E7EB" }} />
         </div>
 
-        {/* 소셜 로그인 (UI만) */}
+        {/* 소셜 로그인 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button style={socialBtnStyle("#FEE500", "#3C1E1E")}>
+          <button
+            style={socialBtnStyle("#FEE500", "#3C1E1E")}
+            onClick={async () => {
+              // 백엔드에서 카카오 로그인 URL 받아서 이동
+              const res = await fetch("http://localhost:8000/api/accounts/kakao/login/");
+              const { url } = await res.json();
+              window.location.href = url;
+            }}
+          >
             <span style={{ fontSize: 16 }}>💬</span> 카카오로 시작하기
           </button>
           <button style={socialBtnStyle("#03C75A", "#fff")}>
