@@ -1,11 +1,134 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Utensils, Coffee, Beer, ShoppingBag, Pill, GraduationCap,
+  Scissors, Car, Music, Monitor, Dumbbell, Fish, Home,
+  Building2, Shirt, Eye, Stethoscope, Leaf, ShoppingCart,
+  Zap, Wrench, ChefHat, Croissant, Cookie, Store, Smartphone,
+  ArrowDown, ArrowUp, Drumstick, Handbag, CircleDot, Flag,
+  Palette, Paintbrush, SportShoe, ChevronDown,
+} from "lucide-react";
+
+const CALC_CAT_ICON = {
+  "한식": Utensils, "중식": Utensils, "일식": Fish, "양식/기타외식": ChefHat,
+  "카페": Coffee, "주점": Beer, "치킨전문점": Drumstick, "분식/간식": Cookie,
+  "베이커리/디저트": Croissant, "편의점": Store, "슈퍼마켓": ShoppingCart,
+  "생활용품 소매": ShoppingBag, "화장품": Palette, "일반의류": Shirt,
+  "신발": SportShoe, "안경": Eye, "가방": Handbag,
+  "일반의원": Stethoscope, "치과의원": Stethoscope, "한의원": Leaf,
+  "의약품": Pill, "의료기기": Stethoscope,
+  "일반교습학원": GraduationCap, "예술학원": Music, "외국어학원": GraduationCap,
+  "미용실": Scissors, "네일숍": Paintbrush, "피부관리실": Leaf,
+  "자동차수리/미용": Car, "세탁소": Shirt, "노래방": Music, "PC방": Monitor,
+  "당구장": CircleDot, "골프연습장": Flag, "스포츠클럽": Dumbbell, "스포츠 강습": Dumbbell,
+  "수산물판매": Fish, "반찬가게": Utensils, "육류판매": Utensils, "청과상": Leaf,
+  "컴퓨터및주변장치판매": Monitor, "가전제품": Zap, "가전제품수리": Wrench,
+  "핸드폰": Smartphone, "숙박": Home, "인테리어": Wrench,
+  "기타 B2B서비스": Building2, "미곡판매": ShoppingBag, "섬유제품": Shirt,
+  "애완동물": Leaf, "패스트푸드": Utensils,
+};
+const CALC_CAT_COLOR = {
+  // Utensils → 스틸 은색
+  "한식": "#94A3B8", "중식": "#94A3B8", "일식": "#94A3B8", "양식/기타외식": "#94A3B8",
+  "치킨전문점": "#F59E0B", "반찬가게": "#94A3B8",
+  "육류판매": "#94A3B8", "미곡판매": "#94A3B8", "패스트푸드": "#94A3B8",
+  // Fish → 바다 파랑
+  "수산물판매": "#38BDF8",
+  // Coffee → 진한 커피 브라운
+  "카페": "#92400E",
+  // Beer → 호박색
+  "주점": "#B45309",
+  // Croissant → 황금색
+  "베이커리/디저트": "#F59E0B",
+  // Cookie → 황토 브라운 / 청과상 → 초록
+  "청과상": "#65A30D", "분식/간식": "#D97706",
+  // Store / ShoppingCart → 인디고
+  "편의점": "#6366F1", "슈퍼마켓": "#6366F1",
+  // ShoppingBag → 보라 / SportShoe → 오렌지 / Handbag → 베이지브라운
+  "생활용품 소매": "#8B5CF6", "신발": "#F97316", "가방": "#92400E",
+  // Shirt → 하늘
+  "일반의류": "#0EA5E9", "섬유제품": "#0EA5E9", "세탁소": "#0EA5E9",
+  // Eye → 청록
+  "안경": "#0891B2",
+  // Palette → 보라 / Scissors → 핑크 / Paintbrush → 핑크
+  "화장품": "#A855F7", "미용실": "#EC4899", "네일숍": "#EC4899",
+  // Leaf → 초록
+  "한의원": "#10B981", "피부관리실": "#10B981", "애완동물": "#10B981",
+  // Stethoscope → 메디컬 레드
+  "일반의원": "#EF4444", "치과의원": "#EF4444", "의료기기": "#EF4444",
+  // Pill → 민트 그린
+  "의약품": "#14B8A6",
+  // GraduationCap → 남색
+  "일반교습학원": "#1D4ED8", "예술학원": "#1D4ED8", "외국어학원": "#1D4ED8",
+  // Music → 보라
+  "노래방": "#7C3AED",
+  // Monitor → 슬레이트
+  "PC방": "#475569", "컴퓨터및주변장치판매": "#475569",
+  // CircleDot → 당구대 녹색 / Flag → 깃발 빨강 / Dumbbell → 오렌지
+  "당구장": "#16A34A", "골프연습장": "#EF4444", "스포츠클럽": "#F97316", "스포츠 강습": "#F97316",
+  // Car → 슬레이트 그레이
+  "자동차수리/미용": "#64748B",
+  // Wrench → 중간 그레이
+  "가전제품수리": "#6B7280", "인테리어": "#6B7280",
+  // Zap → 노랑
+  "가전제품": "#EAB308",
+  // Smartphone → 다크
+  "핸드폰": "#374151",
+  // Home → 따뜻한 주황
+  "숙박": "#EA580C",
+  // Building2 → 그레이
+  "기타 B2B서비스": "#64748B",
+};
+function CalcCatIcon({ cat, size = 18, color }) {
+  const Icon = CALC_CAT_ICON[cat] || Store;
+  const c = color || CALC_CAT_COLOR[cat] || "#6B7280";
+  return <Icon size={size} color={c} strokeWidth={1.8} />;
+}
+
+function SidebarCategoryDropdown({ value, onChange, disabled, options, placeholder = "전체 업종", includeAll = true }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+  const items = includeAll ? ["", ...options] : options;
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(v => !v)}
+        style={{ width: "100%", padding: "8px 10px", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: open ? "8px 8px 0 0" : 8, color: value ? "#111827" : "#9CA3AF", fontSize: 13, cursor: disabled ? "default" : "pointer", outline: "none", display: "flex", justifyContent: "space-between", alignItems: "center", boxSizing: "border-box" }}
+      >
+        <span>{value || placeholder}</span>
+        <ChevronDown size={14} color="#9CA3AF" style={{ flexShrink: 0 }} />
+      </button>
+      {open && (
+        <div className="no-scrollbar" style={{ position: "absolute", left: 0, right: 0, background: "#fff", border: "1px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", boxShadow: "0 8px 20px rgba(0,0,0,0.1)", maxHeight: 220, overflowY: "auto", zIndex: 300 }}>
+          {items.map((cat) => (
+            <div
+              key={cat || "__all__"}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChange(cat); setOpen(false); }}
+              style={{ padding: "8px 10px", fontSize: 13, cursor: "pointer", color: cat === value ? "#2563EB" : "#374151", fontWeight: cat === value ? 600 : 400, background: cat === value ? "#EFF6FF" : "transparent" }}
+              onMouseEnter={(e) => { if (cat !== value) e.currentTarget.style.background = "#F9FAFB"; }}
+              onMouseLeave={(e) => { if (cat !== value) e.currentTarget.style.background = "transparent"; }}
+            >
+              {cat || placeholder}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const DRILL_GROUPS = ["음식", "소매", "서비스"];
 const DRILL_GROUP_META = {
-  "음식":   { emoji: "🍽️" },
-  "소매":   { emoji: "🛍️" },
-  "서비스": { emoji: "⚙️" },
+  "음식":   { emoji: "🍽️", icon: Utensils,   iconColor: "#94A3B8" },
+  "소매":   { emoji: "🛍️", icon: ShoppingBag, iconColor: "#8B5CF6" },
+  "서비스": { emoji: "⚙️", icon: Wrench,       iconColor: "#6B7280" },
 };
 const REGIONS = [
   "강남구", "강동구", "강북구", "강서구", "관악구",
@@ -85,9 +208,9 @@ const POLYGON_SELECTED   = { fillColor: "#3B82F6", fillOpacity: 0.6,  strokeColo
 // 선택 시 나머지 폴리곤에 적용할 회색 딤처리
 const POLYGON_DIMMED     = { fillColor: "#1E3A8A", fillOpacity: 0.18, strokeColor: "#3B82F6", strokeOpacity: 0.2, strokeWeight: 1 };
 // 선택된 구 경계: 투명(원래 지도 색) + 스카이블루 테두리
-const POLYGON_GU_SELECTED  = { fillColor: "#000000", fillOpacity: 0, strokeColor: "#38BDF8", strokeOpacity: 1, strokeWeight: 3 };
+const POLYGON_GU_SELECTED  = { fillColor: "#000000", fillOpacity: 0, strokeColor: "#60A5FA", strokeOpacity: 1, strokeWeight: 3 };
 // 선택된 행정동 경계: 투명(원래 지도 색) + 에메랄드 테두리
-const POLYGON_DONG_SELECTED = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#7DD3FC", strokeOpacity: 0.8, strokeWeight: 2 };
+const POLYGON_DONG_SELECTED = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#60A5FA", strokeOpacity: 0.8, strokeWeight: 2 };
 // 선택된 구 내 행정동: 투명 fill + 얇은 경계선만
 const POLYGON_DONG_IN_GU  = { fillColor: "#000000", fillOpacity: 0.01, strokeColor: "#6B9FD4", strokeOpacity: 0.5, strokeWeight: 1 };
 // 길단위 상권 폴리곤
@@ -298,6 +421,7 @@ export default function MapPage() {
   // ── 상권 직접 그리기 ──
   const [drawingMode, setDrawingMode] = useState(false);
   const [customPolygonDone, setCustomPolygonDone] = useState(false);
+  const [customPanelCollapsed, setCustomPanelCollapsed] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
   const [customResults, setCustomResults] = useState(null);
   const [customLoading, setCustomLoading] = useState(false);
@@ -1190,7 +1314,7 @@ export default function MapPage() {
         if (points.length >= 3) {
           const first = points[0];
           const dist = Math.abs(latlng.getLat() - first.getLat()) + Math.abs(latlng.getLng() - first.getLng());
-          if (dist < 0.0005) {
+          if (dist < 0.001) {
             finishPolygon(map, kakao);
             return;
           }
@@ -1199,7 +1323,7 @@ export default function MapPage() {
         points.push(latlng);
 
         // 꼭짓점 점 표시
-        const dotContent = `<div style="width:10px;height:10px;background:#F59E0B;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></div>`;
+        const dotContent = `<div style="width:10px;height:10px;background:#2563EB;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></div>`;
         const dot = new kakao.maps.CustomOverlay({ position: latlng, content: dotContent, xAnchor: 0.5, yAnchor: 0.5, zIndex: 20 });
         dot.setMap(map);
         drawingDotsRef.current.push(dot);
@@ -1209,7 +1333,7 @@ export default function MapPage() {
         if (points.length >= 2) {
           drawingPolylineRef.current = new kakao.maps.Polyline({
             map, path: points,
-            strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 0.9, strokeStyle: "solid",
+            strokeWeight: 3, strokeColor: "#1D4ED8", strokeOpacity: 0.9, strokeStyle: "solid",
           });
         }
       };
@@ -1222,8 +1346,19 @@ export default function MapPage() {
         if (drawingPreviewRef.current) drawingPreviewRef.current.setMap(null);
         drawingPreviewRef.current = new kakao.maps.Polyline({
           map, path: [points[points.length - 1], e.latLng],
-          strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 0.5, strokeStyle: "dashed",
+          strokeWeight: 2, strokeColor: "#3B82F6", strokeOpacity: 0.6, strokeStyle: "dashed",
         });
+        // 첫 번째 점 스냅 하이라이트
+        if (points.length >= 3 && drawingDotsRef.current.length > 0) {
+          const first = points[0];
+          const dist = Math.abs(e.latLng.getLat() - first.getLat()) + Math.abs(e.latLng.getLng() - first.getLng());
+          const firstDot = drawingDotsRef.current[0];
+          if (dist < 0.001) {
+            firstDot.setContent(`<div style="width:20px;height:20px;background:#1D4ED8;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(29,78,216,0.35);cursor:pointer;"></div>`);
+          } else {
+            firstDot.setContent(`<div style="width:10px;height:10px;background:#2563EB;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></div>`);
+          }
+        }
       };
       drawingMousemoveListenerRef.current = mousemoveHandler;
       kakao.maps.event.addListener(map, "mousemove", mousemoveHandler);
@@ -1237,6 +1372,17 @@ export default function MapPage() {
     drawingModeRef.current = false;
     setDrawingMode(false);
     map.setZoomable(true);
+    // 그리기 완료 시 구/동 선택 상태 초기화 (딤처리·호버 제거)
+    if (selectedGuGroupRef.current) {
+      selectedGuGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+      selectedGuGroupRef.current = null;
+    }
+    if (selectedGroupRef.current) {
+      selectedGroupRef.current.polygons.forEach((p) => p.setOptions(POLYGON_DEFAULT));
+      selectedGroupRef.current = null;
+    }
+    setSelectedGu(null);
+    setSelectedDong(null);
     restoreAllPolygons();
     if (drawingClickListenerRef.current) {
       kakao.maps.event.removeListener(map, "click", drawingClickListenerRef.current);
@@ -1249,13 +1395,16 @@ export default function MapPage() {
 
     if (drawingPolylineRef.current) { drawingPolylineRef.current.setMap(null); drawingPolylineRef.current = null; }
     if (drawingPreviewRef.current) { drawingPreviewRef.current.setMap(null); drawingPreviewRef.current = null; }
+    drawingDotsRef.current.forEach((dot) => dot.setMap(null));
+    drawingDotsRef.current = [];
 
     customPolygonRef.current = new kakao.maps.Polygon({
       map, path: points,
-      strokeWeight: 2, strokeColor: "#F59E0B", strokeOpacity: 1,
-      fillColor: "#F59E0B", fillOpacity: 0.15,
+      strokeWeight: 3, strokeColor: "#1D4ED8", strokeOpacity: 1,
+      fillColor: "#3B82F6", fillOpacity: 0.12,
     });
 
+    setCustomPanelCollapsed(false);
     setCustomPolygonDone(true);
   }
 
@@ -1829,36 +1978,33 @@ export default function MapPage() {
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 6 }}>
                   행정동 선택 <span style={{ color: "#3B82F6", fontWeight: 600 }}>(선택사항)</span>
                 </div>
-                <select
+                <SidebarCategoryDropdown
                   disabled={!activeGu}
                   value={selectedDong?.dongName || ""}
-                  onChange={(e) => { if (e.target.value) handleSelectDongFromGu(e.target.value); else { setSelectedDong(null); if (activeGu) setSelectedGu(activeGu); } }}
-                  style={{ width: "100%", padding: "8px 10px", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, color: selectedDong ? "#111827" : "#9CA3AF", fontSize: 13, cursor: activeGu ? "pointer" : "default", outline: "none" }}
-                >
-                  <option value="">{activeGu ? "구 단위로 분석 (선택 안 함)" : "지도에서 구를 먼저 선택하세요"}</option>
-                  {dongList.map((dong) => (
-                    <option key={dong} value={dong}>{dong}</option>
-                  ))}
-                </select>
+                  onChange={(dong) => { if (dong) handleSelectDongFromGu(dong); else { setSelectedDong(null); if (activeGu) setSelectedGu(activeGu); } }}
+                  options={dongList}
+                  placeholder={activeGu ? "구 단위로 분석 (선택 안 함)" : "지도에서 구를 먼저 선택하세요"}
+                  includeAll={true}
+                />
               </div>
             );
           })()}
 
           {/* 업종 선택 (항상 표시, 구 선택 후 활성화) */}
-          <div style={{ padding: "10px 18px 0", opacity: (selectedDong || selectedGu) ? 1 : 0.4, transition: "opacity 0.2s" }}>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 6 }}>업종 선택 <span style={{ color: "#3B82F6", fontWeight: 600 }}>(선택사항)</span></div>
-              <select
-                disabled={!selectedDong && !selectedGu}
-                value={reportCategory}
-                onChange={(e) => setReportCategory(e.target.value)}
-                style={{ width: "100%", padding: "8px 10px", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, color: reportCategory ? "#111827" : "#9CA3AF", fontSize: 13, cursor: (selectedDong || selectedGu) ? "pointer" : "default", outline: "none" }}
-              >
-                <option value="">전체 업종</option>
-                {Object.keys(STARTUP_COSTS).map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-          </div>
+          {(() => {
+            const active = !!(selectedDong || selectedGu);
+            return (
+              <div style={{ padding: "10px 18px 0", opacity: active ? 1 : 0.4, transition: "opacity 0.2s", position: "relative" }}>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 6 }}>업종 선택 <span style={{ color: "#3B82F6", fontWeight: 600 }}>(선택사항)</span></div>
+                <SidebarCategoryDropdown
+                  value={reportCategory}
+                  onChange={setReportCategory}
+                  disabled={!active}
+                  options={Object.keys(STARTUP_COSTS)}
+                />
+              </div>
+            );
+          })()}
 
           {/* 보고서 생성 버튼 */}
           <div style={{ padding: "12px 18px 16px" }}>
@@ -4407,11 +4553,11 @@ export default function MapPage() {
                   {steps.flatMap(({ n, label }, i) => {
                     const items = [
                       <div key={`step-${n}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: calcStep >= n ? "#111827" : "#F3F4F6", color: calcStep >= n ? "#fff" : "#9CA3AF", transition: "background 0.2s" }}>{n}</div>
-                        <div style={{ fontSize: 10, color: calcStep >= n ? "#111827" : "#9CA3AF", fontWeight: calcStep === n ? 700 : 400, whiteSpace: "nowrap" }}>{label}</div>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: calcStep >= n ? "#60A5FA" : "#F3F4F6", color: calcStep >= n ? "#fff" : "#9CA3AF", transition: "background 0.2s" }}>{n}</div>
+                        <div style={{ fontSize: 10, color: calcStep >= n ? "#60A5FA" : "#9CA3AF", fontWeight: calcStep === n ? 700 : 400, whiteSpace: "nowrap" }}>{label}</div>
                       </div>
                     ];
-                    if (i < 4) items.push(<div key={`line-${n}`} style={{ flex: 1, height: 2, background: calcStep > n ? "#111827" : "#E5E7EB", margin: "12px 4px 0", transition: "background 0.2s" }} />);
+                    if (i < 4) items.push(<div key={`line-${n}`} style={{ flex: 1, height: 2, background: calcStep > n ? "#BFDBFE" : "#E5E7EB", margin: "12px 4px 0", transition: "background 0.2s" }} />);
                     return items;
                   })}
                 </div>
@@ -4436,7 +4582,7 @@ export default function MapPage() {
                         {REGIONS.map((gu) => (
                           <button key={gu} onClick={() => { setCalcRegion(gu); setCalcDong(""); }}
                             style={{ padding: "8px 4px", borderRadius: 8, cursor: "pointer", fontSize: 12, border: "1.5px solid #E5E7EB", background: "#F9FAFB", color: "#374151", transition: "all 0.15s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F9FF"; e.currentTarget.style.borderColor = "#BAE6FD"; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F9FF"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.borderColor = "#E5E7EB"; }}>
                             {gu.replace("구", "")}
                           </button>
@@ -4447,13 +4593,13 @@ export default function MapPage() {
                     <>
                       {/* 선택된 구 버튼 (누르면 구 목록으로 복귀) */}
                       <button onClick={() => { setCalcRegion(""); setCalcDong(""); }}
-                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, border: "2px solid #111827", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, textAlign: "left" }}>
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, border: "2px solid #60A5FA", background: "#60A5FA", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, textAlign: "left" }}>
                         <span>📍 {activeGu}</span>
                         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 400, opacity: 0.6 }}>← 구 변경</span>
                       </button>
 
                       {/* 동 목록 */}
-                      <div style={{ fontSize: 12, color: "#6B7280" }}>행정동을 선택하세요 <span style={{ color: "#9CA3AF" }}>(선택 안 해도 됨)</span></div>
+                      <div style={{ fontSize: 12, color: "#6B7280" }}>행정동을 선택하세요 <span style={{ color: "#9CA3AF" }}>(선택사항)</span></div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {[...dongList].sort().map((dong) => {
                           const isActive = activeDong === dong;
@@ -4468,14 +4614,8 @@ export default function MapPage() {
 
                       {/* 선택 확인 + 다음 버튼 */}
                       <div style={{ marginTop: 4 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, marginBottom: 12 }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: "#15803D" }}>
-                            📍 {activeGu}{activeDong ? ` · ${activeDong}` : ""}
-                          </span>
-                          <span style={{ fontSize: 12, color: "#4ADE80", marginLeft: "auto" }}>선택됨</span>
-                        </div>
                         <button onClick={() => setCalcStep(2)}
-                          style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                          style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: "#60A5FA", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
                           다음 →
                         </button>
                       </div>
@@ -4530,13 +4670,14 @@ export default function MapPage() {
                   calcDrillGroup ? (
                     <div>
                       <button onClick={() => setCalcDrillGroup(null)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#6B7280", marginBottom: 10 }}>
-                        ← {DRILL_GROUP_META[calcDrillGroup].emoji} {calcDrillGroup}
+                        {(() => { const m = DRILL_GROUP_META[calcDrillGroup]; return <m.icon size={14} color={m.iconColor} strokeWidth={1.8} />; })()}
+                        ← {calcDrillGroup}
                       </button>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                         {CATEGORY_GROUPS[calcDrillGroup].map((cat) => (
                           <button key={cat} onClick={() => setCalcIndustry(calcIndustry === cat ? null : cat)}
-                            style={{ padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: calcIndustry === cat ? "2px solid #111827" : "1.5px solid #E5E7EB", background: calcIndustry === cat ? "#111827" : "#F9FAFB", color: calcIndustry === cat ? "#fff" : "#374151", fontWeight: calcIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
-                          ><span>{CATEGORY_EMOJI[cat] ?? "🏪"}</span>{cat}</button>
+                            style={{ padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: calcIndustry === cat ? "2px solid #60A5FA" : "1.5px solid #E5E7EB", background: calcIndustry === cat ? "#60A5FA" : "#F9FAFB", color: calcIndustry === cat ? "#fff" : "#374151", fontWeight: calcIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
+                          ><CalcCatIcon cat={cat} size={16} color={calcIndustry === cat ? "#fff" : undefined} />{cat}</button>
                         ))}
                       </div>
                     </div>
@@ -4545,10 +4686,10 @@ export default function MapPage() {
                       {DRILL_GROUPS.map((group) => (
                         <button key={group} onClick={() => setCalcDrillGroup(group)}
                           style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F9FF"; e.currentTarget.style.borderColor = "#BAE6FD"; }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F9FF"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
                         >
-                          <span style={{ fontSize: 20 }}>{DRILL_GROUP_META[group].emoji}</span>
+                          {(() => { const m = DRILL_GROUP_META[group]; return <m.icon size={20} color={m.iconColor} strokeWidth={1.8} />; })()}
                           <span>{group}</span>
                           <span style={{ marginLeft: "auto", fontSize: 12, color: "#9CA3AF" }}>{CATEGORY_GROUPS[group].length}개 →</span>
                         </button>
@@ -4560,14 +4701,9 @@ export default function MapPage() {
                 {/* 선택된 업종 표시 + 다음/이전 버튼 */}
                 {calcIndustry && (
                   <div style={{ marginTop: 4 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, marginBottom: 12 }}>
-                      <span style={{ fontSize: 16 }}>{CATEGORY_EMOJI[calcIndustry] ?? "🏪"}</span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "#15803D" }}>{calcIndustry}</span>
-                      <span style={{ fontSize: 12, color: "#4ADE80", marginLeft: "auto" }}>선택됨</span>
-                    </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button onClick={() => setCalcStep(1)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
-                      <button onClick={() => setCalcStep(3)} style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>다음 →</button>
+                      <button onClick={() => setCalcStep(3)} style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: "#60A5FA", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>다음 →</button>
                     </div>
                   </div>
                 )}
@@ -4588,8 +4724,8 @@ export default function MapPage() {
                     { key: "대형", label: "대형", range: "40평+", desc: "직원 다수, 대형 점포", multiplier: "×1.8" },
                   ].map(({ key, label, range, desc, multiplier }) => (
                     <button key={key} onClick={() => setCalcSize(key)}
-                      style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 12, cursor: "pointer", border: calcSize === key ? "2px solid #111827" : "1.5px solid #E5E7EB", background: calcSize === key ? "#111827" : "#F9FAFB", color: calcSize === key ? "#fff" : "#374151", textAlign: "left", transition: "all 0.15s" }}>
-                      <div style={{ fontSize: 22 }}>{key === "소형" ? "🏠" : key === "중형" ? "🏪" : "🏢"}</div>
+                      style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 12, cursor: "pointer", border: calcSize === key ? "2px solid #60A5FA" : "1.5px solid #E5E7EB", background: calcSize === key ? "#60A5FA" : "#F9FAFB", color: calcSize === key ? "#fff" : "#374151", textAlign: "left", transition: "all 0.15s" }}>
+                      <div>{key === "소형" ? <Home size={22} strokeWidth={1.8} /> : key === "중형" ? <Store size={22} strokeWidth={1.8} /> : <Building2 size={22} strokeWidth={1.8} />}</div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{label} <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.7 }}>({range})</span></div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>{desc}</div>
@@ -4601,7 +4737,7 @@ export default function MapPage() {
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                   <button onClick={() => setCalcStep(2)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", color: "#374151", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>← 이전</button>
                   <button onClick={() => setCalcStep(4)} disabled={!calcSize}
-                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: calcSize ? "#111827" : "#E5E7EB", color: calcSize ? "#fff" : "#9CA3AF", fontSize: 15, fontWeight: 700, cursor: calcSize ? "pointer" : "default" }}>
+                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: calcSize ? "#60A5FA" : "#E5E7EB", color: calcSize ? "#fff" : "#9CA3AF", fontSize: 15, fontWeight: 700, cursor: calcSize ? "pointer" : "default" }}>
                     다음 →
                   </button>
                 </div>
@@ -4614,14 +4750,14 @@ export default function MapPage() {
                 <div style={{ fontSize: 13, color: "#6B7280" }}>층수를 선택하세요</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   {[
-                    { key: "지하1층", label: "지하 1층", emoji: "⬇️", multiplier: "×0.7", desc: "임대료 저렴, 유동인구↓" },
-                    { key: "1층", label: "1층", emoji: "🏪", multiplier: "×1.3", desc: "유동인구 최고, 임대료↑" },
-                    { key: "2층", label: "2층", emoji: "⬆️", multiplier: "×0.85", desc: "임대료 적당, 접근성↓" },
-                    { key: "3층이상", label: "3층 이상", emoji: "🏢", multiplier: "×0.7", desc: "임대료 저렴, 집객↓↓" },
-                  ].map(({ key, label, emoji, multiplier, desc }) => (
+                    { key: "지하1층", label: "지하 1층", icon: <ArrowDown size={20} strokeWidth={1.8} />, multiplier: "×0.7", desc: "임대료 저렴, 유동인구↓" },
+                    { key: "1층", label: "1층", icon: <Store size={20} strokeWidth={1.8} />, multiplier: "×1.3", desc: "유동인구 최고, 임대료↑" },
+                    { key: "2층", label: "2층", icon: <ArrowUp size={20} strokeWidth={1.8} />, multiplier: "×0.85", desc: "임대료 적당, 접근성↓" },
+                    { key: "3층이상", label: "3층 이상", icon: <Building2 size={20} strokeWidth={1.8} />, multiplier: "×0.7", desc: "임대료 저렴, 집객↓↓" },
+                  ].map(({ key, label, icon, multiplier, desc }) => (
                     <button key={key} onClick={() => setCalcFloor(key)}
-                      style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, padding: "14px 14px", borderRadius: 12, cursor: "pointer", border: calcFloor === key ? "2px solid #111827" : "1.5px solid #E5E7EB", background: calcFloor === key ? "#111827" : "#F9FAFB", color: calcFloor === key ? "#fff" : "#374151", textAlign: "left", transition: "all 0.15s" }}>
-                      <div style={{ fontSize: 20 }}>{emoji}</div>
+                      style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, padding: "14px 14px", borderRadius: 12, cursor: "pointer", border: calcFloor === key ? "2px solid #60A5FA" : "1.5px solid #E5E7EB", background: calcFloor === key ? "#60A5FA" : "#F9FAFB", color: calcFloor === key ? "#fff" : "#374151", textAlign: "left", transition: "all 0.15s" }}>
+                      <div>{icon}</div>
                       <div style={{ fontSize: 14, fontWeight: 700 }}>{label}</div>
                       <div style={{ fontSize: 12, opacity: 0.6 }}>{desc}</div>
                       <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>{multiplier}</div>
@@ -4663,7 +4799,7 @@ export default function MapPage() {
                       setCalcResult({ 구: gu, 동: dong, 층: calcFloor, 크기: calcSize, pyeong, rentPerSqm: floorData?.["임대료_만원per㎡"] ?? 4.0, 월임대료, 보증금, 인테리어, 설비집기, 초기재고, 초기합계, 월인건비, 월관리비, 월고정비합계, 원가율, 손익분기_월매출, 특이사항: cat["특이사항"], rentFallback: !guData?.[floorKey] });
                       setCalcStep(5);
                     }}
-                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: calcFloor ? "#111827" : "#E5E7EB", color: calcFloor ? "#fff" : "#9CA3AF", fontSize: 15, fontWeight: 700, cursor: calcFloor ? "pointer" : "default" }}>
+                    style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: calcFloor ? "#60A5FA" : "#E5E7EB", color: calcFloor ? "#fff" : "#9CA3AF", fontSize: 15, fontWeight: 700, cursor: calcFloor ? "pointer" : "default" }}>
                     결과 보기
                   </button>
                 </div>
@@ -4674,14 +4810,14 @@ export default function MapPage() {
             {calcStep === 5 && calcResult && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {/* 요약 헤더 */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#111827", borderRadius: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "linear-gradient(135deg,#60A5FA,#60A5FA)", borderRadius: 12 }}>
                   <div>
-                    <div style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 2 }}>{calcResult.구}{calcResult.동 ? ` ${calcResult.동}` : ""} · {calcResult.크기} ({calcResult.pyeong}평) · {calcResult.층}</div>
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 2 }}>{calcResult.구}{calcResult.동 ? ` ${calcResult.동}` : ""} · {calcResult.크기} ({calcResult.pyeong}평) · {calcResult.층}</div>
                     <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span>{CATEGORY_EMOJI[calcIndustry] ?? "🏪"}</span>{calcIndustry}
+                      <CalcCatIcon cat={calcIndustry} size={18} color="#fff" />{calcIndustry}
                     </div>
                   </div>
-                  <button onClick={() => setCalcStep(4)} style={{ fontSize: 12, color: "#9CA3AF", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>← 수정</button>
+                  <button onClick={() => setCalcStep(4)} style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", background: "rgba(255,255,255,0.18)", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>← 수정</button>
                 </div>
 
                 {/* 초기 창업비용 카드 */}
@@ -4888,100 +5024,61 @@ export default function MapPage() {
       {(drawingMode || customPolygonDone) && (
         <div style={{
           position: "absolute", bottom: 32, left: "50%", transform: "translateX(-50%)",
-          width: 340, background: "#fff",
-          borderRadius: 14, border: "1px solid rgba(245,158,11,0.4)",
-          boxShadow: "0 4px 24px rgba(0,0,0,0.12)", zIndex: 300, padding: "16px 18px",
+          width: "min(340px, calc(100vw - 32px))", background: "#fff",
+          borderRadius: 14, border: "1px solid rgba(37,99,235,0.35)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.12)", zIndex: 300,
+          padding: customPanelCollapsed ? "12px 18px" : "16px 18px",
+          maxHeight: "calc(100vh - 52px - 48px)", overflowY: "auto",
         }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: "#F59E0B" }}>
-              {drawingMode ? "✏️ 지도를 클릭해 영역을 그리세요" : "✏️ 직접 그린 상권"}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: customPanelCollapsed ? 0 : 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#2563EB" }}>
+              {drawingMode ? "🖊️ 지도를 클릭해 영역을 그리세요" : "🖊️ 직접 그린 상권"}
             </span>
-            <button
-              onClick={() => { clearCustomDrawing(); drawingModeRef.current = false; setDrawingMode(false); }}
-              style={{ background: "none", border: "none", color: "#6B7280", fontSize: 16, cursor: "pointer" }}
-            >✕</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {customResults && !customPanelCollapsed && (
+                <button
+                  onClick={() => { setCustomResults(null); setCustomSearchQuery(""); setCustomDrillGroup(null); }}
+                  style={{ fontSize: 11, color: "#2563EB", background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
+                >다른 업종 선택하기</button>
+              )}
+              <button
+                onClick={() => setCustomPanelCollapsed(v => !v)}
+                title={customPanelCollapsed ? "펼치기" : "접기"}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 6px", color: "#6B7280", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                {customPanelCollapsed ? (
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <rect x="1" y="1" width="11" height="11" rx="1.5" stroke="#6B7280" strokeWidth="1.6"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="3" viewBox="0 0 14 3" fill="none">
+                    <path d="M1 1.5h12" stroke="#6B7280" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={() => { clearCustomDrawing(); drawingModeRef.current = false; setDrawingMode(false); }}
+                style={{ background: "none", border: "none", color: "#6B7280", fontSize: 16, cursor: "pointer" }}
+              >✕</button>
+            </div>
           </div>
 
-          {drawingMode && (
+          {!customPanelCollapsed && drawingMode && (
             <p style={{ fontSize: 12, color: "#6B7280", margin: "0 0 8px" }}>
               꼭짓점을 3개 이상 찍고 첫 번째 점을 다시 클릭하면 완성돼요.
             </p>
           )}
 
-          {customPolygonDone && (
+          {!customPanelCollapsed && customPolygonDone && (
             <>
-              <div style={{ marginBottom: 10 }}>
-                <p style={{ fontSize: 12, color: "#6B7280", margin: "0 0 8px" }}>업종 선택</p>
-                {/* 검색 */}
-                <input
-                  type="text"
-                  placeholder="업종 검색..."
-                  value={customSearchQuery}
-                  onChange={(e) => { setCustomSearchQuery(e.target.value); setCustomDrillGroup(e.target.value ? "__search__" : null); }}
-                  style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "#F9FAFB", border: "1.5px solid #E5E7EB", color: "#111827", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
-                />
-                {customSearchQuery ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {Object.values(CATEGORY_GROUPS).flat().filter((c, i, a) => a.indexOf(c) === i && c.includes(customSearchQuery)).map(cat => (
-                      <button key={cat} onClick={() => { setCustomCategory(cat); setCustomSearchQuery(""); setCustomDrillGroup(null); }}
-                        style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid #E5E7EB", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "#F9FAFB", color: customCategory === cat ? "#F59E0B" : "#374151" }}>
-                        {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
-                      </button>
-                    ))}
-                  </div>
-                ) : customDrillGroup ? (
-                  <>
-                    <button onClick={() => setCustomDrillGroup(null)} style={{ fontSize: 12, color: "#F59E0B", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>
-                      ← {customDrillGroup}
-                    </button>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {CATEGORY_GROUPS[customDrillGroup].map(cat => (
-                        <button key={cat} onClick={() => { setCustomCategory(cat); setCustomDrillGroup(null); }}
-                          style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #F59E0B" : "1.5px solid #E5E7EB", background: customCategory === cat ? "rgba(245,158,11,0.18)" : "#F9FAFB", color: customCategory === cat ? "#F59E0B" : "#374151" }}>
-                          {CATEGORY_EMOJI[cat] ?? "🏪"} {cat}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {customCategory && (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
-                        <span style={{ fontSize: 12, color: "#F59E0B" }}>{CATEGORY_EMOJI[customCategory] ?? "🏪"} {customCategory}</span>
-                        <button onClick={() => setCustomCategory("")} style={{ fontSize: 11, color: "#6B7280", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
-                      </div>
-                    )}
-                    {DRILL_GROUPS.map(group => (
-                      <button key={group} onClick={() => setCustomDrillGroup(group)}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(245,158,11,0.1)"; e.currentTarget.style.color = "#F59E0B"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
-                      >
-                        <span>{DRILL_GROUP_META[group].emoji} {group}</span>
-                        <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => { if (customCategory) fetchCustomSpot(customCategory); }}
-                disabled={!customCategory || customLoading}
-                style={{
-                  width: "100%", padding: "9px 0", borderRadius: 8, border: "none",
-                  background: customCategory ? "#F59E0B" : "rgba(255,255,255,0.1)",
-                  color: customCategory ? "#000" : "#666", fontWeight: 700, fontSize: 14, cursor: customCategory ? "pointer" : "default",
-                  marginBottom: customResults ? 12 : 0,
-                }}
-              >
-                {customLoading ? "분석 중..." : "이 지역 추천 받기"}
-              </button>
-
-              {customResults && (
-                <div style={{ marginTop: 4 }}>
-                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
-                    입지점수 Top {customResults.length} · 숫자 마커로 지도에 표시됨
+              {customResults ? (
+                /* ── 결과 뷰 ── */
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: "#6B7280" }}>입지점수 Top {customResults.length} · 숫자 마커로 지도에 표시됨</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#2563EB", background: "#EFF6FF", border: "1px solid rgba(37,99,235,0.2)", borderRadius: 20, padding: "2px 8px", whiteSpace: "nowrap", flexShrink: 0, marginLeft: 8 }}>
+                      <CalcCatIcon cat={customCategory} size={11} color="#2563EB" /> {customCategory}
+                    </span>
                   </div>
                   {customResults.map((r) => (
                     <div key={r.rank} style={{
@@ -5001,15 +5098,93 @@ export default function MapPage() {
                       ))}
                     </div>
                   ))}
-                </div>
+                </>
+              ) : (
+                /* ── 업종 선택 뷰 ── */
+                <>
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ fontSize: 12, color: "#6B7280", margin: "0 0 8px" }}>업종 선택</p>
+                    <input
+                      type="text"
+                      placeholder="업종 검색..."
+                      value={customSearchQuery}
+                      onChange={(e) => { setCustomSearchQuery(e.target.value); setCustomDrillGroup(e.target.value ? "__search__" : null); }}
+                      style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 8, background: "#F9FAFB", border: "1.5px solid #E5E7EB", color: "#111827", outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+                    />
+                    {customSearchQuery ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        {Object.values(CATEGORY_GROUPS).flat().filter((c, i, a) => a.indexOf(c) === i && c.includes(customSearchQuery)).map(cat => (
+                          <button key={cat} onClick={() => { setCustomCategory(cat); setCustomSearchQuery(""); setCustomDrillGroup(null); }}
+                            style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #2563EB" : "1.5px solid #E5E7EB", background: customCategory === cat ? "rgba(37,99,235,0.1)" : "#F9FAFB", color: customCategory === cat ? "#2563EB" : "#374151" }}>
+                            <CalcCatIcon cat={cat} size={13} />
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+                    ) : customDrillGroup ? (
+                      <>
+                        <button onClick={() => setCustomDrillGroup(null)} style={{ fontSize: 12, color: "#2563EB", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 8px 0" }}>
+                          ← {customDrillGroup}
+                        </button>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          {CATEGORY_GROUPS[customDrillGroup].map(cat => (
+                            <button key={cat} onClick={() => { setCustomCategory(cat); setCustomDrillGroup(null); }}
+                              style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 9px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: customCategory === cat ? "1.5px solid #2563EB" : "1.5px solid #E5E7EB", background: customCategory === cat ? "rgba(37,99,235,0.1)" : "#F9FAFB", color: customCategory === cat ? "#2563EB" : "#374151" }}>
+                              <CalcCatIcon cat={cat} size={13} />
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {customCategory && (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0", marginBottom: 2 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#2563EB" }}>
+                              <CalcCatIcon cat={customCategory} size={13} color="#2563EB" /> {customCategory}
+                            </span>
+                            <button onClick={() => setCustomCategory("")} style={{ fontSize: 11, color: "#6B7280", background: "none", border: "none", cursor: "pointer" }}>✕ 해제</button>
+                          </div>
+                        )}
+                        {DRILL_GROUPS.map(group => {
+                          const Meta = DRILL_GROUP_META[group];
+                          const GroupIcon = Meta.icon;
+                          return (
+                            <button key={group} onClick={() => setCustomDrillGroup(group)}
+                              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(37,99,235,0.08)"; e.currentTarget.style.color = "#2563EB"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
+                            >
+                              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <GroupIcon size={15} color={Meta.iconColor} strokeWidth={1.8} /> {group}
+                              </span>
+                              <span style={{ color: "#6B7280", fontSize: 11 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { if (customCategory) fetchCustomSpot(customCategory); }}
+                    disabled={!customCategory || customLoading}
+                    style={{
+                      width: "100%", padding: "9px 0", borderRadius: 8, border: "none",
+                      background: customCategory ? "#2563EB" : "rgba(0,0,0,0.06)",
+                      color: customCategory ? "#fff" : "#666", fontWeight: 700, fontSize: 14, cursor: customCategory ? "pointer" : "default",
+                    }}
+                  >
+                    {customLoading ? "분석 중..." : "이 지역 추천 받기"}
+                  </button>
+                </>
               )}
 
               <button
                 onClick={() => { startDrawing(); }}
                 style={{
                   width: "100%", marginTop: 10, padding: "7px 0", borderRadius: 8,
-                  border: "1px solid rgba(245,158,11,0.3)", background: "transparent",
-                  color: "#F59E0B", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  border: "1px solid rgba(37,99,235,0.3)", background: "transparent",
+                  color: "#2563EB", fontSize: 12, fontWeight: 600, cursor: "pointer",
                 }}
               >다시 그리기</button>
             </>
@@ -5551,7 +5726,7 @@ const AI_MODE_META = {
   // color: 카드 왼쪽 border + 아이콘 배경 틴트에 사용
   dong:            { icon: "📍", title: "업종 선택 → 행정동 추천",   desc: "창업할 업종을 선택하면 최적의 상권을 추천합니다", color: "#93C5FD", rgb: "147,197,253"  },
   industry:        { icon: "🏪", title: "행정동 선택 → 업종 추천",   desc: "관심 지역을 입력하면 유망 업종을 추천합니다",   color: "#3B82F6", rgb: "59,130,246"   },
-  score:           { icon: "📊", title: "행정동 · 업종 적합도 점수", desc: "특정 지역과 업종 조합의 상세 점수를 분석합니다", color: "#38BDF8", rgb: "56,189,248"   },
+  score:           { icon: "📊", title: "행정동 · 업종 적합도 점수", desc: "특정 지역과 업종 조합의 상세 점수를 분석합니다", color: "#60A5FA", rgb: "56,189,248"   },
   gu:              { icon: "🗺️", title: "구 · 업종 선택 → 상권 추천", desc: "구와 업종을 선택하면 행정동·길단위 상권을 추천합니다", color: "#A78BFA", rgb: "167,139,250" },
   compare_region:  { icon: "⚖️", title: "지역 비교",               desc: "업종을 선택하고 두 지역의 상권 지표를 비교합니다",  color: "#34D399", rgb: "52,211,153"   },
   compare_industry:{ icon: "📈", title: "업종 비교",               desc: "한 지역 안에서 두 업종의 주요 지표를 비교합니다",  color: "#F59E0B", rgb: "245,158,11"   },

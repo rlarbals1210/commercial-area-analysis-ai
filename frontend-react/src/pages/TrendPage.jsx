@@ -5,6 +5,7 @@ import {
   Scissors, Car, Music, Monitor, Dumbbell, Fish, Home, Landmark,
   Plane, Building2, Shirt, Eye, Gem, Stethoscope, Leaf, ShoppingCart,
   Zap, Wrench, ChefHat, Croissant, Cookie, Store, Smartphone,
+  Drumstick, Handbag, CircleDot, Flag, Palette, Paintbrush, SportShoe,
 } from "lucide-react";
 
 const AGE_CAT_LIST = ["PC방","가방","가전제품","가전제품수리","골프연습장","기타 B2B서비스","네일숍","노래방","당구장","미곡판매","미용실","반찬가게","베이커리/디저트","분식/간식","생활용품 소매","섬유제품","세탁소","수산물판매","숙박","슈퍼마켓","스포츠 강습","스포츠클럽","신발","안경","애완동물","양식/기타외식","예술학원","외국어학원","육류판매","의료기기","의약품","인테리어","일반교습학원","일반의류","일반의원","일식","자동차수리/미용","주점","중식","청과상","치과의원","치킨전문점","카페","컴퓨터및주변장치판매","패스트푸드","편의점","피부관리실","한식","한의원","핸드폰","화장품"];
@@ -122,18 +123,18 @@ const CAT_ICON = {
   "한식": Utensils, "중식": Utensils, "일식": Fish, "양식/기타외식": ChefHat,
   "카페": Coffee, "주점": Beer, "패스트푸드/치킨": Utensils, "분식/간식": Cookie,
   "베이커리/디저트": Croissant, "편의점": Store, "슈퍼마켓": ShoppingCart,
-  "생활용품 소매": ShoppingBag, "화장품": Scissors, "의류": Shirt, "일반의류": Shirt,
-  "신발": ShoppingBag, "안경": Eye, "귀금속": Gem,
+  "생활용품 소매": ShoppingBag, "화장품": Palette, "의류": Shirt, "일반의류": Shirt,
+  "신발": SportShoe, "안경": Eye, "귀금속": Gem,
   "일반의원": Stethoscope, "치과의원": Stethoscope, "한의원": Leaf, "의약품": Pill,
   "일반교습학원": GraduationCap, "예체능학원": Music, "어학원": GraduationCap,
-  "미용실": Scissors, "네일숍": Scissors, "피부관리실": Leaf, "자동차수리/미용": Car,
+  "미용실": Scissors, "네일숍": Paintbrush, "피부관리실": Leaf, "자동차수리/미용": Car,
   "세탁소": Shirt, "수리/세탁": Wrench, "노래방": Music, "PC방": Monitor,
-  "당구장": Dumbbell, "골프연습장": Dumbbell, "스포츠클럽": Dumbbell,
+  "당구장": CircleDot, "골프연습장": Flag, "스포츠클럽": Dumbbell,
   "수산물판매": Fish, "반찬가게": Utensils, "육류판매": Utensils,
   "부동산": Home, "금융": Landmark, "여행": Plane,
   "B2B 서비스": Building2, "뷰티/화장품": Scissors, "식품 소매": ShoppingBag,
   "컴퓨터및주변장치판매": Monitor, "가전제품": Zap, "의료기기": Stethoscope,
-  "핸드폰": Smartphone, "치킨전문점": Utensils,
+  "핸드폰": Smartphone, "치킨전문점": Drumstick, "가방": Handbag,
 };
 
 // 카테고리 그룹별 파란색 계열 색상
