@@ -192,6 +192,18 @@ const STARTUP_COSTS = {
   "기타 B2B서비스":         { "인테리어_만원per평": 30,  "설비_집기_만원": 300,  "초기재고_만원": 0,    "보증금_임대료배수": 10, "관리비_공과금_만원per월": 10, "원가율_%": 10, "특이사항": "재고 없음, 인건비 비중 높음" },
 };
 
+// 업종별 예상 창업비용 계산 (20평, 월임대료 300만원 기준, 단위: 만원)
+function calcStartupCost(category, pyeong = 20, monthlyRent = 300) {
+  const c = STARTUP_COSTS[category];
+  if (!c) return null;
+  return (
+    c["인테리어_만원per평"] * pyeong
+    + c["설비_집기_만원"]
+    + c["초기재고_만원"]
+    + c["보증금_임대료배수"] * monthlyRent
+  );
+}
+
 const CATEGORY_GROUPS = {
   "전체": Object.keys(STARTUP_COSTS),
   "음식": ["한식", "분식/간식", "베이커리/디저트", "중식", "일식", "양식/기타외식", "치킨전문점", "패스트푸드", "카페", "주점"],
@@ -332,6 +344,25 @@ export default function MapPage() {
   const [markerToast, setMarkerToast] = useState(false);
   const [markerPanelOpen, setMarkerPanelOpen] = useState(false);
 
+  // ── 프리미엄 AI 추천 상태 ──
+  const [premiumModalOpen, setPremiumModalOpen] = useState(false);
+  const [premiumIndustryQuery, setPremiumIndustryQuery] = useState("");
+  const [premiumIndustrySelected, setPremiumIndustrySelected] = useState(null);
+  const [premiumIndustrySkipped, setPremiumIndustrySkipped] = useState(false);
+  const [premiumTopLoading, setPremiumTopLoading] = useState(false);
+  const [premiumTopResults, setPremiumTopResults] = useState(null); // { results: [], quarter: ... }
+  const [premiumStep, setPremiumStep] = useState("q1"); // "q1" | "q2"
+  const [premiumRegionQuery, setPremiumRegionQuery] = useState("");
+  const [premiumRegionSugg, setPremiumRegionSugg] = useState([]);
+  const [premiumRegionSelected, setPremiumRegionSelected] = useState(null);
+  const [premiumBudget, setPremiumBudget] = useState(null);
+  const [premiumRegionSkipped, setPremiumRegionSkipped] = useState(false);
+  const [premiumBudgetSkipped, setPremiumBudgetSkipped] = useState(false);
+  const [premiumResultLoading, setPremiumResultLoading] = useState(false);
+  const [premiumResult, setPremiumResult] = useState(null); // { type: "dong"|"gu", data: ... }
+  const [premiumMapPickMode, _setPremiumMapPickMode] = useState(false); // 지도에서 지역 선택 모드
+  const [premiumMapPickCandidate, setPremiumMapPickCandidate] = useState(null); // { dong?, gu, type }
+
   // ── AI 추천 상태 ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -448,6 +479,8 @@ export default function MapPage() {
   const [customDrillGroup, setCustomDrillGroup] = useState(null);
   const [customSearchQuery, setCustomSearchQuery] = useState("");
   const drawingModeRef = useRef(false);
+  const premiumMapPickModeRef = useRef(false);
+  const setPremiumMapPickMode = (v) => { premiumMapPickModeRef.current = v; _setPremiumMapPickMode(v); };
   const drawingPointsRef = useRef([]);
   const drawingPolylineRef = useRef(null);
   const drawingPreviewRef = useRef(null);
@@ -696,6 +729,11 @@ export default function MapPage() {
         });
         kakao.maps.event.addListener(polygon, "click", () => {
           if (drawingModeRef.current) return;
+          // 프리미엄 지도 선택 모드 — ref와 state 둘 다 체크
+          if (premiumMapPickModeRef.current) {
+            setPremiumMapPickCandidate({ dong: dongName, gu: guName, type: "dong" });
+            return;
+          }
           // 모든 행정동 딤처리, 선택된 것만 강조
           polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
             ps.forEach(p => p.setOptions(dn === dongName ? POLYGON_DONG_SELECTED : POLYGON_DIMMED));
@@ -804,15 +842,20 @@ export default function MapPage() {
         });
         kakao.maps.event.addListener(polygon, "click", () => {
           if (drawingModeRef.current) return;
+          // 프리미엄 지도 선택 모드
+          if (premiumMapPickModeRef.current) {
+            setPremiumMapPickCandidate({ gu: guName, type: "gu" });
+            return;
+          }
           // 모든 구 딤처리, 선택된 구만 투명(원래 지도 색)
           guPolygonGroupsRef.current.forEach(({ guName: gn, polygons: ps }) => {
             ps.forEach(p => p.setOptions(gn === guName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
           });
           selectedGuGroupRef.current = { guName, polygons };
-          selectedGroupRef.current = null; // 이전 행정동 선택 초기화
+          selectedGroupRef.current = null;
           setSidebarCollapsed(false);
           setSelectedGu(guName);
-          setSelectedDong(null); // 행정동 패널 닫기
+          setSelectedDong(null);
           // 선택한 구 중심으로 이동 + 구 모드 유지하면서 줌인
           const map = mapInstanceRef.current;
           if (map) {
@@ -5150,6 +5193,916 @@ export default function MapPage() {
         </div>
       )}
 
+      {/* ── 프리미엄 AI 추천 모달 ── */}
+      {/* 프리미엄 지도 선택 모드 — 좌상단 패널 */}
+      {premiumMapPickMode && (
+        <div style={{ position: "fixed", top: NAV_HEIGHT + 16, left: 16, zIndex: 3000, width: 280, background: "#fff", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", border: "1.5px solid #E5E7EB", overflow: "hidden" }}>
+          {/* 헤더 */}
+          <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid #F3F4F6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>지역 선택</span>
+            </div>
+            <button
+              onClick={() => { setPremiumMapPickMode(false); setPremiumMapPickCandidate(null); setPremiumModalOpen(true); }}
+              style={{ fontSize: 16, color: "#9CA3AF", background: "none", border: "none", cursor: "pointer", lineHeight: 1, padding: 0 }}
+            >✕</button>
+          </div>
+
+          {/* 안내 or 선택 결과 */}
+          {!premiumMapPickCandidate ? (
+            <div style={{ padding: "20px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 28, marginBottom: 10 }}>🗺️</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>지도에서 지역을 클릭하세요</div>
+              <div style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 1.6 }}>구 또는 행정동을<br/>클릭하면 선택됩니다</div>
+            </div>
+          ) : (
+            <div
+              key={premiumMapPickCandidate.type === "dong"
+                ? `${premiumMapPickCandidate.gu}-${premiumMapPickCandidate.dong}`
+                : premiumMapPickCandidate.gu}
+              className="anim-pop-in"
+              style={{ padding: "16px" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: premiumMapPickCandidate.type === "gu" ? "#EFF6FF" : "#F0FDF4", color: premiumMapPickCandidate.type === "gu" ? "#3B82F6" : "#10B981" }}>
+                  {premiumMapPickCandidate.type === "gu" ? "구 전체" : "행정동"}
+                </span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "#111827" }}>
+                  {premiumMapPickCandidate.type === "dong"
+                    ? `${premiumMapPickCandidate.gu} ${premiumMapPickCandidate.dong}`
+                    : premiumMapPickCandidate.gu}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  const item = premiumMapPickCandidate;
+                  setPremiumRegionSelected(item);
+                  setPremiumRegionQuery(item.type === "dong" ? `${item.gu} ${item.dong}` : item.gu);
+                  setPremiumRegionSugg([]);
+                  setPremiumMapPickMode(false);
+                  setPremiumMapPickCandidate(null);
+                  setPremiumModalOpen(true);
+                }}
+                style={{ width: "100%", padding: "11px 0", background: "linear-gradient(135deg, #3B82F6, #8B5CF6)", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}
+              >이 지역 선택하기 →</button>
+              <button
+                onClick={() => setPremiumMapPickCandidate(null)}
+                style={{ width: "100%", padding: "9px 0", background: "#F3F4F6", color: "#6B7280", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              >다시 선택</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {premiumModalOpen && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setPremiumModalOpen(false)}
+        >
+          <div
+            className="anim-pop-in"
+            style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: "78vw", maxWidth: 1100, minWidth: 480, height: "78vh", maxHeight: 860, padding: "32px", boxSizing: "border-box", display: "flex", flexDirection: "column", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 20 }}>💎</span>
+                  <span style={{ fontSize: 19, fontWeight: 700, color: "#111827" }}>프리미엄 AI 추천</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "#6B9FE4", borderRadius: 4, padding: "1px 5px", lineHeight: 1.4 }}>beta</span>
+                </div>
+                <div style={{ fontSize: 13, color: "#6B7280", paddingLeft: 28 }}>
+                  {{ q1: "맞춤형 창업 입지를 분석해 드립니다", q2: "창업 희망 지역을 선택해 주세요", q3: "창업 예산을 선택해 주세요", result: "AI 분석 결과입니다" }[premiumStep]}
+                </div>
+              </div>
+              {/* 선택 요약 칩 — 선택된 값이 있으면 현재 step 포함 항상 표시 */}
+              {(() => {
+                const q1Done = premiumIndustrySelected || premiumIndustrySkipped;
+                const q2Done = premiumRegionSelected || premiumRegionSkipped;
+                const q3Done = premiumBudget || premiumBudgetSkipped;
+                if (!q1Done && !q2Done && !q3Done) return null;
+                const chipStyle = { display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "#F3F4F6", borderRadius: 8, border: "none", cursor: "pointer" };
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 12 }}>
+                    {premiumStep !== "q1" && (
+                      <button
+                        onClick={() => setPremiumStep(premiumStep === "result" ? "q3" : premiumStep === "q3" ? "q2" : "q1")}
+                        style={{ fontSize: 14, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: 0, flexShrink: 0 }}
+                      >← 이전</button>
+                    )}
+                    {q1Done && (
+                      <button onClick={() => setPremiumStep("q1")} style={chipStyle}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                      >
+                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>업종</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: premiumStep === "q1" ? "#3B82F6" : "#374151" }}>{premiumIndustrySelected ?? "선택 안 함"}</span>
+                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>✎</span>
+                      </button>
+                    )}
+                    {q2Done && (
+                      <button onClick={() => setPremiumStep("q2")} style={chipStyle}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                      >
+                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>지역</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: premiumStep === "q2" ? "#3B82F6" : "#374151" }}>{premiumRegionSelected ? premiumRegionQuery : "선택 안 함"}</span>
+                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>✎</span>
+                      </button>
+                    )}
+                    {q3Done && (
+                      <button onClick={() => setPremiumStep("q3")} style={chipStyle}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                      >
+                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>예산</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: premiumStep === "q3" ? "#3B82F6" : "#374151" }}>{premiumBudget?.label ?? "선택 안 함"}</span>
+                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>✎</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+              <button
+                onClick={() => setPremiumModalOpen(false)}
+                style={closeBtnStyle}
+              >✕</button>
+            </div>
+
+            <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 20 }}>
+              {/* ── Q1 ── */}
+              {premiumStep === "q1" && (<>{/* Q1 */}
+              <div style={{ marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#6B9FE4" }}>Q1</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginLeft: 8 }}>창업을 희망하는 업종이 있나요?</span>
+              </div>
+              <p style={{ fontSize: 13, color: "#6B7280", margin: "0 0 14px 0" }}>업종명을 검색하거나 목록에서 선택해 주세요.</p>
+
+              {/* 검색 인풋 */}
+              <div style={{ position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", border: "1.5px solid #D1D5DB", borderRadius: 10, padding: "10px 14px", gap: 8, background: "#F9FAFB", transition: "border-color 0.15s" }}
+                  onFocus={() => {}} onBlur={() => {}}
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                    <circle cx="8.5" cy="8.5" r="5.5" stroke="#9CA3AF" strokeWidth="1.8"/>
+                    <path d="M13 13l3.5 3.5" stroke="#9CA3AF" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                  <input
+                    autoFocus
+                    value={premiumIndustryQuery}
+                    onChange={(e) => { setPremiumIndustryQuery(e.target.value); setPremiumIndustrySelected(null); }}
+                    placeholder="예: 카페, 한식, 미용실..."
+                    style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 14, color: "#111827" }}
+                  />
+                  {premiumIndustryQuery && (
+                    <button
+                      onClick={() => { setPremiumIndustryQuery(""); setPremiumIndustrySelected(null); }}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 16, lineHeight: 1, padding: 0 }}
+                    >✕</button>
+                  )}
+                </div>
+
+                {/* 드롭다운 */}
+                {premiumIndustryQuery && !premiumIndustrySelected && (() => {
+                  const filtered = Object.keys(STARTUP_COSTS).filter(k => k.includes(premiumIndustryQuery));
+                  if (filtered.length === 0) return (
+                    <div style={{ marginTop: 8, padding: "10px 14px", background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 13, color: "#9CA3AF" }}>
+                      일치하는 업종이 없습니다
+                    </div>
+                  );
+                  return (
+                    <div style={{ marginTop: 6, background: "#fff", borderRadius: 10, border: "1.5px solid #E5E7EB", boxShadow: "0 4px 16px rgba(0,0,0,0.08)", maxHeight: 220, overflowY: "auto" }} className="no-scrollbar">
+                      {filtered.map(k => (
+                        <button
+                          key={k}
+                          onClick={() => { setPremiumIndustrySelected(k); setPremiumIndustryQuery(k); setPremiumTopResults(null); }}
+                          style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 16px", border: "none", background: "transparent", cursor: "pointer", fontSize: 14, color: "#111827" }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                        >{k}</button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* 선택 완료 표시 */}
+              {premiumIndustrySelected && (
+                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "rgba(107,159,228,0.08)", borderRadius: 10, border: "1px solid #6B9FE4" }}>
+                  <span style={{ fontSize: 13, color: "#1D4ED8", fontWeight: 600 }}>✓ {premiumIndustrySelected} 선택됨</span>
+                </div>
+              )}
+
+              {/* 업종 미정 옵션 카드 */}
+              {!premiumIndustrySelected && (
+                <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                  {/* 건너뛰기 */}
+                  <button
+                    onClick={() => setPremiumIndustrySkipped(v => !v)}
+                    style={{ flex: 1, textAlign: "left", padding: "14px 16px", border: `1.5px solid ${premiumIndustrySkipped ? "#6B9FE4" : "#E5E7EB"}`, borderRadius: 12, background: premiumIndustrySkipped ? "rgba(107,159,228,0.08)" : "#F9FAFB", cursor: "pointer", transition: "all 0.15s" }}
+                    onMouseEnter={(e) => { if (!premiumIndustrySkipped) { e.currentTarget.style.borderColor = "#D1D5DB"; e.currentTarget.style.background = "#F3F4F6"; } }}
+                    onMouseLeave={(e) => { if (!premiumIndustrySkipped) { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "#F9FAFB"; } }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 4 }}>건너뛰기 →</div>
+                    <div style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 1.5 }}>아직 못정했어요.<br />지역 추천 받고 정할래요.</div>
+                  </button>
+
+                  {/* 업종 추천받기 */}
+                  <button
+                    onClick={() => {
+                      if (premiumTopResults) { setPremiumTopResults(null); return; }
+                      setPremiumTopLoading(true);
+                      fetch("http://localhost:8000/api/recommend/top-industries/")
+                        .then(r => r.json())
+                        .then(data => { setPremiumTopResults(data); })
+                        .catch(() => setPremiumTopResults({ error: true }))
+                        .finally(() => setPremiumTopLoading(false));
+                    }}
+                    style={{ flex: 1, textAlign: "left", padding: "14px 16px", border: "1.5px solid #E5E7EB", borderRadius: 12, background: "#F9FAFB", cursor: "pointer", transition: "all 0.15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#6B9FE4"; e.currentTarget.style.background = "rgba(107,159,228,0.06)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "#F9FAFB"; }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 4 }}>💡 업종 추천받기</div>
+                    <div style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 1.5 }}>요즘 인기 업종 분석 및 추천</div>
+                  </button>
+                </div>
+              )}
+
+              {/* 업종 추천 로딩 */}
+              {premiumTopLoading && (
+                <div style={{ marginTop: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "20px 0", color: "#6B7280", fontSize: 14 }}>
+                  <div style={{ width: 18, height: 18, border: "2.5px solid #E5E7EB", borderTopColor: "#6B9FE4", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  서울 전체 업종 데이터 분석 중...
+                </div>
+              )}
+
+              {/* Top 10 업종 결과 */}
+              {premiumTopResults && !premiumTopResults.error && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>서울 전체 유망 업종 Top 10</span>
+                    <span style={{ fontSize: 11, color: "#9CA3AF" }}>{String(premiumTopResults.quarter).slice(0,4)}년 {String(premiumTopResults.quarter).slice(4)}분기 기준</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 14px", background: "#F8FAFF", borderRadius: 10, border: "1px solid #E0EAFF", marginBottom: 12 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>📊</span>
+                    <div style={{ fontSize: 12, color: "#4B5563", lineHeight: 1.7 }}>
+                      <span style={{ fontWeight: 700, color: "#374151" }}>추천 점수 산출 기준</span><br />
+                      AI 성장확률 <strong>40%</strong> · A등급 비율 <strong>20%</strong> · 점포당 매출 <strong>20%</strong> · 폐업률 낮을수록 <strong>10%</strong> · 포화도 낮을수록 <strong>10%</strong>을 종합해 서울 전체 행정동 데이터를 기반으로 산출합니다.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }} className="no-scrollbar">
+                    {premiumTopResults.results.map((item, i) => {
+                      const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                      const rankColor = i < 3 ? rankColors[i] : "#D1D5DB";
+                      const barWidth = Math.round(item.score);
+                      return (
+                        <button
+                          key={item.category}
+                          onClick={() => { setPremiumIndustrySelected(item.category); setPremiumIndustryQuery(item.category); setPremiumTopResults(null); }}
+                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, background: "#FAFAFA", cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#6B9FE4"; e.currentTarget.style.background = "rgba(107,159,228,0.06)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "#FAFAFA"; }}
+                        >
+                          {/* 순위 */}
+                          <span style={{ width: 26, height: 26, borderRadius: "50%", background: rankColor, color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                          {/* 업종명 + 바 */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{item.category}</span>
+                              <span style={{ fontSize: 12, color: "#6B7280", flexShrink: 0 }}>성장확률 {item.avg_성장확률}점</span>
+                            </div>
+                            <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${barWidth}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4, transition: "width 0.6s ease" }} />
+                            </div>
+                          </div>
+                          {/* 세부 지표 */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, color: "#10B981", fontWeight: 600 }}>A등급 {item.a_rate}%</span>
+                            <span style={{ fontSize: 11, color: "#9CA3AF" }}>폐업률 {item.avg_폐업률}%</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ fontSize: 12, color: "#9CA3AF", marginTop: 10, textAlign: "center" }}>업종을 클릭하면 바로 선택됩니다</p>
+                </div>
+              )}
+
+              {premiumTopResults?.error && (
+                <div style={{ marginTop: 16, padding: "12px 16px", background: "#FEF2F2", borderRadius: 10, fontSize: 13, color: "#EF4444" }}>
+                  데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+                </div>
+              )}
+
+              {/* 다음 버튼 */}
+              {!premiumTopResults?.results && (
+                <button
+                  disabled={!premiumIndustrySelected && !premiumIndustrySkipped}
+                  onClick={() => { if (premiumIndustrySelected || premiumIndustrySkipped) setPremiumStep("q2"); }}
+                  style={{ width: "100%", marginTop: 20, padding: "13px 0", background: (premiumIndustrySelected || premiumIndustrySkipped) ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" : "#E5E7EB", color: (premiumIndustrySelected || premiumIndustrySkipped) ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: (premiumIndustrySelected || premiumIndustrySkipped) ? "pointer" : "not-allowed", transition: "all 0.2s" }}
+                >
+                  다음 →
+                </button>
+              )}
+              </>)}
+
+              {/* ── Q2 ── */}
+              {premiumStep === "q2" && (
+                <>
+                  {/* Q2 질문 */}
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#6B9FE4" }}>Q2</span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginLeft: 8 }}>지역을 골라주세요</span>
+                  </div>
+                  <p style={{ fontSize: 13, color: "#6B7280", margin: "0 0 14px 0" }}>구 또는 행정동명을 검색해 주세요.</p>
+
+                  {/* 검색 인풋 */}
+                  <div style={{ position: "relative" }}>
+                    <div style={{ display: "flex", alignItems: "center", border: "1.5px solid #D1D5DB", borderRadius: 10, padding: "10px 14px", gap: 8, background: "#F9FAFB" }}>
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                        <circle cx="8.5" cy="8.5" r="5.5" stroke="#9CA3AF" strokeWidth="1.8"/>
+                        <path d="M13 13l3.5 3.5" stroke="#9CA3AF" strokeWidth="1.8" strokeLinecap="round"/>
+                      </svg>
+                      <input
+                        autoFocus
+                        value={premiumRegionQuery}
+                        onChange={(e) => {
+                          const q = e.target.value;
+                          setPremiumRegionQuery(q);
+                          setPremiumRegionSelected(null);
+                          setPremiumRegionSugg([]);
+                          if (!q.trim()) return;
+                          // "강남구" 또는 "강남구 세" 형태 모두 처리
+                          const matchedGu = REGIONS.find(g => q === g || q.startsWith(g + " ") || q.startsWith(g));
+                          if (matchedGu) {
+                            const dongQuery = q.slice(matchedGu.length).trim();
+                            fetch(`http://localhost:8000/api/search/regions/?gu=${encodeURIComponent(matchedGu)}`)
+                              .then(r => r.json())
+                              .then(d => {
+                                let results = d.results || [];
+                                if (dongQuery) results = results.filter(item => item.dong.includes(dongQuery));
+                                // 구 전체 옵션을 맨 앞에 추가 (행정동 검색어 없을 때만)
+                                if (!dongQuery) results = [{ gu: matchedGu, type: "gu" }, ...results];
+                                setPremiumRegionSugg(results);
+                              });
+                          } else {
+                            searchRegionSuggest(q, "all", setPremiumRegionSugg);
+                          }
+                        }}
+                        placeholder="예: 강남구, 역삼1동..."
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing && premiumRegionSugg.length > 0 && !premiumRegionSelected) {
+                            e.preventDefault();
+                            const first = premiumRegionSugg[0];
+                            setPremiumRegionSelected(first);
+                            setPremiumRegionQuery(first.dong ? `${first.gu} ${first.dong}`.trim() : first.gu);
+                            setPremiumRegionSugg([]);
+                          }
+                        }}
+                        style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 14, color: "#111827" }}
+                      />
+                      {premiumRegionQuery && (
+                        <button
+                          onClick={() => { setPremiumRegionQuery(""); setPremiumRegionSelected(null); setPremiumRegionSugg([]); }}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 16, lineHeight: 1, padding: 0 }}
+                        >✕</button>
+                      )}
+                    </div>
+
+                    {/* 드롭다운 */}
+                    {premiumRegionSugg.length > 0 && !premiumRegionSelected && (
+                      <div style={{ marginTop: 6, background: "#fff", borderRadius: 10, border: "1.5px solid #E5E7EB", boxShadow: "0 4px 16px rgba(0,0,0,0.08)", maxHeight: 240, overflowY: "auto" }} className="no-scrollbar">
+                        {premiumRegionSugg.map((item, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setPremiumRegionSelected(item);
+                              setPremiumRegionQuery(item.dong ? `${item.gu} ${item.dong}`.trim() : item.gu);
+                              setPremiumRegionSugg([]);
+                            }}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", textAlign: "left", padding: "10px 16px", border: "none", borderBottom: idx < premiumRegionSugg.length - 1 ? "1px solid #F9FAFB" : "none", background: item.type === "gu" ? "#F8FAFF" : "transparent", cursor: "pointer", fontSize: 14, color: "#111827" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = item.type === "gu" ? "#F8FAFF" : "transparent"}
+                          >
+                            <span style={{ fontWeight: item.type === "gu" ? 700 : 400 }}>
+                              {item.dong ? `${item.gu} ${item.dong}` : item.gu}
+                            </span>
+                            {item.type === "gu" && <span style={{ fontSize: 11, color: "#6B9FE4", fontWeight: 600 }}>구 전체</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 지도에서 선택하기 버튼 */}
+                  {!premiumRegionSelected && (
+                    <button
+                      onClick={() => {
+                        setPremiumMapPickMode(true);
+                        setPremiumMapPickCandidate(null);
+                        setPremiumModalOpen(false);
+                        // 기존 사이드바 패널 닫기 (겹침 방지)
+                        setSidebarCollapsed(true);
+                        setSelectedDong(null);
+                        setSelectedGu(null);
+                      }}
+                      style={{ width: "100%", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 0", border: "1.5px dashed #6B9FE4", borderRadius: 12, background: "rgba(107,159,228,0.05)", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#3B82F6", transition: "all 0.15s" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(107,159,228,0.12)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(107,159,228,0.05)"; }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      지도에서 선택하기
+                    </button>
+                  )}
+
+                  {/* 선택 완료 표시 */}
+                  {premiumRegionSelected && (
+                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "rgba(107,159,228,0.08)", borderRadius: 10, border: "1px solid #6B9FE4" }}>
+                      <span style={{ fontSize: 13, color: "#1D4ED8", fontWeight: 600 }}>✓ {premiumRegionQuery} 선택됨</span>
+                      <button onClick={() => { setPremiumRegionSelected(null); setPremiumRegionQuery(""); }} style={{ fontSize: 12, color: "#9CA3AF", background: "none", border: "none", cursor: "pointer" }}>변경</button>
+                    </div>
+                  )}
+
+                  {/* 건너뛰기 */}
+                  {!premiumRegionSelected && (
+                    <button
+                      onClick={() => setPremiumRegionSkipped(v => !v)}
+                      style={{ width: "100%", marginTop: 14, textAlign: "left", padding: "14px 16px", border: `1.5px solid ${premiumRegionSkipped ? "#6B9FE4" : "#E5E7EB"}`, borderRadius: 12, background: premiumRegionSkipped ? "rgba(107,159,228,0.08)" : "#F9FAFB", cursor: "pointer", transition: "all 0.15s" }}
+                      onMouseEnter={(e) => { if (!premiumRegionSkipped) { e.currentTarget.style.borderColor = "#D1D5DB"; e.currentTarget.style.background = "#F3F4F6"; } }}
+                      onMouseLeave={(e) => { if (!premiumRegionSkipped) { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "#F9FAFB"; } }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 4 }}>건너뛰기 →</div>
+                      <div style={{ fontSize: 12, color: "#9CA3AF" }}>아직 못정했어요. 업종·예산 기반으로 서울 전체에서 추천받을래요.</div>
+                    </button>
+                  )}
+
+                  {/* 다음 버튼 */}
+                  <button
+                    disabled={!premiumRegionSelected && !premiumRegionSkipped}
+                    onClick={() => { if (premiumRegionSelected || premiumRegionSkipped) setPremiumStep("q3"); }}
+                    style={{ width: "100%", marginTop: 14, padding: "13px 0", background: (premiumRegionSelected || premiumRegionSkipped) ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" : "#E5E7EB", color: (premiumRegionSelected || premiumRegionSkipped) ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: (premiumRegionSelected || premiumRegionSkipped) ? "pointer" : "not-allowed", transition: "all 0.2s" }}
+                  >
+                    다음 →
+                  </button>
+                </>
+              )}
+
+              {/* ── Q3 ── */}
+              {premiumStep === "q3" && (
+                <>
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#6B9FE4" }}>Q3</span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginLeft: 8 }}>창업 예산이 얼마나 되세요?</span>
+                  </div>
+                  <p style={{ fontSize: 13, color: "#6B7280", margin: "0 0 16px 0" }}>예산 범위에 맞는 업종과 입지를 분석해 드립니다.</p>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {[
+                      { label: "3천만원 미만",       sub: "소규모 창업 · 1인 운영",         min: 0,    max: 3000  },
+                      { label: "3천만원 ~ 5천만원",   sub: "중소형 매장 · 인테리어 포함",     min: 3000, max: 5000  },
+                      { label: "5천만원 ~ 1억원",     sub: "일반 매장 · 설비 구비",           min: 5000, max: 10000 },
+                      { label: "1억원 ~ 2억원",       sub: "프리미엄 매장 · 프랜차이즈",      min: 10000,max: 20000 },
+                      { label: "2억원 이상",          sub: "대형 매장 · 복합 업종",           min: 20000,max: null  },
+                    ].map((opt) => {
+                      const selected = premiumBudget?.label === opt.label;
+                      return (
+                        <button
+                          key={opt.label}
+                          onClick={() => { setPremiumBudget(opt); setPremiumBudgetSkipped(false); }}
+                          style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", border: `1.5px solid ${selected ? "#3B82F6" : "#E5E7EB"}`, borderRadius: 12, background: selected ? "rgba(59,130,246,0.06)" : "#F9FAFB", cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}
+                          onMouseEnter={(e) => { if (!selected) { e.currentTarget.style.borderColor = "#D1D5DB"; e.currentTarget.style.background = "#F3F4F6"; } }}
+                          onMouseLeave={(e) => { if (!selected) { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "#F9FAFB"; } }}
+                        >
+                          <span style={{ width: 20, height: 20, borderRadius: "50%", border: selected ? "none" : "2px solid #D1D5DB", background: selected ? "#3B82F6" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {selected && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff", display: "block" }} />}
+                          </span>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: selected ? 700 : 500, color: selected ? "#1D4ED8" : "#111827" }}>{opt.label}</div>
+                            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{opt.sub}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 건너뛰기 */}
+                  <button
+                    onClick={() => { setPremiumBudgetSkipped(v => !v); setPremiumBudget(null); }}
+                    style={{ width: "100%", marginTop: 10, textAlign: "left", padding: "14px 16px", border: `1.5px solid ${premiumBudgetSkipped ? "#6B9FE4" : "#E5E7EB"}`, borderRadius: 12, background: premiumBudgetSkipped ? "rgba(107,159,228,0.08)" : "#F9FAFB", cursor: "pointer", transition: "all 0.15s" }}
+                    onMouseEnter={(e) => { if (!premiumBudgetSkipped) { e.currentTarget.style.borderColor = "#D1D5DB"; e.currentTarget.style.background = "#F3F4F6"; } }}
+                    onMouseLeave={(e) => { if (!premiumBudgetSkipped) { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "#F9FAFB"; } }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 4 }}>건너뛰기 →</div>
+                    <div style={{ fontSize: 12, color: "#9CA3AF" }}>예산 고려 없이 성장성 기반으로만 추천받을래요.</div>
+                  </button>
+
+                  <button
+                    disabled={!premiumBudget && !premiumBudgetSkipped}
+                    onClick={() => {
+                      if (!premiumBudget && !premiumBudgetSkipped) return;
+                      const category = premiumIndustrySelected;
+                      const region = premiumRegionSelected;
+                      setPremiumResultLoading(true);
+                      setPremiumStep("result");
+
+                      if (category && region) {
+                        // 업종 O + 지역 O
+                        if (region.type === "gu") {
+                          fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(category)}&gu=${encodeURIComponent(region.gu)}`)
+                            .then(r => r.json())
+                            .then(data => setPremiumResult({ type: "gu", gu: region.gu, category, data }))
+                            .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
+                            .finally(() => setPremiumResultLoading(false));
+                        } else {
+                          Promise.all([
+                            fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(region.dong)}&category=${encodeURIComponent(category)}`).then(r => r.json()),
+                            fetch(`http://localhost:8000/api/recommend/gu-streets/?gu=${encodeURIComponent(region.gu)}&category=${encodeURIComponent(category)}`).then(r => r.json()),
+                          ])
+                            .then(([score, streets]) => setPremiumResult({ type: "dong", dong: region.dong, gu: region.gu, category, score, streets }))
+                            .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
+                            .finally(() => setPremiumResultLoading(false));
+                        }
+                      } else if (category && !region) {
+                        // 업종 O + 지역 X → 서울 전체 행정동 추천
+                        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(category)}`)
+                          .then(r => r.json())
+                          .then(data => setPremiumResult({ type: "gu", gu: "서울 전체", category, data }))
+                          .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
+                          .finally(() => setPremiumResultLoading(false));
+                      } else if (!category && region) {
+                        // 업종 X + 지역 O → 해당 지역 Top 업종 추천
+                        if (region.type === "gu") {
+                          fetch(`http://localhost:8000/api/recommend/gu-industry/?gu=${encodeURIComponent(region.gu)}`)
+                            .then(r => r.json())
+                            .then(data => setPremiumResult({ type: "industry_gu", gu: region.gu, data }))
+                            .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
+                            .finally(() => setPremiumResultLoading(false));
+                        } else {
+                          fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(region.dong)}`)
+                            .then(r => r.json())
+                            .then(data => setPremiumResult({ type: "industry_dong", dong: region.dong, gu: region.gu, data }))
+                            .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
+                            .finally(() => setPremiumResultLoading(false));
+                        }
+                      } else {
+                        // 업종 X + 지역 X → 서울 전체 Top 업종
+                        fetch(`http://localhost:8000/api/recommend/top-industries/`)
+                          .then(r => r.json())
+                          .then(data => setPremiumResult({ type: "industry_all", data }))
+                          .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
+                          .finally(() => setPremiumResultLoading(false));
+                      }
+                    }}
+                    style={{ width: "100%", marginTop: 14, padding: "13px 0", background: (premiumBudget || premiumBudgetSkipped) ? "linear-gradient(135deg, #3B82F6, #8B5CF6)" : "#E5E7EB", color: (premiumBudget || premiumBudgetSkipped) ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: (premiumBudget || premiumBudgetSkipped) ? "pointer" : "not-allowed", transition: "all 0.2s" }}
+                  >
+                    결과 보기 →
+                  </button>
+                </>
+              )}
+
+              {/* ── 결과 화면 ── */}
+              {premiumStep === "result" && (
+                <>
+                  {/* 다시 분석 버튼 */}
+                  <button
+                    onClick={() => { setPremiumStep("q3"); setPremiumResult(null); }}
+                    style={{ fontSize: 14, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "0 0 16px 0" }}
+                  >← 다시 설정</button>
+
+                  {/* 로딩 */}
+                  {premiumResultLoading && (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "60px 0", color: "#6B7280", fontSize: 14 }}>
+                      <div style={{ width: 28, height: 28, border: "3px solid #E5E7EB", borderTopColor: "#6B9FE4", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                      데이터를 분석하고 있습니다...
+                    </div>
+                  )}
+
+                  {/* 에러 */}
+                  {!premiumResultLoading && premiumResult?.error && (
+                    <div style={{ padding: "16px", background: "#FEF2F2", borderRadius: 12, fontSize: 14, color: "#EF4444" }}>
+                      {premiumResult.error}
+                    </div>
+                  )}
+
+                  {/* ── 예산 카드 (업종 선택 시 항상 표시) ── */}
+                  {!premiumResultLoading && premiumResult && !premiumResult.error && premiumBudget && premiumResult.category && (() => {
+                    const est = calcStartupCost(premiumResult.category);
+                    if (!est) return null;
+                    const budgetMax = premiumBudget.max;
+                    const fit = budgetMax === null || est <= budgetMax;
+                    return (
+                      <div style={{ marginBottom: 16, padding: "14px 16px", borderRadius: 12, border: `1.5px solid ${fit ? "#10B981" : "#F59E0B"}`, background: fit ? "rgba(16,185,129,0.05)" : "rgba(245,158,11,0.05)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div>
+                            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>
+                              {premiumResult.category} 예상 창업비용 <span style={{ fontSize: 10 }}>(20평·보증금 포함)</span>
+                            </div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: "#111827" }}>
+                              약 {est >= 10000 ? `${(est / 10000).toFixed(1)}억` : `${est.toLocaleString()}만`}원
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>선택 예산</div>
+                            <span style={{ fontSize: 13, fontWeight: 700, padding: "4px 12px", borderRadius: 20, background: fit ? "#10B981" : "#F59E0B", color: "#fff" }}>
+                              {fit ? "✓ 예산 적합" : "⚠ 예산 초과"} · {premiumBudget.label}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── 구 선택 결과: 행정동 추천 리스트 ── */}
+                  {!premiumResultLoading && premiumResult?.type === "gu" && (() => {
+                    const { gu, category, data } = premiumResult;
+                    const results = data?.results || [];
+                    const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
+                    return (
+                      <div>
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 4 }}>
+                            {gu} × {category} 추천 행정동
+                          </div>
+                          <div style={{ fontSize: 13, color: "#6B7280" }}>AI 성장확률·매출·유동인구를 종합한 Top {results.length} 행정동입니다</div>
+                        </div>
+                        {results.length === 0
+                          ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
+                          : results.map((item, i) => {
+                            const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                            return (
+                              <div key={item.dong} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA" }}>
+                                <span style={{ width: 26, height: 26, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                    <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{item.dong}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[item.grade] ?? "#6B7280", background: `${gradeColor[item.grade] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{item.grade}등급</span>
+                                  </div>
+                                  <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
+                                    <div style={{ height: "100%", width: `${item.score ?? item.성장확률 ?? 0}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4 }} />
+                                  </div>
+                                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280" }}>
+                                    <span>성장확률 <b style={{ color: "#374151" }}>{item.성장확률}점</b></span>
+                                    {item.점포당매출 > 0 && <span>점포당 매출 <b style={{ color: "#374151" }}>{Math.round(item.점포당매출 / 10000).toLocaleString()}만</b></span>}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        }
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── 행정동 선택 결과: 종합점수 + 길단위 상권 ── */}
+                  {/* ── 업종 X + 지역 O(구) 결과: 해당 구 Top 업종 ── */}
+                  {!premiumResultLoading && premiumResult?.type === "industry_gu" && (() => {
+                    const { gu, data } = premiumResult;
+                    const results = data?.results || [];
+                    const compColor = { "낮음": "#10B981", "중간": "#F59E0B", "높음": "#EF4444" };
+                    return (
+                      <div>
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 4 }}>{gu} 추천 업종 Top {results.length}</div>
+                          <div style={{ fontSize: 13, color: "#6B7280" }}>AI 성장확률·매출·경쟁강도를 종합한 창업 유망 업종입니다</div>
+                        </div>
+                        {results.length === 0
+                          ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
+                          : results.map((item, i) => {
+                            const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                            const est = premiumBudget ? calcStartupCost(item.통합카테고리) : null;
+                            const budgetFit = est === null ? null : (premiumBudget.max === null || est <= premiumBudget.max);
+                            return (
+                              <div key={item.통합카테고리} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA" }}>
+                                <span style={{ width: 26, height: 26, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                    <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{item.통합카테고리}</span>
+                                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                      {budgetFit !== null && (
+                                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: budgetFit ? "#10B981" : "#F59E0B", color: "#fff" }}>
+                                          {budgetFit ? "✓ 예산 적합" : "⚠ 초과"}
+                                        </span>
+                                      )}
+                                      <span style={{ fontSize: 11, fontWeight: 600, color: compColor[item.경쟁강도] ?? "#6B7280", background: `${compColor[item.경쟁강도] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>경쟁 {item.경쟁강도}</span>
+                                    </div>
+                                  </div>
+                                  <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
+                                    <div style={{ height: "100%", width: `${item.score ?? 0}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4 }} />
+                                  </div>
+                                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280" }}>
+                                    <span>성장확률 <b style={{ color: "#374151" }}>{item.avg_성장확률}점</b></span>
+                                    {item.총매출 > 0 && <span>구 내 총매출 <b style={{ color: "#374151" }}>{item.총매출 >= 1e8 ? `${(item.총매출 / 1e8).toFixed(0)}억` : `${Math.round(item.총매출 / 1e4).toLocaleString()}만`}</b></span>}
+                                    <span>점포수 <b style={{ color: "#374151" }}>{(item.총점포수 || 0).toLocaleString()}</b></span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        }
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── 업종 X + 지역 O(동) 결과: 해당 행정동 Top 업종 ── */}
+                  {!premiumResultLoading && premiumResult?.type === "industry_dong" && (() => {
+                    const { dong, gu, data } = premiumResult;
+                    const results = data?.results || [];
+                    const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
+                    return (
+                      <div>
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 4 }}>{dong} 추천 업종 Top {results.length}</div>
+                          <div style={{ fontSize: 13, color: "#6B7280" }}>{gu} · AI 성장확률·매출·경쟁강도를 종합한 창업 유망 업종입니다</div>
+                        </div>
+                        {results.length === 0
+                          ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
+                          : results.map((item, i) => {
+                            const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                            const est = premiumBudget ? calcStartupCost(item.category) : null;
+                            const budgetFit = est === null ? null : (premiumBudget.max === null || est <= premiumBudget.max);
+                            return (
+                              <div key={item.category} style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                                  <span style={{ width: 26, height: 26, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                                  <span style={{ fontSize: 14, fontWeight: 700, color: "#111827", flex: 1 }}>{item.category}</span>
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                    {budgetFit !== null && (
+                                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: budgetFit ? "#10B981" : "#F59E0B", color: "#fff" }}>
+                                        {budgetFit ? "✓ 적합" : "⚠ 초과"}
+                                      </span>
+                                    )}
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[item.등급] ?? "#6B7280", background: `${gradeColor[item.등급] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{item.등급}등급</span>
+                                  </div>
+                                </div>
+                                <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
+                                  <div style={{ height: "100%", width: `${item.score ?? 0}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4 }} />
+                                </div>
+                                <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280", flexWrap: "wrap", marginBottom: item.tags?.length > 0 ? 6 : 0 }}>
+                                  <span>성장확률 <b style={{ color: "#374151" }}>{item.성장확률}점</b></span>
+                                  {item.revenue > 0 && <span>월매출 <b style={{ color: "#374151" }}>{item.revenue >= 1e8 ? `${(item.revenue / 1e8).toFixed(1)}억` : `${Math.round(item.revenue / 1e4).toLocaleString()}만`}</b></span>}
+                                  <span>경쟁 <b style={{ color: "#374151" }}>{item.competition}</b></span>
+                                </div>
+                                {item.tags?.length > 0 && (
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    {item.tags.map(t => <span key={t} style={{ fontSize: 11, background: "#EFF6FF", color: "#3B82F6", borderRadius: 6, padding: "2px 7px" }}>{t}</span>)}
+                                  </div>
+                                )}
+                                {item.reason && <div style={{ fontSize: 12, color: "#6B7280", marginTop: 6 }}>{item.reason}</div>}
+                              </div>
+                            );
+                          })
+                        }
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── 업종 X + 지역 X 결과: 서울 전체 Top 업종 ── */}
+                  {!premiumResultLoading && premiumResult?.type === "industry_all" && (() => {
+                    const results = premiumResult.data?.results || [];
+                    return (
+                      <div>
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 4 }}>서울 전체 유망 업종 Top {results.length}</div>
+                          <div style={{ fontSize: 13, color: "#6B7280" }}>AI 성장확률·A등급 비율·점포당 매출·폐업률·포화도를 종합한 추천입니다</div>
+                        </div>
+                        {results.map((item, i) => {
+                          const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                          const est = premiumBudget ? calcStartupCost(item.category) : null;
+                          const budgetFit = est === null ? null : (premiumBudget.max === null || est <= premiumBudget.max);
+                          return (
+                            <div key={item.category} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA" }}>
+                              <span style={{ width: 26, height: 26, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                  <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{item.category}</span>
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                    {budgetFit !== null && (
+                                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: budgetFit ? "#10B981" : "#F59E0B", color: "#fff" }}>
+                                        {budgetFit ? "✓ 적합" : "⚠ 초과"}
+                                      </span>
+                                    )}
+                                    <span style={{ fontSize: 11, color: "#6B7280" }}>A등급 <b style={{ color: "#10B981" }}>{item.a_rate}%</b></span>
+                                  </div>
+                                </div>
+                                <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
+                                  <div style={{ height: "100%", width: `${item.score ?? 0}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4 }} />
+                                </div>
+                                <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280" }}>
+                                  <span>성장확률 <b style={{ color: "#374151" }}>{item.avg_성장확률}점</b></span>
+                                  {item.avg_점포당매출 > 0 && <span>점포당 매출 <b style={{ color: "#374151" }}>{item.avg_점포당매출.toLocaleString()}만</b></span>}
+                                  <span>폐업률 <b style={{ color: "#374151" }}>{(item.avg_폐업률 * 100).toFixed(1)}%</b></span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  {!premiumResultLoading && premiumResult?.type === "dong" && (() => {
+                    const { dong, gu, category, score, streets } = premiumResult;
+                    const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
+                    const grade = score?.grade ?? "-";
+                    const composite = score?.score ?? 0;
+                    const breakdown = score?.breakdown ?? [];
+                    const streetResults = streets?.results ?? [];
+                    return (
+                      <div style={{ display: "flex", gap: 20 }}>
+                        {/* 왼쪽: 행정동 종합 점수 */}
+                        <div style={{ flex: "0 0 260px" }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 4 }}>{dong}</div>
+                          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>{gu} · {category}</div>
+
+                          {/* 종합 점수 원형 */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF", marginBottom: 14 }}>
+                            <div style={{ position: "relative", width: 72, height: 72, flexShrink: 0 }}>
+                              <svg width="72" height="72" viewBox="0 0 72 72">
+                                <circle cx="36" cy="36" r="30" fill="none" stroke="#E5E7EB" strokeWidth="7" />
+                                <circle cx="36" cy="36" r="30" fill="none" stroke={gradeColor[grade] ?? "#6B9FE4"} strokeWidth="7"
+                                  strokeDasharray={`${(composite / 100) * 188.5} 188.5`}
+                                  strokeLinecap="round" transform="rotate(-90 36 36)" />
+                              </svg>
+                              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                                <span style={{ fontSize: 18, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{composite}</span>
+                                <span style={{ fontSize: 10, color: "#9CA3AF" }}>/ 100</span>
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}등급</div>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>{score?.summary ?? ""}</div>
+                            </div>
+                          </div>
+
+                          {/* Breakdown 게이지 */}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {breakdown.map(item => (
+                              <div key={item.label}>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#374151", marginBottom: 4 }}>
+                                  <span>{item.label}</span>
+                                  <span style={{ fontWeight: 700 }}>{item.score}점</span>
+                                </div>
+                                <div style={{ height: 6, background: "#F3F4F6", borderRadius: 4, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${item.score}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4, transition: "width 0.6s ease" }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* 장단점 */}
+                          {(score?.pros?.length > 0 || score?.cons?.length > 0) && (
+                            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+                              {(score.pros ?? []).map((p, i) => <div key={i} style={{ fontSize: 12, color: "#059669" }}>✓ {p}</div>)}
+                              {(score.cons ?? []).map((c, i) => <div key={i} style={{ fontSize: 12, color: "#DC2626" }}>✗ {c}</div>)}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 오른쪽: 길단위 상권 추천 */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 4 }}>{gu} 내 추천 상권</div>
+                          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>{category} 창업에 유리한 길단위 상권 Top {streetResults.length}</div>
+                          {streetResults.length === 0
+                            ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 13 }}>길단위 상권 데이터가 없습니다.</div>
+                            : streetResults.map((s, i) => {
+                              const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                              return (
+                                <div key={s.상권코드} style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                                    <span style={{ width: 24, height: 24, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                                    <span style={{ fontSize: 14, fontWeight: 700, color: "#111827", flex: 1 }}>{s.상권명}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[s.등급] ?? "#6B7280", background: `${gradeColor[s.등급] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{s.등급}등급</span>
+                                  </div>
+                                  <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
+                                    <div style={{ height: "100%", width: `${s.score ?? 0}%`, background: "linear-gradient(90deg, #10B981, #3B82F6)", borderRadius: 4 }} />
+                                  </div>
+                                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280", flexWrap: "wrap" }}>
+                                    <span>성장확률 <b style={{ color: "#374151" }}>{s.성장확률}점</b></span>
+                                    {s.revenue > 0 && <span>월매출 <b style={{ color: "#374151" }}>{s.revenue >= 1e8 ? `${(s.revenue / 1e8).toFixed(1)}억` : `${Math.round(s.revenue / 1e4).toLocaleString()}만`}</b></span>}
+                                    {s.총유동인구 > 0 && <span>유동인구 <b style={{ color: "#374151" }}>{s.총유동인구.toLocaleString()}</b></span>}
+                                  </div>
+                                  {s.tags?.length > 0 && (
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                                      {s.tags.map(t => <span key={t} style={{ fontSize: 11, background: "#EFF6FF", color: "#3B82F6", borderRadius: 6, padding: "2px 7px" }}>{t}</span>)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          }
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
       {/* ── 상단 네비게이션 바 ── */}
       <div style={{
@@ -5247,6 +6200,24 @@ export default function MapPage() {
             onMouseLeave={(e) => { if (!aiModalOpen) { e.currentTarget.style.color = "#444"; e.currentTarget.style.fontWeight = "500"; } }}
           >
             AI 추천
+          </button>
+
+          {/* 프리미엄 AI 추천 (beta) */}
+          <button
+            onClick={() => { setPremiumModalOpen(true); setPremiumStep("q1"); setPremiumIndustryQuery(""); setPremiumIndustrySelected(null); setPremiumIndustrySkipped(false); setPremiumTopResults(null); setPremiumRegionQuery(""); setPremiumRegionSugg([]); setPremiumRegionSelected(null); setPremiumRegionSkipped(false); setPremiumBudget(null); setPremiumBudgetSkipped(false); setPremiumResult(null); setPremiumResultLoading(false); }}
+            style={{
+              height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
+              color: "#444", fontSize: 14, fontWeight: 500, cursor: "pointer",
+              borderBottom: "none", display: "flex", alignItems: "center", gap: 4,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#111827"; e.currentTarget.style.fontWeight = "700"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#444"; e.currentTarget.style.fontWeight = "500"; }}
+          >
+            프리미엄 AI 추천
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: "#fff", background: "#6B9FE4",
+              borderRadius: 4, padding: "1px 5px", lineHeight: 1.4,
+            }}>beta</span>
           </button>
 
           {/* 구분선 */}
