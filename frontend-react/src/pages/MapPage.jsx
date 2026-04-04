@@ -3229,7 +3229,7 @@ export default function MapPage() {
           onClick={() => { setAiModalOpen(false); clearSpotMarkers(); setShowIndustryPicker(false); }}
         >
         <div
-          className="anim-pop-in no-scrollbar"
+          className="anim-pop-in"
           style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: 520, maxHeight: "88vh", overflowY: "auto", padding: "24px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -4528,7 +4528,7 @@ export default function MapPage() {
       {/* ── 창업비용 계산기 오버레이 ── */}
       {startupCalcOpen && (
         <div style={startupCalcOverlayStyle} onClick={() => { setStartupCalcOpen(false); setCalcResult(null); setCalcIndustry(null); setCalcRegion(""); setCalcDong(""); setCalcSize(null); setCalcFloor(null); setCalcWorkers(1); setCalcSearchQuery(""); setCalcDrillGroup(null); setCalcStep(1); }}>
-          <div style={startupCalcPanelStyle} onClick={(e) => e.stopPropagation()}>
+          <div className="no-scrollbar" style={startupCalcPanelStyle} onClick={(e) => e.stopPropagation()}>
 
             {/* 헤더 */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexShrink: 0 }}>
@@ -5631,6 +5631,8 @@ const startupCalcPanelStyle = {
   width: 520,
   maxHeight: "88vh",
   overflowY: "auto",
+  scrollbarWidth: "none",
+  msOverflowStyle: "none",
   padding: "24px 24px",
   boxSizing: "border-box",
 };
