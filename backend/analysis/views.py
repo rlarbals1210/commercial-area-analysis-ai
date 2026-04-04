@@ -2864,26 +2864,66 @@ def search_regions(request):
     """행정동/구 검색 자동완성 (GET)
     params:
       q    = 검색어
-      type = "dong" | "gu"
+      type = "dong" | "gu" | "all"
+      gu   = 구명 (구의 행정동 목록 조회 시)
     """
     q = request.GET.get("q", "").strip()
     region_type = request.GET.get("type", "dong")
+    gu_filter = request.GET.get("gu", "").strip()
+
+    # 구의 행정동 목록 조회
+    if gu_filter:
+        gu_code = next((k for k, v in _GU_CODE_MAP.items() if v == gu_filter), None)
+        if not gu_code:
+            return JsonResponse({"results": []})
+        dongs = list(
+            CommercialData.objects.filter(행정동코드__startswith=int(gu_code))
+            .values_list("행정동명", flat=True)
+            .distinct()
+            .order_by("행정동명")
+        )
+        return JsonResponse({"results": [{"dong": d, "gu": gu_filter, "type": "dong"} for d in dongs]})
+
     if not q:
         return JsonResponse({"results": []})
 
     if region_type == "gu":
         GU_LIST = list(_GU_CODE_MAP.values())
-        results = [g for g in GU_LIST if q in g]
+        results = [{"gu": g, "type": "gu"} for g in GU_LIST if q in g]
         return JsonResponse({"results": results[:10]})
 
-    # 행정동 검색
+    if region_type == "all":
+        out = []
+        # 구 매칭
+        GU_LIST = list(_GU_CODE_MAP.values())
+        for g in GU_LIST:
+            if q in g:
+                out.append({"gu": g, "type": "gu"})
+        # 행정동 매칭
+        dongs = list(
+            CommercialData.objects.filter(행정동명__icontains=q)
+            .values("행정동명", "행정동코드")
+            .distinct()
+            .order_by("행정동명")[:20]
+        )
+        seen = set()
+        for row in dongs:
+            name = row["행정동명"]
+            if name in seen:
+                continue
+            seen.add(name)
+            code_str = str(row["행정동코드"])[:5]
+            gu = _GU_CODE_MAP.get(code_str, "")
+            out.append({"dong": name, "gu": gu, "type": "dong"})
+        return JsonResponse({"results": out[:20]})
+
+    # 행정동 검색 (type="dong")
     dongs = list(
         CommercialData.objects.filter(행정동명__icontains=q)
         .values("행정동명", "행정동코드")
         .distinct()
         .order_by("행정동명")[:20]
     )
-    # 구명 추가
     out = []
     seen = set()
     for row in dongs:
@@ -2893,5 +2933,99 @@ def search_regions(request):
         seen.add(name)
         code_str = str(row["행정동코드"])[:5]
         gu = _GU_CODE_MAP.get(code_str, "")
-        out.append({"dong": name, "gu": gu})
+        out.append({"dong": name, "gu": gu, "type": "dong"})
     return JsonResponse({"results": out})
+
+
+def recommend_top_industries(request):
+    """서울 전체 기준 유망 업종 Top 10 추천
+    집계 기준:
+      - ScoreData: 업종별 평균 성장확률, A등급 비율
+      - CommercialData(최신 분기): 업종별 평균 점포당매출, 평균 폐업률, 평균 포화도
+    최종 점수 = 성장확률(40%) + A등급비율(20%) + 점포당매출(20%) - 폐업률(10%) - 포화도(10%)
+    """
+    # ── ScoreData 집계 ──
+    from django.db.models import FloatField, ExpressionWrapper, Case, When, Value
+    score_qs = (
+        ScoreData.objects
+        .values("통합카테고리")
+        .annotate(
+            avg_성장확률=Avg("성장확률"),
+            total=Count("id"),
+            a_count=Count(Case(When(등급="A", then=1), output_field=FloatField())),
+        )
+    )
+    score_map = {}
+    for row in score_qs:
+        cat = row["통합카테고리"]
+        score_map[cat] = {
+            "avg_성장확률": row["avg_성장확률"] or 0,
+            "a_rate": (row["a_count"] / row["total"] * 100) if row["total"] else 0,
+        }
+
+    # ── CommercialData 최신 분기 집계 ──
+    latest_q = CommercialData.objects.aggregate(max=Max("기준_년분기_코드"))["max"]
+    commercial_qs = (
+        CommercialData.objects
+        .filter(기준_년분기_코드=latest_q)
+        .values("통합카테고리")
+        .annotate(
+            avg_점포당매출=Avg("업종_점포당매출"),
+            avg_폐업률=Avg("폐업_률_평균"),
+            avg_포화도=Avg("업종_포화도"),
+            avg_점포수=Avg("점포수"),
+        )
+    )
+    commercial_map = {}
+    for row in commercial_qs:
+        commercial_map[row["통합카테고리"]] = {
+            "avg_점포당매출": row["avg_점포당매출"] or 0,
+            "avg_폐업률": row["avg_폐업률"] or 0,
+            "avg_포화도": row["avg_포화도"] or 0,
+            "avg_점포수": row["avg_점포수"] or 0,
+        }
+
+    # ── 교집합 업종만 사용 ──
+    cats = set(score_map.keys()) & set(commercial_map.keys())
+    if not cats:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    # ── 정규화 ──
+    def _norm(values):
+        mn, mx = min(values), max(values)
+        rng = mx - mn or 1
+        return {k: (v - mn) / rng * 100 for k, v in zip(cats, values)}
+
+    vals_성장확률  = [score_map[c]["avg_성장확률"]          for c in cats]
+    vals_a_rate    = [score_map[c]["a_rate"]                for c in cats]
+    vals_매출      = [commercial_map[c]["avg_점포당매출"]   for c in cats]
+    vals_폐업      = [commercial_map[c]["avg_폐업률"]       for c in cats]
+    vals_포화도    = [commercial_map[c]["avg_포화도"]       for c in cats]
+
+    norm_성장확률  = _norm(vals_성장확률)
+    norm_a_rate    = _norm(vals_a_rate)
+    norm_매출      = _norm(vals_매출)
+    norm_폐업      = _norm(vals_폐업)   # 낮을수록 좋으므로 역전
+    norm_포화도    = _norm(vals_포화도)  # 낮을수록 좋으므로 역전
+
+    results = []
+    for cat in cats:
+        final_score = (
+            norm_성장확률[cat] * 0.40
+            + norm_a_rate[cat]  * 0.20
+            + norm_매출[cat]    * 0.20
+            + (100 - norm_폐업[cat])  * 0.10
+            + (100 - norm_포화도[cat]) * 0.10
+        )
+        results.append({
+            "category":    cat,
+            "score":       round(final_score, 1),
+            "avg_성장확률": round(score_map[cat]["avg_성장확률"], 1),
+            "a_rate":      round(score_map[cat]["a_rate"], 1),
+            "avg_점포당매출": round(commercial_map[cat]["avg_점포당매출"] / 10000, 0),  # 만원 단위
+            "avg_폐업률":  round(commercial_map[cat]["avg_폐업률"], 2),
+            "avg_포화도":  round(commercial_map[cat]["avg_포화도"], 2),
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return JsonResponse({"results": results[:10], "quarter": latest_q})
