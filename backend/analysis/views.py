@@ -1223,7 +1223,7 @@ def recommend_score(request):
             {"label": "성장 추세",  "score": round(성장확률, 1), "max": 100},
             {"label": "매출 잠재력", "score": 매출_점수,         "max": 100},
             {"label": "유동인구",   "score": 유동인구_점수,      "max": 100},
-            {"label": "경쟁 강도",   "score": 경쟁강도_점수,     "max": 100},
+            {"label": "경쟁 우위",   "score": 경쟁강도_점수,     "max": 100},
         ],
         "pros": pros,
         "cons": cons,
@@ -1236,9 +1236,9 @@ def recommend_score(request):
 def _make_industry_reason(r: dict, dong: str) -> str:
     parts = []
     if r["성장확률"] >= 70:
-        parts.append(f"AI 성장 확률 {r['성장확률']}%로 높은 성장세가 예상됩니다")
+        parts.append(f"성장확률 {r['성장확률']}%로 높은 성장세가 예상됩니다")
     elif r["성장확률"] >= 55:
-        parts.append(f"AI 성장 확률 {r['성장확률']}%로 양호한 성장세입니다")
+        parts.append(f"성장확률 {r['성장확률']}%로 양호한 성장세입니다")
     if r["업종_포화도"] < 0.2:
         parts.append("업종 포화도가 낮아 신규 진입 여지가 충분합니다")
     elif r["업종_포화도"] < 0.4:
@@ -1248,7 +1248,7 @@ def _make_industry_reason(r: dict, dong: str) -> str:
     elif r["총유동인구"] >= 20000:
         parts.append("적정 수준의 유동인구가 확보된 지역입니다")
     if r["경쟁강도_norm"] < 0.33:
-        parts.append("경쟁 강도가 낮아 안정적인 창업 환경입니다")
+        parts.append("경쟁 우위가 높아 안정적인 창업 환경입니다")
     return ". ".join(parts) + "." if parts else f"{dong}에서 유망한 업종입니다."
 
 
@@ -1279,25 +1279,25 @@ def _make_score_summary(composite: float, dong: str, category: str, 경쟁강도
     else:
         base = f"{dong}은 {category} 창업 시 신중한 검토가 필요합니다."
 
-    if 경쟁강도 >= 0.66:  # 경쟁강도_norm (0~1)
-        base += " 경쟁 강도가 높아 차별화 전략이 중요합니다."
+    if 경쟁강도 >= 0.66:  # 경쟁강도_norm (0~1): 높을수록 경쟁 심함
+        base += " 경쟁이 치열해 차별화 전략이 중요합니다."
     elif 경쟁강도 < 0.33:
-        base += " 경쟁 강도가 낮아 안정적인 운영이 가능합니다."
+        base += " 경쟁 우위가 높아 안정적인 운영이 가능합니다."
     if 성장확률 >= 65:
-        base += f" AI 성장 확률 {round(성장확률, 1)}%로 업종 전망이 밝습니다."
+        base += f" 성장확률 {round(성장확률, 1)}%로 업종 전망이 밝습니다."
     return base
 
 
 def _make_score_pros_cons(r: dict) -> tuple:
     pros, cons = [], []
     if r["성장확률"] >= 65:
-        pros.append(f"AI 성장 확률 {round(r['성장확률'], 1)}%로 업종 전망 우수")
+        pros.append(f"성장확률 {round(r['성장확률'], 1)}%로 업종 전망 우수")
     else:
-        cons.append(f"AI 성장 확률 {round(r['성장확률'], 1)}%로 성장 가능성 주의 필요")
+        cons.append(f"성장확률 {round(r['성장확률'], 1)}%로 성장 가능성 주의 필요")
     if r["경쟁강도_norm"] < 0.33:
-        pros.append("경쟁 강도 낮아 안정적 운영 가능")
+        pros.append("경쟁 우위 높아 안정적 운영 가능")
     elif r["경쟁강도_norm"] >= 0.66:
-        cons.append("경쟁 강도 높음 — 차별화 전략 필요")
+        cons.append("경쟁이 치열함 — 차별화 전략 필요")
     if r["업종_포화도"] < 0.3:
         pros.append("업종 포화도 낮아 신규 진입 적기")
     elif r["업종_포화도"] >= 0.6:
