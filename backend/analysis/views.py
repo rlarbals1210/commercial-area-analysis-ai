@@ -57,6 +57,41 @@ def _get_street_geojson():
             _street_geojson = {}
     return _street_geojson
 
+# ── 길단위 상권 centroid 캐시 ────────────────────────────────────
+_street_centroids: dict | None = None
+_street_centroids_lock = threading.Lock()
+
+def _get_street_centroids() -> dict:
+    """street_boundaries.geojson에서 {상권코드: {lat, lng, dong}} 반환"""
+    global _street_centroids
+    if _street_centroids is not None:
+        return _street_centroids
+    with _street_centroids_lock:
+        if _street_centroids is not None:
+            return _street_centroids
+        gj = _get_street_geojson()
+        result = {}
+        for feat in gj.get("features", []):
+            props = feat.get("properties", {})
+            code = props.get("상권_코드")
+            if not code:
+                continue
+            geom = feat.get("geometry", {})
+            coords = geom.get("coordinates", [])
+            if geom.get("type") == "Polygon" and coords:
+                ring = coords[0]
+            elif geom.get("type") == "MultiPolygon" and coords:
+                ring = max(coords, key=lambda p: len(p[0]))[0]
+            else:
+                continue
+            if not ring:
+                continue
+            lng = sum(c[0] for c in ring) / len(ring)
+            lat = sum(c[1] for c in ring) / len(ring)
+            result[int(code)] = {"lat": round(lat, 6), "lng": round(lng, 6), "dong": props.get("행정동명", "")}
+        _street_centroids = result
+    return _street_centroids
+
 # ── 행정동 centroid 캐시 (카카오 마커용) ──────────────────────────
 _dong_centroids: dict | None = None
 _dong_centroids_lock = threading.Lock()
@@ -1233,8 +1268,6 @@ def recommend_score(request):
         return JsonResponse({"error": "dong, category 파라미터가 필요합니다."}, status=400)
 
     score_obj = ScoreData.objects.filter(행정동명=dong, 통합카테고리=category).first()
-    if not score_obj:
-        return JsonResponse({"error": "AI 점수 데이터가 없습니다."}, status=404)
 
     latest_q = (
         CommercialData.objects
@@ -1242,19 +1275,44 @@ def recommend_score(request):
         .aggregate(max=Max("기준_년분기_코드"))["max"]
     )
     c = CommercialData.objects.filter(행정동명=dong, 통합카테고리=category, 기준_년분기_코드=latest_q).first()
-    if not c:
-        return JsonResponse({"error": "상권 데이터가 없습니다."}, status=404)
 
     # 전국 기준 정규화 최대값
     all_rows = list(
         CommercialData.objects.filter(통합카테고리=category, 기준_년분기_코드=latest_q)
         .values("당월매출합", "총유동인구", "경쟁강도")
     )
+    if not all_rows:
+        return JsonResponse({"error": "상권 데이터가 없습니다."}, status=404)
+
     max_매출 = max((r["당월매출합"] or 0) for r in all_rows) or 1
     max_유동 = max((r["총유동인구"] or 0) for r in all_rows) or 1
     max_경쟁 = max((r["경쟁강도"] or 0) for r in all_rows) or 1
 
-    성장확률    = score_obj.성장확률 or 50.0
+    is_fallback = (score_obj is None) or (c is None)
+
+    if score_obj:
+        성장확률 = score_obj.성장확률 or 50.0
+    else:
+        avg = ScoreData.objects.filter(통합카테고리=category).aggregate(avg=Avg("성장확률"))["avg"]
+        성장확률 = round(avg, 1) if avg else 50.0
+
+    if c is None:
+        # CommercialData 없음 → 해당 동 전체 데이터 + 업종 서울 평균으로 대체
+        dong_c = CommercialData.objects.filter(행정동명=dong, 기준_년분기_코드=latest_q).first()
+        avg_agg = CommercialData.objects.filter(통합카테고리=category, 기준_년분기_코드=latest_q).aggregate(
+            avg_매출=Avg("당월매출합"), avg_유동=Avg("총유동인구"),
+            avg_경쟁=Avg("경쟁강도"), avg_포화=Avg("업종_포화도"),
+            avg_폐업=Avg("폐업_률_평균"), avg_개업=Avg("개업_율_평균"),
+        )
+
+        class _FakeC:
+            당월매출합    = avg_agg["avg_매출"] or 0
+            총유동인구    = dong_c.총유동인구 if dong_c else (avg_agg["avg_유동"] or 0)
+            경쟁강도      = 0  # 데이터 없음 = 경쟁자 없음
+            업종_포화도   = avg_agg["avg_포화"] or 0.5
+            폐업_률_평균  = avg_agg["avg_폐업"]
+            개업_율_평균  = avg_agg["avg_개업"]
+        c = _FakeC()
     매출        = c.당월매출합 or 0
     유동인구    = c.총유동인구 or 0
 
@@ -1276,6 +1334,7 @@ def recommend_score(request):
     )
 
     pros, cons = _make_score_pros_cons({
+        "composite": composite,
         "성장확률": 성장확률,
         "경쟁강도_norm": 경쟁강도_norm,
         "업종_포화도": c.업종_포화도 or 0.5,
@@ -1301,6 +1360,7 @@ def recommend_score(request):
         "dong": dong,
         "category": category,
         "quarter": latest_q,
+        "is_fallback": is_fallback,
     })
 
 
@@ -1343,46 +1403,82 @@ def _make_industry_tags(r: dict) -> list:
 def _make_score_summary(composite: float, dong: str, category: str, 경쟁강도: float, 성장확률: float) -> str:
     if composite >= 75:
         base = f"{dong}은 {category} 창업에 매우 적합한 지역입니다."
+        if 성장확률 >= 65:
+            base += f" 성장확률 {round(성장확률, 1)}%로 업종 전망도 밝습니다."
+        elif 경쟁강도 < 0.33:
+            base += " 경쟁 우위가 높아 안정적인 운영이 기대됩니다."
     elif composite >= 55:
         base = f"{dong}은 {category} 창업 시 평균 이상의 적합도를 보입니다."
+        if 경쟁강도 >= 0.66:
+            base += " 다만 경쟁이 다소 치열해 차별화가 필요합니다."
+        elif 성장확률 < 50:
+            base += f" 성장확률 {round(성장확률, 1)}%로 성장세에 주의가 필요합니다."
     elif composite >= 35:
-        base = f"{dong}은 {category} 창업에 보통 수준의 적합도를 보입니다."
+        base = f"{dong}은 {category} 창업에 다소 불리한 조건입니다."
+        if 성장확률 < 50:
+            base += f" 성장확률 {round(성장확률, 1)}%로 업종 전망이 밝지 않습니다."
+        if 경쟁강도 >= 0.66:
+            base += " 경쟁도 치열해 신중한 접근이 권장됩니다."
+        elif 경쟁강도 < 0.33:
+            base += " 경쟁자는 적지만 수요 자체가 제한적일 수 있습니다."
     else:
-        base = f"{dong}은 {category} 창업 시 신중한 검토가 필요합니다."
-
-    if 경쟁강도 >= 0.66:  # 경쟁강도_norm (0~1): 높을수록 경쟁 심함
-        base += " 경쟁이 치열해 차별화 전략이 중요합니다."
-    elif 경쟁강도 < 0.33:
-        base += " 경쟁 우위가 높아 안정적인 운영이 가능합니다."
-    if 성장확률 >= 65:
-        base += f" 성장확률 {round(성장확률, 1)}%로 업종 전망이 밝습니다."
+        base = f"{dong}은 {category} 창업에 부적합한 조건입니다. 다른 지역이나 업종을 검토하는 것을 권장합니다."
     return base
 
 
 def _make_score_pros_cons(r: dict) -> tuple:
+    """종합점수(composite)를 기준으로 pros/cons 비율을 조정해 반환"""
+    composite = r.get("composite", 50)
     pros, cons = [], []
+
+    # 성장확률
     if r["성장확률"] >= 65:
         pros.append(f"성장확률 {round(r['성장확률'], 1)}%로 업종 전망 우수")
+    elif r["성장확률"] >= 50:
+        cons.append(f"성장확률 {round(r['성장확률'], 1)}%로 성장세 다소 불투명")
     else:
-        cons.append(f"성장확률 {round(r['성장확률'], 1)}%로 성장 가능성 주의 필요")
+        cons.append(f"성장확률 {round(r['성장확률'], 1)}%로 성장 가능성 낮음")
+
+    # 경쟁강도
     if r["경쟁강도_norm"] < 0.33:
-        pros.append("경쟁 우위 높아 안정적 운영 가능")
+        # 경쟁자 없음: 점수 낮으면 이유 있는 것 — 중립 또는 주의
+        if composite >= 55:
+            pros.append("경쟁 점포 적어 선점 기회")
+        else:
+            cons.append("경쟁자 없음 — 수요 자체가 낮을 수 있음")
     elif r["경쟁강도_norm"] >= 0.66:
-        cons.append("경쟁이 치열함 — 차별화 전략 필요")
+        cons.append("경쟁 치열 — 차별화 전략 필수")
+
+    # 업종 포화도
     if r["업종_포화도"] < 0.3:
-        pros.append("업종 포화도 낮아 신규 진입 적기")
+        if composite >= 55:
+            pros.append("업종 포화도 낮아 신규 진입 적기")
+        else:
+            cons.append("포화도 낮으나 수요도 검증되지 않음")
     elif r["업종_포화도"] >= 0.6:
         cons.append("업종 포화도 높음 — 틈새 전략 필요")
+
+    # 유동인구
     if r["총유동인구"] >= 50000:
         pros.append("풍부한 유동인구로 고객 확보 유리")
     elif r["총유동인구"] < 10000:
         cons.append("유동인구 적어 고정 고객 확보 중요")
-    # 폐업_률_평균, 개업_율_평균은 이미 % 단위 (예: 5.0 = 5%)
+
+    # 폐업/개업률
     if r.get("폐업_률_평균") and r["폐업_률_평균"] >= 20:
-        cons.append(f"폐업률 {round(r['폐업_률_평균'], 1)}%로 주의 필요")
+        cons.append(f"폐업률 {round(r['폐업_률_평균'], 1)}%로 생존율 주의")
     elif r.get("개업_율_평균") and r["개업_율_평균"] >= 15:
-        pros.append(f"개업률 {round(r['개업_율_평균'], 1)}%로 활발한 창업 시장")
-    return pros[:3], cons[:3]
+        pros.append(f"개업률 {round(r['개업_율_평균'], 1)}%로 창업 활발한 시장")
+
+    # 점수대별 pros/cons 비율 조정
+    if composite >= 75:
+        return pros[:3], cons[:1]
+    elif composite >= 55:
+        return pros[:2], cons[:2]
+    elif composite >= 35:
+        return pros[:1], cons[:3]
+    else:
+        return [], cons[:3]
 
 
 def _make_reason(r: dict, 소분류: str) -> str:
@@ -1627,6 +1723,7 @@ def recommend_gu_streets(request):
         if s.get("등급") in ("A", "B"):
             tags.append(f"AI {s['등급']}등급")
 
+        centroid = _get_street_centroids().get(int(code), {})
         results.append({
             "상권코드": code,
             "상권명": s["상권_코드_명"],
@@ -1638,6 +1735,9 @@ def recommend_gu_streets(request):
             "월_평균_소득": round(소득),
             "매출_증감률": round(매출_증감률, 3),
             "tags": tags[:4],
+            "lat": centroid.get("lat"),
+            "lng": centroid.get("lng"),
+            "dong": centroid.get("dong", ""),
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)

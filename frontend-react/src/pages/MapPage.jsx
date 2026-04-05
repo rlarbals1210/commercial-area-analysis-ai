@@ -10,6 +10,8 @@ import {
   Signature, Calculator, MapPinned, Bot,
 } from "lucide-react";
 
+const API = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+
 const CALC_CAT_ICON = {
   "한식": Utensils, "중식": Utensils, "일식": Fish, "양식/기타외식": ChefHat,
   "카페": Coffee, "주점": Beer, "치킨전문점": Drumstick, "분식/간식": Cookie,
@@ -347,6 +349,8 @@ export default function MapPage() {
 
   // ── 프리미엄 AI 추천 상태 ──
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
+  const [premiumModalMinimized, setPremiumModalMinimized] = useState(false);
+  const [premiumFlyingIn, setPremiumFlyingIn] = useState(false);
   const [premiumIndustryQuery, setPremiumIndustryQuery] = useState("");
   const [premiumIndustrySelected, setPremiumIndustrySelected] = useState(null);
   const [premiumTopLoading, setPremiumTopLoading] = useState(false);
@@ -556,7 +560,7 @@ export default function MapPage() {
   // ── 창업비용 계산기 열릴 때 임대료 데이터 로드 ──
   useEffect(() => {
     if (startupCalcOpen && !calcGuRental) {
-      fetch("http://localhost:8000/api/rental/regions/")
+      fetch(`${API}/api/rental/regions/`)
         .then((r) => r.ok ? r.json() : null)
         .then((data) => { if (data) setCalcGuRental(data); })
         .catch(() => {});
@@ -571,7 +575,7 @@ export default function MapPage() {
     const results = premiumResult.data?.results || [];
     const dongs = results.map(r => r.dong).filter(Boolean);
     if (dongs.length === 0) { setPremiumTrendData(null); return; }
-    fetch(`http://localhost:8000/api/subcategory/trend/?subcategory=${encodeURIComponent(premiumSubcategorySelected)}&dongs=${encodeURIComponent(dongs.join(","))}`)
+    fetch(`${API}/api/subcategory/trend/?subcategory=${encodeURIComponent(premiumSubcategorySelected)}&dongs=${encodeURIComponent(dongs.join(","))}`)
       .then(r => r.json())
       .then(d => setPremiumTrendData(d.data || null))
       .catch(() => setPremiumTrendData(null));
@@ -634,7 +638,7 @@ export default function MapPage() {
       drawGuPolygons(map, guGeoJson, kakao);
       applyMode(map, map.getLevel());
       // 폴리곤 완성 후 즉시 구별 매출 순위 fetch
-      fetch("http://localhost:8000/api/gu-all-ranking/", {
+      fetch(`${API}/api/gu-all-ranking/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gu_dongs_map: guToDongsRef.current }),
@@ -1097,7 +1101,7 @@ export default function MapPage() {
     setStreetCount(0);
   }
 
-  function drawStreetPolygons(map, kakao, dongName) {
+  function drawStreetPolygons(map, kakao, dongName, selectCode = null) {
     clearStreetPolygons();
     const load = (geoJson) => {
       const features = geoJson.features.filter(
@@ -1112,12 +1116,13 @@ export default function MapPage() {
           ? geom.coordinates.flat()
           : geom.coordinates;
 
+        const isAutoSelected = selectCode !== null && String(상권_코드) === String(selectCode);
         const polygons = rings.map((ring) => {
           const path = ring.map(([lng, lat]) => new kakao.maps.LatLng(lat, lng));
           const polygon = new kakao.maps.Polygon({
             map,
             path,
-            ...POLYGON_STREET_DEFAULT,
+            ...(isAutoSelected ? POLYGON_STREET_SELECTED : POLYGON_STREET_DEFAULT),
           });
           polygon.setZIndex(10);
 
@@ -1142,7 +1147,7 @@ export default function MapPage() {
             setStreetSpotResults(null);
             setStreetSpotCategory(null);
             clearStreetSpotMarkers();
-            fetch(`http://localhost:8000/api/recommend/street-industry/?상권코드=${상권_코드}`)
+            fetch(`${API}/api/recommend/street-industry/?상권코드=${상권_코드}`)
               .then((r) => r.json())
               .then((data) => { setStreetResults(data); setStreetLoading(false); })
               .catch(() => setStreetLoading(false));
@@ -1152,6 +1157,12 @@ export default function MapPage() {
         });
 
         streetPolygonGroupsRef.current.push({ 상권코드: 상권_코드, 상권명: 상권_코드_명, polygons });
+
+        // 자동 선택 상권: selectedStreet 상태 및 분석 데이터 바로 로드
+        if (isAutoSelected) {
+          selectedStreetRef.current = { 상권코드: 상권_코드, 상권명: 상권_코드_명 };
+          setSelectedStreet({ 상권코드: 상권_코드, 상권명: 상권_코드_명 });
+        }
       });
       setStreetCount(streetPolygonGroupsRef.current.length);
     };
@@ -1184,7 +1195,7 @@ export default function MapPage() {
         dong: normalizeDongName(selectedDong.dongName),
         category: cat,
       });
-      return fetch(`http://localhost:8000/api/stores/?${params}`)
+      return fetch(`${API}/api/stores/?${params}`)
         .then((r) => r.json())
         .then((data) => data.stores || [])
         .catch(() => []);
@@ -1216,7 +1227,7 @@ export default function MapPage() {
   // 행정동 선택 시 전체 업종 점수 fetch
   useEffect(() => {
     if (!selectedDong) return;
-    fetch(`http://localhost:8000/api/score-all/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+    fetch(`${API}/api/score-all/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
       .then((r) => r.json())
       .then((data) => setScoreData(data.scores || []))
       .catch(() => setScoreData([]));
@@ -1231,7 +1242,7 @@ export default function MapPage() {
     }
     setAvailableQuarters([]);
     setSelectedQuarter(null);
-    fetch(`http://localhost:8000/api/quarters/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
+    fetch(`${API}/api/quarters/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`)
       .then((r) => r.json())
       .then((data) => setAvailableQuarters(data.quarters || []))
       .catch(() => setAvailableQuarters([]));
@@ -1247,8 +1258,8 @@ export default function MapPage() {
     setReportCategory("");
     setDongLoading(true);
     const url = selectedQuarter
-      ? `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&quarter=${selectedQuarter}`
-      : `http://localhost:8000/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
+      ? `${API}/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}&quarter=${selectedQuarter}`
+      : `${API}/api/analysis/?dong=${encodeURIComponent(normalizeDongName(selectedDong.dongName))}`;
     fetch(url)
       .then((r) => r.json())
       .then((data) => setDongData(data))
@@ -1268,7 +1279,7 @@ export default function MapPage() {
     setGuSelectedQuarter(null);
     const dongs = guToDongsRef.current[selectedGu] || [];
     if (!dongs.length) return;
-    fetch(`http://localhost:8000/api/gu-quarters/?dongs=${encodeURIComponent(dongs.join(","))}`)
+    fetch(`${API}/api/gu-quarters/?dongs=${encodeURIComponent(dongs.join(","))}`)
       .then((r) => r.json())
       .then((data) => setGuAvailableQuarters(data.quarters || []))
       .catch(() => setGuAvailableQuarters([]));
@@ -1281,7 +1292,7 @@ export default function MapPage() {
     if (!dongs.length) return;
     setGuData(null);
     setGuLoading(true);
-    fetch("http://localhost:8000/api/gu-analysis/", {
+    fetch(`${API}/api/gu-analysis/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1499,7 +1510,7 @@ export default function MapPage() {
 
     const coordinates = points.map((p) => [p.getLat(), p.getLng()]);
 
-    fetch("http://localhost:8000/api/recommend/custom-spot/", {
+    fetch(`${API}/api/recommend/custom-spot/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ coordinates, category }),
@@ -1537,7 +1548,7 @@ export default function MapPage() {
     setStreetSpotResults(null);
     setStreetSpotLoading(true);
 
-    fetch(`http://localhost:8000/api/recommend/street-spot/?상권코드=${encodeURIComponent(상권코드)}&category=${encodeURIComponent(category)}`)
+    fetch(`${API}/api/recommend/street-spot/?상권코드=${encodeURIComponent(상권코드)}&category=${encodeURIComponent(category)}`)
       .then((r) => r.json())
       .then((data) => {
         setStreetSpotLoading(false);
@@ -1591,7 +1602,7 @@ export default function MapPage() {
     setAiStep("spot_loading");
     console.log("[spot] step → spot_loading");
 
-    fetch(`http://localhost:8000/api/recommend/spot/?dong=${encodeURIComponent(dongName)}&category=${encodeURIComponent(category)}`)
+    fetch(`${API}/api/recommend/spot/?dong=${encodeURIComponent(dongName)}&category=${encodeURIComponent(category)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) { setAiStep("result"); alert(data.error); return; }
@@ -1646,7 +1657,7 @@ export default function MapPage() {
   // ── 지역 자동완성 검색 헬퍼 ──
   function searchRegionSuggest(query, type, setSugg) {
     if (!query.trim()) { setSugg([]); return; }
-    fetch(`http://localhost:8000/api/search/regions/?q=${encodeURIComponent(query)}&type=${type}`)
+    fetch(`${API}/api/search/regions/?q=${encodeURIComponent(query)}&type=${type}`)
       .then(r => r.json())
       .then(d => setSugg(d.results || []))
       .catch(() => setSugg([]));
@@ -1658,7 +1669,7 @@ export default function MapPage() {
     const nameB = cmpRegionType === "dong" ? cmpRegionBSelected?.dong : cmpRegionBSelected;
     if (!nameA || !nameB || !cmpRegionCat) return;
     setCompareRegionStep("loading");
-    fetch(`http://localhost:8000/api/compare/region/?type=${cmpRegionType}&a=${encodeURIComponent(nameA)}&b=${encodeURIComponent(nameB)}&category=${encodeURIComponent(cmpRegionCat)}`)
+    fetch(`${API}/api/compare/region/?type=${cmpRegionType}&a=${encodeURIComponent(nameA)}&b=${encodeURIComponent(nameB)}&category=${encodeURIComponent(cmpRegionCat)}`)
       .then(r => r.json())
       .then(data => { setCompareRegionResults(data); setCompareRegionStep("result"); })
       .catch(() => setCompareRegionStep("form"));
@@ -1669,7 +1680,7 @@ export default function MapPage() {
     const regionName = cmpIndRegionType === "dong" ? cmpIndRegionSelected?.dong : cmpIndRegionSelected;
     if (!regionName || !cmpIndCatA || !cmpIndCatB) return;
     setCompareIndustryStep("loading");
-    fetch(`http://localhost:8000/api/compare/industry/?region=${encodeURIComponent(regionName)}&region_type=${cmpIndRegionType}&cat_a=${encodeURIComponent(cmpIndCatA)}&cat_b=${encodeURIComponent(cmpIndCatB)}`)
+    fetch(`${API}/api/compare/industry/?region=${encodeURIComponent(regionName)}&region_type=${cmpIndRegionType}&cat_a=${encodeURIComponent(cmpIndCatA)}&cat_b=${encodeURIComponent(cmpIndCatB)}`)
       .then(r => r.json())
       .then(data => { setCompareIndustryResults(data); setCompareIndustryStep("result"); })
       .catch(() => setCompareIndustryStep("form"));
@@ -1693,7 +1704,7 @@ export default function MapPage() {
       setAiDongGuTab("dong");
       setAiGuRankResults(null);
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1711,7 +1722,7 @@ export default function MapPage() {
         .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
     } else if (mode === "industry") {
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1722,7 +1733,7 @@ export default function MapPage() {
         .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
     } else if (mode === "score") {
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1736,8 +1747,8 @@ export default function MapPage() {
       setAiGuStreetResults(null);
       setAiGuDongError(null);
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
-        fetch(`http://localhost:8000/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([dongData, streetData]) => {
@@ -1761,7 +1772,7 @@ export default function MapPage() {
         .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
     } else if (mode === "gu_overview") {
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/gu-industry/?gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/gu-industry/?gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1789,7 +1800,7 @@ export default function MapPage() {
     if (mode === "dong") {
       setAiGuRankResults(null);
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1810,7 +1821,7 @@ export default function MapPage() {
 
     if (mode === "industry") {
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1824,7 +1835,7 @@ export default function MapPage() {
 
     if (mode === "score") {
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
@@ -1841,8 +1852,8 @@ export default function MapPage() {
       setAiGuStreetResults(null);
       setAiGuDongError(null);
       Promise.all([
-        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
-        fetch(`http://localhost:8000/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
+        fetch(`${API}/api/recommend/gu-streets/?gu=${encodeURIComponent(aiGu)}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([dongData, streetData]) => {
@@ -1875,7 +1886,7 @@ export default function MapPage() {
     if (guAllRanking.length > 0) return;
     const guDongsMap = guToDongsRef.current;
     if (!guDongsMap || Object.keys(guDongsMap).length === 0) return;
-    fetch("http://localhost:8000/api/gu-all-ranking/", {
+    fetch(`${API}/api/gu-all-ranking/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ gu_dongs_map: guDongsMap }),
@@ -1953,11 +1964,36 @@ export default function MapPage() {
     }
   }
 
+  // ── 프리미엄 모달 열기 + 전체 초기화 ──
+  function openPremiumModal() {
+    setPremiumModalOpen(true);
+    setPremiumModalMinimized(false);
+    setPremiumFlyingIn(false);
+    setPremiumStep("q1");
+    setPremiumIndustryQuery("");
+    setPremiumIndustrySelected(null);
+    setPremiumIndustryDrillGroup(null);
+    setPremiumSubcategorySelected(null);
+    setPremiumSubcategorySugg([]);
+    setPremiumCatDrillSub(null);
+    setPremiumCatSubList([]);
+    setPremiumTopResults(null);
+    setPremiumTopLoading(false);
+    setPremiumRegionQuery("");
+    setPremiumRegionSugg([]);
+    setPremiumRegionSelected(null);
+    setPremiumBudget(null);
+    setPremiumResult(null);
+    setPremiumResultLoading(false);
+    setPremiumTrendData(null);
+  }
+
   // ── 프리미엄 결과 → 지도 이동 ──
   function navigatePremiumDong(dongName, guName) {
     const map = mapInstanceRef.current;
     if (!map || !window.kakao) return;
-    setPremiumModalOpen(false);
+    setPremiumFlyingIn(true);
+    setTimeout(() => { setPremiumFlyingIn(false); setPremiumModalMinimized(true); }, 500);
     const group = polygonGroupsRef.current.find(g => g.dongName === dongName && g.guName === guName)
       || polygonGroupsRef.current.find(g => g.dongName === dongName);
     if (group) {
@@ -1981,7 +2017,8 @@ export default function MapPage() {
   function navigatePremiumGu(guName) {
     const map = mapInstanceRef.current;
     if (!map || !window.kakao) return;
-    setPremiumModalOpen(false);
+    setPremiumFlyingIn(true);
+    setTimeout(() => { setPremiumFlyingIn(false); setPremiumModalMinimized(true); }, 500);
     guPolygonGroupsRef.current.forEach(({ guName: gn, polygons: ps }) => {
       ps.forEach(p => p.setOptions(gn === guName ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
     });
@@ -1997,6 +2034,68 @@ export default function MapPage() {
     setSidebarCollapsed(false);
     setSelectedDong(null);
     setSelectedGu(guName);
+  }
+
+  function navigatePremiumStreet(street, guName) {
+    const map = mapInstanceRef.current;
+    const kakao = window.kakao;
+    if (!map || !kakao) return;
+    setPremiumFlyingIn(true);
+    setTimeout(() => { setPremiumFlyingIn(false); setPremiumModalMinimized(true); }, 500);
+
+    if (!street.lat || !street.lng || !street.dong) {
+      // fallback: 구 전체 보기
+      navigatePremiumGu(guName);
+      return;
+    }
+
+    // 행정동 폴리곤 선택 해제 (길단위 상권 폴리곤으로 대체)
+    if (selectedGroupRef.current) {
+      selectedGroupRef.current.polygons.forEach(p => p.setOptions(POLYGON_DEFAULT));
+      selectedGroupRef.current = null;
+    }
+    // 행정동 폴리곤 dimmed 처리
+    polygonGroupsRef.current.forEach(({ dongName: dn, polygons: ps }) => {
+      ps.forEach(p => p.setOptions(dn === street.dong ? POLYGON_GU_SELECTED : POLYGON_DIMMED));
+    });
+
+    // 해당 상권 폴리곤 하나만 그리기
+    const drawSingle = (geoJson) => {
+      clearStreetPolygons();
+      const feature = geoJson.features.find(
+        (f) => String(f.properties.상권_코드) === String(street.상권코드)
+      );
+      if (!feature) return;
+      const { 상권_코드, 상권_코드_명 } = feature.properties;
+      const geom = feature.geometry;
+      const rings = geom.type === "MultiPolygon" ? geom.coordinates.flat() : geom.coordinates;
+      const polygons = rings.map((ring) => {
+        const path = ring.map(([lng, lat]) => new kakao.maps.LatLng(lat, lng));
+        const polygon = new kakao.maps.Polygon({ map, path, ...POLYGON_STREET_SELECTED });
+        polygon.setZIndex(10);
+        return polygon;
+      });
+      streetPolygonGroupsRef.current.push({ 상권코드: 상권_코드, 상권명: 상권_코드_명, polygons });
+      selectedStreetRef.current = { 상권코드: 상권_코드, 상권명: 상권_코드_명 };
+      setSelectedStreet({ 상권코드: 상권_코드, 상권명: 상권_코드_명 });
+      setStreetCount(1);
+    };
+    if (streetGeoJsonRef.current) {
+      drawSingle(streetGeoJsonRef.current);
+    } else {
+      fetch("/street_boundaries.geojson").then(r => r.json()).then(geoJson => {
+        streetGeoJsonRef.current = geoJson;
+        drawSingle(geoJson);
+      });
+    }
+
+    // 사이드바: 해당 행정동 선택 상태로 설정
+    setSelectedGu(null);
+    setSelectedDong({ dongName: street.dong, guName });
+    setSidebarCollapsed(false);
+
+    // 해당 상권 위치로 줌인
+    smoothZoom(map, 3, () => map.panTo(new kakao.maps.LatLng(street.lat, street.lng)));
   }
 
   function openAiModal({ region = null, industry = null, dong = "" } = {}) {
@@ -2031,7 +2130,7 @@ export default function MapPage() {
     setMenuOpen(false);
     setAiStep("loading");
     Promise.all([
-      fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(dongName.trim())}`).then((r) => r.json()),
+      fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dongName.trim())}`).then((r) => r.json()),
       new Promise((res) => setTimeout(res, 1200)),
     ])
       .then(([data]) => {
@@ -2261,7 +2360,7 @@ export default function MapPage() {
                 if (selectedDong) {
                   const dong = normalizeDongName(selectedDong.dongName);
                   const categoryParam = reportCategory ? `&category=${encodeURIComponent(reportCategory)}` : "";
-                  const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}${categoryParam}`;
+                  const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}${categoryParam}`;
                   const reqKeys = reportCategory ? catKeys : baseKeys;
                   const tryFetch = (left) => {
                     fetch(url).then((r) => r.json()).then((d) => {
@@ -2278,7 +2377,7 @@ export default function MapPage() {
                   const dongs = guToDongsRef.current[selectedGu] || [];
                   const reqKeys = reportCategory ? catKeys : baseKeys;
                   const tryFetch = (left) => {
-                    fetch("http://localhost:8000/api/gu-report/", {
+                    fetch(`${API}/api/gu-report/`, {
                       method: "POST", headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
                     }).then((r) => r.json()).then((d) => {
@@ -2905,7 +3004,7 @@ export default function MapPage() {
                   setReportCategoryLoading(true);
                   if (reportData._dong) {
                     const dong = reportData._dong;
-                    const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
+                    const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
                     const tryFetch = (left) => {
                       fetch(url).then((r) => r.json()).then((d) => {
                         const ai = d.ai_descriptions || {};
@@ -2923,7 +3022,7 @@ export default function MapPage() {
                     const gu = reportData._gu;
                     const dongs = guToDongsRef.current[gu] || [];
                     const tryFetch = (left) => {
-                      fetch("http://localhost:8000/api/gu-report/", {
+                      fetch(`${API}/api/gu-report/`, {
                         method: "POST", headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ gu, dongs, category: reportCategory }),
                       }).then((r) => r.json()).then((d) => {
@@ -2944,7 +3043,7 @@ export default function MapPage() {
                   setReportLoading(true);
                   if (reportData._dong) {
                     const dong = reportData._dong;
-                    const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}`;
+                    const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}`;
                     const tryFetch = (left) => {
                       fetch(url).then((r) => r.json()).then((d) => {
                         const ai = d.ai_descriptions || {};
@@ -2960,7 +3059,7 @@ export default function MapPage() {
                     const gu = reportData._gu;
                     const dongs = guToDongsRef.current[gu] || [];
                     const tryFetch = (left) => {
-                      fetch("http://localhost:8000/api/gu-report/", {
+                      fetch(`${API}/api/gu-report/`, {
                         method: "POST", headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ gu, dongs, category: "" }),
                       }).then((r) => r.json()).then((d) => {
@@ -3136,7 +3235,7 @@ export default function MapPage() {
                           const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
                           if (selectedDong) {
                             const dong = normalizeDongName(selectedDong.dongName);
-                            const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(cat)}`;
+                            const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(cat)}`;
                             const tryFetch = (left) => {
                               fetch(url).then((r) => r.json()).then((data) => {
                                 const ai = data.ai_descriptions || {};
@@ -3151,7 +3250,7 @@ export default function MapPage() {
                           } else if (selectedGu) {
                             const dongs = guToDongsRef.current[selectedGu] || [];
                             const tryFetch = (left) => {
-                              fetch("http://localhost:8000/api/gu-report/", {
+                              fetch(`${API}/api/gu-report/`, {
                                 method: "POST", headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
                               }).then((r) => r.json()).then((data) => {
@@ -3367,7 +3466,7 @@ export default function MapPage() {
                                         setGuDongRecommends(null);
                                         setGuDongRecommendOpen(false);
                                         const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
-                                        const url = `http://localhost:8000/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
+                                        const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
                                         const tryFetch = (left) => {
                                           fetch(url).then((r) => r.json()).then((data) => {
                                             const ai = data.ai_descriptions || {};
@@ -3393,7 +3492,7 @@ export default function MapPage() {
                               <button
                                 onClick={() => {
                                   setGuDongRecommendLoading(true);
-                                  fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(reportCategory)}&gu=${encodeURIComponent(reportData._gu)}`)
+                                  fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(reportCategory)}&gu=${encodeURIComponent(reportData._gu)}`)
                                     .then((r) => r.json())
                                     .then((data) => {
                                       if (data.error) { alert(data.error); return; }
@@ -3980,7 +4079,7 @@ export default function MapPage() {
                           clearTimeout(aiIndustrySuggestTimer.current);
                           if (v.trim().length >= 1) {
                             aiIndustrySuggestTimer.current = setTimeout(() => {
-                              fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                              fetch(`${API}/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
                                 .then((r) => r.json())
                                 .then((d) => { setAiIndustrySuggestions(d.suggestions || []); setAiIndustrySuggestOpen(true); })
                                 .catch(() => setAiIndustrySuggestions([]));
@@ -4037,7 +4136,7 @@ export default function MapPage() {
                           setAiDongSubMode("gu_rank");
                           setAiGuRankResults(null);
                           setAiStep("loading");
-                          fetch(`http://localhost:8000/api/recommend/gu/?업종=${encodeURIComponent(aiIndustry)}`)
+                          fetch(`${API}/api/recommend/gu/?업종=${encodeURIComponent(aiIndustry)}`)
                             .then((r) => r.json())
                             .then((data) => {
                               if (data.error) { alert(data.error); setAiStep("form"); return; }
@@ -4072,7 +4171,7 @@ export default function MapPage() {
                           clearTimeout(aiIndustrySuggestTimer.current);
                           if (v.trim().length >= 1) {
                             aiIndustrySuggestTimer.current = setTimeout(() => {
-                              fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                              fetch(`${API}/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
                                 .then((r) => r.json())
                                 .then((d) => { setAiIndustrySuggestions(d.suggestions || []); setAiIndustrySuggestOpen(true); })
                                 .catch(() => setAiIndustrySuggestions([]));
@@ -4300,7 +4399,7 @@ export default function MapPage() {
                             setPickerDrillGroup(null);
                             setAiStep("loading");
                             Promise.all([
-                              fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
+                              fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
                               new Promise((res) => setTimeout(res, 1200)),
                             ])
                               .then(([data]) => {
@@ -4869,7 +4968,7 @@ export default function MapPage() {
                               setPickerDrillGroup(null);
                               setAiStep("loading");
                               Promise.all([
-                                fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
+                                fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
                                 new Promise((res) => setTimeout(res, 1200)),
                               ])
                                 .then(([data]) => {
@@ -5029,7 +5128,7 @@ export default function MapPage() {
                       clearTimeout(calcSuggestTimer.current);
                       if (v.trim().length >= 1) {
                         calcSuggestTimer.current = setTimeout(() => {
-                          fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                          fetch(`${API}/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
                             .then((r) => r.json())
                             .then((d) => { setCalcSuggestions(d.suggestions || []); setCalcSuggestOpen(true); })
                             .catch(() => setCalcSuggestions([]));
@@ -5290,7 +5389,7 @@ export default function MapPage() {
               <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>지역 선택</span>
             </div>
             <button
-              onClick={() => { setPremiumMapPickMode(false); setPremiumMapPickCandidate(null); setPremiumModalOpen(true); }}
+              onClick={() => { setPremiumMapPickMode(false); setPremiumMapPickCandidate(null); setPremiumModalOpen(true); setPremiumStep("q2"); }}
               style={{ fontSize: 16, color: "#9CA3AF", background: "none", border: "none", cursor: "pointer", lineHeight: 1, padding: 0 }}
             >✕</button>
           </div>
@@ -5329,6 +5428,7 @@ export default function MapPage() {
                   setPremiumMapPickMode(false);
                   setPremiumMapPickCandidate(null);
                   setPremiumModalOpen(true);
+                  setPremiumStep("q2");
                 }}
                 style={{ width: "100%", padding: "11px 0", background: "linear-gradient(135deg, #2563EB, #3B82F6)", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}
               >이 지역 선택하기 →</button>
@@ -5341,14 +5441,26 @@ export default function MapPage() {
         </div>
       )}
 
-      {premiumModalOpen && (
+      {/* 최소화 탭 */}
+      {premiumModalOpen && premiumModalMinimized && (
+        <button
+          onClick={() => setPremiumModalMinimized(false)}
+          style={{ position: "fixed", bottom: 200, right: 14, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 0", width: 52, background: "linear-gradient(160deg, #2563EB, #3B82F6)", color: "#fff", border: "none", borderRadius: 12, boxShadow: "0 4px 16px rgba(37,99,235,0.45)", cursor: "pointer", animation: "premiumTabIn 0.35s cubic-bezier(0.34,1.56,0.64,1)" }}
+          title="AI 추천 결과 보기"
+        >
+          <span style={{ fontSize: 18, lineHeight: 1 }}>💎</span>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0, lineHeight: 1.3, textAlign: "center" }}>AI<br/>결과</span>
+        </button>
+      )}
+
+      {premiumModalOpen && !premiumModalMinimized && (
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setPremiumModalOpen(false)}
         >
           <div
-            className="anim-pop-in"
-            style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: "78vw", maxWidth: 1100, minWidth: 480, height: "78vh", maxHeight: 860, padding: "32px", boxSizing: "border-box", display: "flex", flexDirection: "column", overflowY: "auto" }}
+            className={premiumFlyingIn ? "anim-fly-to-corner" : "anim-pop-in"}
+            style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: "78vw", maxWidth: 1100, minWidth: 480, height: "78vh", maxHeight: 860, padding: "32px", boxSizing: "border-box", display: "flex", flexDirection: "column", overflowY: "auto", transformOrigin: "bottom left" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 헤더 */}
@@ -5411,10 +5523,21 @@ export default function MapPage() {
                   </div>
                 );
               })()}
-              <button
-                onClick={() => setPremiumModalOpen(false)}
-                style={closeBtnStyle}
-              >✕</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {premiumStep === "result" && (
+                  <button
+                    onClick={() => setPremiumModalMinimized(true)}
+                    title="최소화"
+                    style={{ background: "#F3F4F6", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6B7280", fontSize: 16 }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                )}
+                <button
+                  onClick={() => setPremiumModalOpen(false)}
+                  style={closeBtnStyle}
+                >✕</button>
+              </div>
             </div>
 
             <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 20 }}>
@@ -5444,7 +5567,7 @@ export default function MapPage() {
                       setPremiumIndustryDrillGroup(null);
                       // 소분류 API 검색
                       if (v.trim()) {
-                        fetch(`http://localhost:8000/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
+                        fetch(`${API}/api/suggest/industries-with-category/?q=${encodeURIComponent(v)}`)
                           .then(r => r.json())
                           .then(d => setPremiumSubcategorySugg(d.suggestions || []));
                       } else {
@@ -5573,7 +5696,7 @@ export default function MapPage() {
                             key={k}
                             onClick={() => {
                               setPremiumCatDrillSub(k);
-                              fetch(`http://localhost:8000/api/suggest/industries/?category=${encodeURIComponent(k)}`)
+                              fetch(`${API}/api/suggest/industries/?category=${encodeURIComponent(k)}`)
                                 .then(r => r.json())
                                 .then(d => setPremiumCatSubList(d.suggestions || []));
                             }}
@@ -5664,7 +5787,7 @@ export default function MapPage() {
                       onClick={() => {
                         if (premiumTopResults) { setPremiumTopResults(null); return; }
                         setPremiumTopLoading(true);
-                        fetch("http://localhost:8000/api/recommend/top-industries/")
+                        fetch(`${API}/api/recommend/top-industries/`)
                           .then(r => r.json())
                           .then(data => { setPremiumTopResults(data); })
                           .catch(() => setPremiumTopResults({ error: true }))
@@ -5789,7 +5912,7 @@ export default function MapPage() {
                           const matchedGu = REGIONS.find(g => q === g || q.startsWith(g + " ") || q.startsWith(g));
                           if (matchedGu) {
                             const dongQuery = q.slice(matchedGu.length).trim();
-                            fetch(`http://localhost:8000/api/search/regions/?gu=${encodeURIComponent(matchedGu)}`)
+                            fetch(`${API}/api/search/regions/?gu=${encodeURIComponent(matchedGu)}`)
                               .then(r => r.json())
                               .then(d => {
                                 let results = d.results || [];
@@ -5937,15 +6060,15 @@ export default function MapPage() {
                       if (category && region) {
                         // 업종 O + 지역 O
                         if (region.type === "gu") {
-                          fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(category)}&gu=${encodeURIComponent(region.gu)}`)
+                          fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(category)}&gu=${encodeURIComponent(region.gu)}`)
                             .then(r => r.json())
                             .then(data => setPremiumResult({ type: "gu", gu: region.gu, category, data }))
                             .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
                             .finally(() => setPremiumResultLoading(false));
                         } else {
                           Promise.all([
-                            fetch(`http://localhost:8000/api/recommend/score/?dong=${encodeURIComponent(region.dong)}&category=${encodeURIComponent(category)}`).then(r => r.json()),
-                            fetch(`http://localhost:8000/api/recommend/gu-streets/?gu=${encodeURIComponent(region.gu)}&category=${encodeURIComponent(category)}`).then(r => r.json()),
+                            fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(region.dong)}&category=${encodeURIComponent(category)}`).then(r => r.json()),
+                            fetch(`${API}/api/recommend/gu-streets/?gu=${encodeURIComponent(region.gu)}&category=${encodeURIComponent(category)}`).then(r => r.json()),
                           ])
                             .then(([score, streets]) => setPremiumResult({ type: "dong", dong: region.dong, gu: region.gu, category, score, streets }))
                             .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
@@ -5953,7 +6076,7 @@ export default function MapPage() {
                         }
                       } else if (category && !region) {
                         // 업종 O + 지역 X → 서울 전체 행정동 추천
-                        fetch(`http://localhost:8000/api/recommend/location/?업종=${encodeURIComponent(category)}`)
+                        fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(category)}`)
                           .then(r => r.json())
                           .then(data => setPremiumResult({ type: "gu", gu: "서울 전체", category, data }))
                           .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
@@ -5961,13 +6084,13 @@ export default function MapPage() {
                       } else if (!category && region) {
                         // 업종 X + 지역 O → 해당 지역 Top 업종 추천
                         if (region.type === "gu") {
-                          fetch(`http://localhost:8000/api/recommend/gu-industry/?gu=${encodeURIComponent(region.gu)}`)
+                          fetch(`${API}/api/recommend/gu-industry/?gu=${encodeURIComponent(region.gu)}`)
                             .then(r => r.json())
                             .then(data => setPremiumResult({ type: "industry_gu", gu: region.gu, data }))
                             .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
                             .finally(() => setPremiumResultLoading(false));
                         } else {
-                          fetch(`http://localhost:8000/api/recommend/industry/?dong=${encodeURIComponent(region.dong)}`)
+                          fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(region.dong)}`)
                             .then(r => r.json())
                             .then(data => setPremiumResult({ type: "industry_dong", dong: region.dong, gu: region.gu, data }))
                             .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
@@ -5975,7 +6098,7 @@ export default function MapPage() {
                         }
                       } else {
                         // 업종 X + 지역 X → 서울 전체 Top 업종
-                        fetch(`http://localhost:8000/api/recommend/top-industries/`)
+                        fetch(`${API}/api/recommend/top-industries/`)
                           .then(r => r.json())
                           .then(data => setPremiumResult({ type: "industry_all", data }))
                           .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
@@ -6067,13 +6190,22 @@ export default function MapPage() {
                             const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
                             const trend = premiumTrendData?.[item.dong];
                             return (
-                              <div key={item.dong} style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA" }}>
+                              <div
+                                key={item.dong}
+                                onClick={() => navigatePremiumDong(item.dong, gu)}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.borderColor = "#93C5FD"; e.currentTarget.style.cursor = "pointer"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "#FAFAFA"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                                style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA", transition: "background 0.15s, border-color 0.15s" }}
+                              >
                                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                                   <span style={{ width: 26, height: 26, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                                       <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{item.dong}</span>
-                                      <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[item.grade] ?? "#6B7280", background: `${gradeColor[item.grade] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{item.grade}등급</span>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span style={{ fontSize: 11, color: "#93C5FD" }}>📍 지도로 이동</span>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[item.grade] ?? "#6B7280", background: `${gradeColor[item.grade] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{item.grade}등급</span>
+                                      </div>
                                     </div>
                                     <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
                                       <div style={{ height: "100%", width: `${item.score ?? item.성장확률 ?? 0}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4 }} />
@@ -6106,12 +6238,6 @@ export default function MapPage() {
                                     )}
                                   </div>
                                 </div>
-                                <button
-                                  onClick={() => navigatePremiumDong(item.dong, gu)}
-                                  style={{ width: "100%", marginTop: 10, padding: "8px 0", background: "#EFF6FF", color: "#3B82F6", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = "#DBEAFE"}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = "#EFF6FF"}
-                                >📍 지도에서 보기</button>
                               </div>
                             );
                           })
@@ -6278,14 +6404,14 @@ export default function MapPage() {
                       <div style={{ display: "flex", gap: 20 }}>
                         {/* 왼쪽: 행정동 종합 점수 */}
                         <div style={{ flex: "0 0 260px" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                          <div
+                            onClick={() => navigatePremiumDong(dong, gu)}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.cursor = "pointer"; e.currentTarget.style.borderRadius = "8px"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, padding: "4px 6px", transition: "background 0.15s" }}
+                          >
                             <div style={{ fontSize: 15, fontWeight: 800, color: "#111827" }}>{dong}</div>
-                            <button
-                              onClick={() => navigatePremiumDong(dong, gu)}
-                              style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", background: "#EFF6FF", color: "#3B82F6", border: "none", borderRadius: 7, cursor: "pointer", flexShrink: 0 }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = "#DBEAFE"}
-                              onMouseLeave={(e) => e.currentTarget.style.background = "#EFF6FF"}
-                            >📍 지도에서 보기</button>
+                            <span style={{ fontSize: 11, color: "#93C5FD", fontWeight: 600 }}>📍 지도로 이동</span>
                           </div>
                           <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>{gu} · {category}</div>
 
@@ -6306,6 +6432,9 @@ export default function MapPage() {
                             <div>
                               <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}등급</div>
                               <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>{score?.summary ?? ""}</div>
+                              {score?.is_fallback && (
+                                <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>※ 업종 평균 기반 추정값</div>
+                              )}
                             </div>
                           </div>
 
@@ -6342,11 +6471,20 @@ export default function MapPage() {
                             : streetResults.map((s, i) => {
                               const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
                               return (
-                                <div key={s.상권코드} style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA" }}>
+                                <div
+                                  key={s.상권코드}
+                                  onClick={() => navigatePremiumStreet(s, gu)}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#F0FDF4"; e.currentTarget.style.borderColor = "#6EE7B7"; e.currentTarget.style.cursor = "pointer"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#FAFAFA"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                                  style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA", transition: "background 0.15s, border-color 0.15s" }}
+                                >
                                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                                     <span style={{ width: 24, height: 24, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
                                     <span style={{ fontSize: 14, fontWeight: 700, color: "#111827", flex: 1 }}>{s.상권명}</span>
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[s.등급] ?? "#6B7280", background: `${gradeColor[s.등급] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{s.등급}등급</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                      <span style={{ fontSize: 10, color: "#6EE7B7" }}>📍 {s.dong || gu}</span>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[s.등급] ?? "#6B7280", background: `${gradeColor[s.등급] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{s.등급}등급</span>
+                                    </div>
                                   </div>
                                   <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
                                     <div style={{ height: "100%", width: `${s.score ?? 0}%`, background: "linear-gradient(90deg, #10B981, #3B82F6)", borderRadius: 4 }} />
@@ -6361,12 +6499,6 @@ export default function MapPage() {
                                       {s.tags.map(t => <span key={t} style={{ fontSize: 11, background: "#EFF6FF", color: "#3B82F6", borderRadius: 6, padding: "2px 7px" }}>{t}</span>)}
                                     </div>
                                   )}
-                                  <button
-                                    onClick={() => navigatePremiumGu(gu)}
-                                    style={{ width: "100%", marginTop: 8, padding: "7px 0", background: "#EFF6FF", color: "#3B82F6", border: "none", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = "#DBEAFE"}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = "#EFF6FF"}
-                                  >📍 {gu} 지도에서 보기</button>
                                 </div>
                               );
                             })
@@ -6490,7 +6622,7 @@ export default function MapPage() {
 
           {/* 프리미엄 AI 추천 (beta) */}
           <button
-            onClick={() => { setPremiumModalOpen(true); setPremiumStep("q1"); setPremiumIndustryQuery(""); setPremiumIndustrySelected(null); setPremiumTopResults(null); setPremiumRegionQuery(""); setPremiumRegionSugg([]); setPremiumRegionSelected(null); setPremiumBudget(null); setPremiumResult(null); setPremiumResultLoading(false); setPremiumSubcategorySelected(null); setPremiumSubcategorySugg([]); setPremiumCatDrillSub(null); setPremiumCatSubList([]); setPremiumTrendData(null); }}
+            onClick={() => openPremiumModal()}
             style={{
               height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
               color: "#444", fontSize: 14, fontWeight: 500, cursor: "pointer",
