@@ -51,7 +51,29 @@ export default function LoginPage() {
         {/* 로고 */}
         <div style={{ textAlign: "center", marginBottom: 8 }}>
           <div style={logoWrapStyle}>
-            <span style={{ fontSize: 22 }}>📍</span>
+            <svg viewBox="0 0 48 48" width="36" height="36" fill="none">
+              {/* 바깥 원 */}
+              <circle cx="24" cy="24" r="20" stroke="#93c5fd" strokeWidth="1.5" opacity=".7"/>
+              {/* 안쪽 원 */}
+              <circle cx="24" cy="24" r="14" stroke="#60a5fa" strokeWidth=".8" opacity=".4"/>
+              {/* 눈금 4방향 */}
+              <line x1="24" y1="4"  x2="24" y2="9"  stroke="#93c5fd" strokeWidth="1.5" opacity=".8"/>
+              <line x1="24" y1="39" x2="24" y2="44" stroke="#93c5fd" strokeWidth="1.5" opacity=".8"/>
+              <line x1="4"  y1="24" x2="9"  y2="24" stroke="#93c5fd" strokeWidth="1.5" opacity=".8"/>
+              <line x1="39" y1="24" x2="44" y2="24" stroke="#93c5fd" strokeWidth="1.5" opacity=".8"/>
+              {/* 대각 눈금 */}
+              <line x1="9"  y1="9"  x2="12" y2="12" stroke="#60a5fa" strokeWidth="1" opacity=".4"/>
+              <line x1="36" y1="9"  x2="39" y2="12" stroke="#60a5fa" strokeWidth="1" opacity=".4" transform="rotate(90,37.5,10.5)"/>
+              <line x1="9"  y1="36" x2="12" y2="39" stroke="#60a5fa" strokeWidth="1" opacity=".4" transform="rotate(-90,10.5,37.5)"/>
+              <line x1="36" y1="36" x2="39" y2="39" stroke="#60a5fa" strokeWidth="1" opacity=".4" transform="rotate(180,37.5,37.5)"/>
+              {/* 북쪽 바늘 (빨강) */}
+              <polygon points="24,6 21,24 24,20 27,24" fill="#ef4444" opacity=".95"/>
+              {/* 남쪽 바늘 (파랑) */}
+              <polygon points="24,42 21,24 24,28 27,24" fill="#bfdbfe" opacity=".45"/>
+              {/* 중심 */}
+              <circle cx="24" cy="24" r="3.5" fill="#3b82f6"/>
+              <circle cx="24" cy="24" r="1.4" fill="#0f1a30"/>
+            </svg>
           </div>
         </div>
 
@@ -115,9 +137,6 @@ export default function LoginPage() {
           >
             <span style={{ fontSize: 16 }}>💬</span> 카카오로 시작하기
           </button>
-          <button style={socialBtnStyle("#03C75A", "#fff")}>
-            <span style={{ fontSize: 15, fontWeight: 800 }}>N</span> 네이버로 시작하기
-          </button>
         </div>
 
         {/* 회원가입 링크 */}
@@ -156,15 +175,16 @@ const cardStyle = {
 };
 
 const logoWrapStyle = {
-  width: 52,
-  height: 52,
-  borderRadius: 14,
-  background: "linear-gradient(135deg, #3B82F6, #6366F1)",
+  width: 64,
+  height: 64,
+  borderRadius: 18,
+  background: "linear-gradient(135deg, #0f1a30, #1e3a5f)",
+  border: "1.5px solid rgba(96,165,250,0.25)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   margin: "0 auto 12px",
-  boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+  boxShadow: "0 6px 20px rgba(15,26,48,0.35)",
 };
 
 const titleStyle = {

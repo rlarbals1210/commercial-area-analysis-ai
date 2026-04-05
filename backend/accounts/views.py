@@ -62,13 +62,15 @@ def login(request):
 
     refresh = RefreshToken.for_user(user)
     return JsonResponse({
-        'access': str(refresh.access_token),   # 짧게 유효 (2시간)
-        'refresh': str(refresh),               # 길게 유효 (7일), 토큰 갱신용
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
         'user': {
+            'id': user.id,
             'username': user.username,
             'nickname': user.nickname,
             'profile_image': user.profile_image,
             'login_type': user.login_type,
+            'is_staff': user.is_staff,
         }
     })
 
@@ -92,11 +94,13 @@ def login(request):
 def me(request):
     user = request.user   # JWT 검증 후 Django가 자동으로 user 객체를 채워줌
     return JsonResponse({
+        'id': user.id,
         'username': user.username,
         'nickname': user.nickname,
         'email': user.email,
         'profile_image': user.profile_image,
         'login_type': user.login_type,
+        'is_staff': user.is_staff,
         'created_at': user.created_at.isoformat(),
     })
 
@@ -195,7 +199,7 @@ def kakao_callback(request):
 
     # 토큰을 쿼리스트링으로 프론트에 전달 (프론트가 받아서 localStorage에 저장)
     import urllib.parse
-    user_info = urllib.parse.quote_plus(f'{{"username":"{user.username}","nickname":"{user.nickname}","profile_image":"{user.profile_image}","login_type":"{user.login_type}"}}')
+    user_info = urllib.parse.quote_plus(f'{{"id":{user.id},"username":"{user.username}","nickname":"{user.nickname}","profile_image":"{user.profile_image}","login_type":"{user.login_type}","is_staff":{str(user.is_staff).lower()}}}')
     frontend_url = f"http://localhost:5173/social-callback?access={access}&refresh={refresh_token}&user={user_info}"
     return HttpResponseRedirect(frontend_url)
 
@@ -216,6 +220,7 @@ def profile(request):
             'login_type': user.login_type,
             'birth_date': user.birth_date.isoformat() if user.birth_date else '',
             'created_at': user.created_at.isoformat(),
+            'is_staff': user.is_staff,
         })
 
     nickname = request.data.get('nickname', '').strip()

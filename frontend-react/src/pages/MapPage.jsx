@@ -6514,23 +6514,43 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── 상단 오른쪽: AI 추천 + 메뉴 버튼 ── */}
       {/* ── 상단 네비게이션 바 ── */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0,
         height: NAV_HEIGHT,
-        background: "#fff",
-        borderBottom: "1px solid #E5E7EB",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        background: "linear-gradient(135deg, #0f1a30, #162040)",
+        borderBottom: "1px solid #1e2d4a",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
         display: "flex", alignItems: "center",
         justifyContent: "space-between",
         padding: "0 20px",
         zIndex: 20,
       }}>
+        {/* 웨이브 배경 */}
+        <svg viewBox="0 0 1200 52" width="100%" height="52" preserveAspectRatio="none"
+          style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }} fill="none">
+          <path d="M0 36 Q150 26,300 36 Q450 46,600 36 Q750 26,900 36 Q1050 46,1200 32"
+            stroke="#93c5fd" strokeWidth="1.2" opacity=".12" strokeLinecap="round"/>
+          <path d="M0 42 Q200 30,400 42 Q600 54,800 42 Q1000 30,1200 38"
+            stroke="#60a5fa" strokeWidth="0.8" opacity=".07" strokeLinecap="round"/>
+        </svg>
+
         {/* 로고 */}
-        <div style={{ fontSize: 16, fontWeight: 800, color: "#111827", letterSpacing: "-0.5px" }}>
-          노다지
-        </div>
+        <svg viewBox="0 0 300 46" width="150" height="46" fill="none" style={{ position: "relative", zIndex: 1, flexShrink: 0 }}>
+          <text x="0" y="36" fontFamily="Montserrat, sans-serif" fontWeight="900" fontSize="38" fill="#bfdbfe" letterSpacing="-1">NODAJI</text>
+          <g transform="translate(233,5) rotate(-15, 14, 18)">
+            <circle cx="14" cy="18" r="14" stroke="#60a5fa" strokeWidth="1" opacity=".5"/>
+            <circle cx="14" cy="18" r="9" stroke="#60a5fa" strokeWidth=".4" opacity=".2"/>
+            <line x1="14" y1="6" x2="14" y2="10" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
+            <line x1="14" y1="26" x2="14" y2="30" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
+            <line x1="2" y1="18" x2="6" y2="18" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
+            <line x1="22" y1="18" x2="26" y2="18" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
+            <polygon points="14,6 12,18 14,15 16,18" fill="#ef4444" opacity=".9"/>
+            <polygon points="14,30 12,18 14,21 16,18" fill="#bfdbfe" opacity=".3"/>
+            <circle cx="14" cy="18" r="2" fill="#3b82f6"/>
+            <circle cx="14" cy="18" r=".8" fill="#0f1a30"/>
+          </g>
+        </svg>
 
         {/* 버튼 그룹 - 우측 */}
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -6541,12 +6561,12 @@ export default function MapPage() {
               onClick={() => setToolMenuOpen((v) => !v)}
               style={{
                 height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
-                color: "#444", fontSize: 14, fontWeight: toolMenuOpen ? 700 : 500,
+                color: toolMenuOpen ? "#e2e8f0" : "#94a3b8", fontSize: 14, fontWeight: toolMenuOpen ? 700 : 500,
                 cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
                 borderBottom: "none",
               }}
             >
-              상권 분석 도구 <span style={{ fontSize: 10, color: "#9CA3AF" }}>▼</span>
+              상권 분석 도구 <span style={{ fontSize: 10, color: "#475569" }}>▼</span>
             </button>
             {toolMenuOpen && (
               <div data-popup className="anim-slide-down" style={{ ...popupStyle({ left: 0, width: 200 }), background: "#fff", border: "1px solid #E5E7EB", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}>
@@ -6595,13 +6615,27 @@ export default function MapPage() {
             onClick={() => navigate("/trend")}
             style={{
               height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
-              color: "#444", fontSize: 14, fontWeight: 500, cursor: "pointer",
+              color: "#94a3b8", fontSize: 14, fontWeight: 500, cursor: "pointer",
               borderBottom: "none",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "#111827"; e.currentTarget.style.fontWeight = "700"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "#444"; e.currentTarget.style.fontWeight = "500"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#e2e8f0"; e.currentTarget.style.fontWeight = "700"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.fontWeight = "500"; }}
           >
             트렌드
+          </button>
+
+          {/* 커뮤니티 */}
+          <button
+            onClick={() => navigate("/community")}
+            style={{
+              height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
+              color: "#94a3b8", fontSize: 14, fontWeight: 500, cursor: "pointer",
+              borderBottom: "none",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#e2e8f0"; e.currentTarget.style.fontWeight = "700"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.fontWeight = "500"; }}
+          >
+            커뮤니티
           </button>
 
           {/* AI 추천 */}
@@ -6609,12 +6643,12 @@ export default function MapPage() {
             onClick={openAiModal}
             style={{
               height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
-              color: aiModalOpen ? "#111827" : "#444", fontSize: 14,
+              color: aiModalOpen ? "#e2e8f0" : "#94a3b8", fontSize: 14,
               fontWeight: aiModalOpen ? 700 : 500, cursor: "pointer",
               borderBottom: "none", display: "flex", alignItems: "center", gap: 5,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "#111827"; e.currentTarget.style.fontWeight = "700"; }}
-            onMouseLeave={(e) => { if (!aiModalOpen) { e.currentTarget.style.color = "#444"; e.currentTarget.style.fontWeight = "500"; } }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#e2e8f0"; e.currentTarget.style.fontWeight = "700"; }}
+            onMouseLeave={(e) => { if (!aiModalOpen) { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.fontWeight = "500"; } }}
           >
             <Bot size={16} color="#3B82F6" strokeWidth={1.6} />
             AI 추천
@@ -6625,11 +6659,11 @@ export default function MapPage() {
             onClick={() => openPremiumModal()}
             style={{
               height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
-              color: "#444", fontSize: 14, fontWeight: 500, cursor: "pointer",
+              color: "#94a3b8", fontSize: 14, fontWeight: 500, cursor: "pointer",
               borderBottom: "none", display: "flex", alignItems: "center", gap: 4,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "#111827"; e.currentTarget.style.fontWeight = "700"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "#444"; e.currentTarget.style.fontWeight = "500"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#e2e8f0"; e.currentTarget.style.fontWeight = "700"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.fontWeight = "500"; }}
           >
             프리미엄 AI 추천
             <span style={{
@@ -6639,7 +6673,7 @@ export default function MapPage() {
           </button>
 
           {/* 구분선 */}
-          <div style={{ width: 1, height: 20, background: "#E5E7EB", margin: "0 8px" }} />
+          <div style={{ width: 1, height: 20, background: "rgba(148,163,184,0.25)", margin: "0 8px" }} />
 
           {/* 메뉴 */}
           <div data-popup style={{ position: "relative" }}>
@@ -6647,7 +6681,7 @@ export default function MapPage() {
               onClick={() => { setMenuOpen((v) => !v); setSearchExpanded(false); }}
               style={{
                 height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
-                color: menuOpen ? "#111827" : "#444", fontSize: 14,
+                color: menuOpen ? "#e2e8f0" : "#94a3b8", fontSize: 14,
                 fontWeight: menuOpen ? 700 : 500, cursor: "pointer",
                 borderBottom: "none",
               }}
@@ -6659,10 +6693,19 @@ export default function MapPage() {
                 {currentUser ? (
                   <>
                     <div style={{ padding: "10px 12px 6px", fontSize: 13, color: "#374151" }}>
-                      <span style={{ fontWeight: 700 }}>{currentUser.nickname || currentUser.username}</span>님
-                      {currentUser.login_type === "kakao" && (
-                        <span style={{ marginLeft: 6, fontSize: 11, background: "#FEE500", color: "#3C1E1E", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>카카오</span>
-                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 700 }}>{currentUser.nickname || currentUser.username}</span>님
+                        {currentUser.is_staff && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+                            background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                            color: "#fff", letterSpacing: "0.05em",
+                          }}>DEV</span>
+                        )}
+                        {!currentUser.is_staff && currentUser.login_type === "kakao" && (
+                          <span style={{ fontSize: 11, background: "#FEE500", color: "#3C1E1E", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>카카오</span>
+                        )}
+                      </div>
                     </div>
                     <div style={{ borderTop: "1px solid #4A4A4A", margin: "4px 0" }} />
                     <button style={menuItemStyle} onClick={() => navigate("/profile")}>⚙️ 개인정보 설정</button>

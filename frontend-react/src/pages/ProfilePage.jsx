@@ -98,9 +98,11 @@ export default function ProfilePage() {
         transition={{ type: "spring", stiffness: 360, damping: 22 }}
       >
         {/* 헤더 */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 32, gap: 12 }}>
-          <button onClick={() => navigate("/")} style={backBtnStyle}>←</button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#111827" }}>개인정보 설정</h1>
+          <button onClick={() => navigate("/")} style={mainBtnStyle}>
+            ← 메인으로
+          </button>
         </div>
 
         {/* ── 내 정보 섹션 ── */}
@@ -109,7 +111,19 @@ export default function ProfilePage() {
 
           {/* 읽기 전용 정보 */}
           <div style={readonlyBoxStyle}>
-            <Row label="아이디" value={user.username} />
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #F3F4F6", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "#6B7280" }}>아이디</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 13, color: "#111827", fontWeight: 500 }}>{user.username}</span>
+                {user.is_staff && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+                    background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                    color: "#fff", letterSpacing: "0.05em",
+                  }}>DEV</span>
+                )}
+              </span>
+            </div>
             <Row label="가입 경로" value={user.login_type === "kakao" ? "카카오 로그인" : "자체 가입"} />
             <Row label="가입일" value={new Date(user.created_at).toLocaleDateString("ko-KR")} />
           </div>
@@ -175,6 +189,7 @@ export default function ProfilePage() {
             </div>
           )}
         </section>
+
       </motion.div>
     </div>
   );
@@ -249,4 +264,11 @@ const backBtnStyle = {
 const loadingStyle = {
   display: "flex", alignItems: "center", justifyContent: "center",
   height: "100vh", color: "#6B7280", fontFamily: "Pretendard, sans-serif",
+};
+const mainBtnStyle = {
+  height: 36, padding: "0 14px",
+  background: "#fff", color: "#374151",
+  border: "1.5px solid #E5E7EB", borderRadius: 10,
+  fontSize: 13, fontWeight: 600, cursor: "pointer",
+  whiteSpace: "nowrap",
 };

@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",                            # Django REST Framework
     "rest_framework_simplejwt.token_blacklist",  # 로그아웃 시 토큰 무효화
+    "community",                                 # 커뮤니티 게시판
 ]
 
 MIDDLEWARE = [
