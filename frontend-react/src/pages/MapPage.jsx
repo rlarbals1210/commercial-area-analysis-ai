@@ -3033,9 +3033,9 @@ export default function MapPage() {
                               return (
                                 <div key={day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                                   <div style={{ width: "100%", height: 58, display: "flex", alignItems: "flex-end" }}>
-                                    <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#2563EB" : isWeekend ? "#FB923C" : "#93C5FD", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                    <div style={{ width: "100%", height: `${h}%`, background: isWeekend ? "#FD8A8A" : (isTop ? "#93C6E7" : "#AEE2FF"), borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
                                   </div>
-                                  <div style={{ fontSize: 10, color: isWeekend ? "#EA580C" : isTop ? "#2563EB" : "#9CA3AF" }}>{day}</div>
+                                  <div style={{ fontSize: 10, color: isWeekend ? "#E05C5C" : isTop ? "#4A8FAB" : "#9CA3AF" }}>{day}</div>
                                 </div>
                               );
                             })}
@@ -3179,9 +3179,9 @@ export default function MapPage() {
                                 return (
                                   <div key={day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                                     <div style={{ width: "100%", height: 68, display: "flex", alignItems: "flex-end" }}>
-                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#2563EB" : isWeekend ? "#FB923C" : "#93C5FD", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                      <div style={{ width: "100%", height: `${h}%`, background: isWeekend ? "#FD8A8A" : (isTop ? "#93C6E7" : "#AEE2FF"), borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
                                     </div>
-                                    <div style={{ fontSize: 10, color: isWeekend ? "#EA580C" : isTop ? "#2563EB" : "#9CA3AF" }}>{day}</div>
+                                    <div style={{ fontSize: 10, color: isWeekend ? "#E05C5C" : isTop ? "#4A8FAB" : "#9CA3AF" }}>{day}</div>
                                   </div>
                                 );
                               })}
@@ -3207,7 +3207,7 @@ export default function MapPage() {
                                 return (
                                   <div key={age} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                                     <div style={{ width: "100%", height: 68, display: "flex", alignItems: "flex-end" }}>
-                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#4E8D9C" : "#B4D3D9", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#93C6E7" : "#B9F3FC", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
                                     </div>
                                     <div style={{ fontSize: 9, color: isTop ? "#4E8D9C" : "#9CA3AF", textAlign: "center" }}>{ageLabels[i]}</div>
                                   </div>
@@ -3235,7 +3235,7 @@ export default function MapPage() {
                                 return (
                                   <div key={age} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                                     <div style={{ width: "100%", height: 68, display: "flex", alignItems: "flex-end" }}>
-                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#4E8D9C" : "#B4D3D9", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
+                                      <div style={{ width: "100%", height: `${h}%`, background: isTop ? "#93C6E7" : "#AEE2FF", borderRadius: "3px 3px 0 0", transition: "height 0.4s" }} />
                                     </div>
                                     <div style={{ fontSize: 9, color: isTop ? "#4E8D9C" : "#9CA3AF", textAlign: "center" }}>{ageLabels[i]}</div>
                                   </div>
