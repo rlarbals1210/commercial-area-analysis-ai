@@ -620,28 +620,45 @@ def store_list(request):
 
 
 def suggest_industries(request):
-    """소분류 업종명 자동완성 (GET, q=검색어)"""
+    """소분류 업종명 자동완성 (GET, q=검색어, category=통합카테고리(선택))
+    - q만 있으면: 전체 소분류 검색
+    - q + category: 해당 카테고리 내 소분류 검색
+    - category만 있으면 (q 없음): 해당 카테고리 소분류 전체 반환
+    """
     q = request.GET.get("q", "").strip()
-    if not q:
+    category = request.GET.get("category", "").strip()
+
+    if not q and not category:
         return JsonResponse({"suggestions": []})
 
+    latest = StoreInfo.objects.aggregate(m=Max("기준_년분기_코드"))["m"]
+    qs = StoreInfo.objects.filter(기준_년분기_코드=latest)
+    if category:
+        qs = qs.filter(통합카테고리=category)
+
+    if not q:
+        # category만 있는 경우 → 해당 카테고리 소분류 전체
+        results = (
+            qs.values("상권업종소분류명")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")[:30]
+        )
+        return JsonResponse({"suggestions": [r["상권업종소분류명"] for r in results]})
+
     results = (
-        StoreInfo.objects
-        .filter(상권업종소분류명__icontains=q)
+        qs.filter(상권업종소분류명__icontains=q)
         .values("상권업종소분류명")
         .annotate(cnt=Count("id"))
         .order_by("-cnt")[:10]
     )
     suggestions = [r["상권업종소분류명"] for r in results]
 
-    # 공백 없는 입력("기타한식음식점")으로 공백 있는 소분류("기타 한식 음식점") 매칭
     if not suggestions:
         from django.db.models.functions import Replace
         from django.db.models import Value
         q_no_space = q.replace(" ", "")
         results2 = (
-            StoreInfo.objects
-            .annotate(소분류_no_space=Replace("상권업종소분류명", Value(" "), Value("")))
+            qs.annotate(소분류_no_space=Replace("상권업종소분류명", Value(" "), Value("")))
             .filter(소분류_no_space__icontains=q_no_space)
             .values("상권업종소분류명")
             .annotate(cnt=Count("id"))
@@ -650,6 +667,60 @@ def suggest_industries(request):
         suggestions = [r["상권업종소분류명"] for r in results2]
 
     return JsonResponse({"suggestions": suggestions})
+
+
+def subcategory_trend(request):
+    """소분류 업종 분기별 점포수 트렌드 (GET)
+    ?subcategory=냉면/밀면&dongs=역삼1동,서초2동,...
+    """
+    subcategory = request.GET.get("subcategory", "").strip()
+    dongs_param = request.GET.get("dongs", "").strip()
+    if not subcategory or not dongs_param:
+        return JsonResponse({"error": "subcategory and dongs required"}, status=400)
+
+    dongs = [d.strip() for d in dongs_param.split(",") if d.strip()]
+
+    quarters = sorted(
+        StoreInfo.objects.values_list("기준_년분기_코드", flat=True).distinct()
+    )
+
+    qs = (
+        StoreInfo.objects
+        .filter(상권업종소분류명=subcategory, 행정동명__in=dongs)
+        .values("행정동명", "기준_년분기_코드")
+        .annotate(count=Count("id"))
+    )
+
+    from collections import defaultdict
+    raw = defaultdict(dict)
+    for row in qs:
+        raw[row["행정동명"]][row["기준_년분기_코드"]] = row["count"]
+
+    result = {}
+    for dong in dongs:
+        counts = [raw[dong].get(q, 0) for q in quarters]
+        latest = counts[-1] if counts else 0
+        first = counts[0] if counts else 0
+        change = latest - first
+
+        if all(c == 0 for c in counts):
+            trend = "없음"
+        elif change > 1:
+            trend = "상승"
+        elif change < -1:
+            trend = "하락"
+        else:
+            trend = "유지"
+
+        result[dong] = {
+            "quarters": quarters,
+            "counts": counts,
+            "trend": trend,
+            "latest_count": latest,
+            "change": change,
+        }
+
+    return JsonResponse({"subcategory": subcategory, "data": result})
 
 
 def suggest_industries_with_category(request):

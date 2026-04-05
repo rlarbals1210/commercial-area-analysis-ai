@@ -186,7 +186,7 @@ class StreetCommercialData(models.Model):
 
 class StoreInfo(models.Model):
     """개별 상가 정보 (소상공인 상가(상권)정보 원본 데이터)"""
-    상가업소번호        = models.CharField(max_length=30, unique=True)
+    상가업소번호        = models.CharField(max_length=30)
     상호명              = models.CharField(max_length=100)
     통합카테고리        = models.CharField(max_length=50)       # store_category_map 기반
     상권업종소분류명    = models.CharField(max_length=100)
@@ -197,8 +197,11 @@ class StoreInfo(models.Model):
     기준_년분기_코드    = models.IntegerField()                  # 예: 20254
 
     class Meta:
+        unique_together = [["상가업소번호", "기준_년분기_코드"]]
         indexes = [
             models.Index(fields=["행정동명"]),
             models.Index(fields=["행정동명", "통합카테고리"]),
             models.Index(fields=["행정동명", "기준_년분기_코드"]),
+            models.Index(fields=["상권업종소분류명"]),
+            models.Index(fields=["행정동명", "상권업종소분류명"]),
         ]
