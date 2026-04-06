@@ -532,6 +532,7 @@ export default function MapPage() {
 
   useEffect(() => {
     if (aiStep === "result" || aiStep === "spot") setAiResultCollapsed(false);
+    if (aiStep === "result") setReportOpen(false);
   }, [aiStep]);
 
   useEffect(() => {
@@ -4451,7 +4452,7 @@ export default function MapPage() {
             top: NAV_HEIGHT + 36,
             right: 12,
             width: 380,
-            height: `calc(100vh - ${NAV_HEIGHT + 60}px)`,
+            height: aiResultCollapsed ? "auto" : `calc(100vh - ${NAV_HEIGHT + 60}px)`,
             background: "#fff",
             borderRadius: "16px 16px 16px 16px",
             boxShadow: "-4px 4px 24px rgba(0,0,0,0.12)",
@@ -6526,6 +6527,7 @@ export default function MapPage() {
         padding: "0 20px",
         zIndex: 20,
       }}>
+
         {/* 웨이브 배경 */}
         <svg viewBox="0 0 1200 52" width="100%" height="52" preserveAspectRatio="none"
           style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }} fill="none">
