@@ -574,7 +574,7 @@ export default function MapPage() {
   useEffect(() => {
     if (!premiumResult || !premiumSubcategorySelected) { setPremiumTrendData(null); return; }
     const results = premiumResult.data?.results || [];
-    const dongs = results.map(r => r.dong).filter(Boolean);
+    const dongs = results.map(r => r.dongName || r.dong).filter(Boolean);
     if (dongs.length === 0) { setPremiumTrendData(null); return; }
     fetch(`${API}/api/subcategory/trend/?subcategory=${encodeURIComponent(premiumSubcategorySelected)}&dongs=${encodeURIComponent(dongs.join(","))}`)
       .then(r => r.json())
@@ -6137,8 +6137,8 @@ export default function MapPage() {
                     </div>
                   )}
 
-                  {/* ── 예산 카드 (업종 선택 시 항상 표시) ── */}
-                  {!premiumResultLoading && premiumResult && !premiumResult.error && premiumBudget && premiumResult.category && (() => {
+                  {/* ── 예산 카드 (gu/dong 타입은 왼쪽 패널에 포함) ── */}
+                  {!premiumResultLoading && premiumResult && !premiumResult.error && premiumBudget && premiumResult.category && premiumResult.type !== "gu" && premiumResult.type !== "dong" && (() => {
                     const est = calcStartupCost(premiumResult.category);
                     if (!est) return null;
                     const budgetMax = premiumBudget.max;
@@ -6165,84 +6165,193 @@ export default function MapPage() {
                     );
                   })()}
 
-                  {/* ── 구 선택 결과: 행정동 추천 리스트 ── */}
+                  {/* ── 구 선택 결과: 2패널 (왼쪽: 상권 분석 / 오른쪽: 행정동 추천) ── */}
                   {!premiumResultLoading && premiumResult?.type === "gu" && (() => {
                     const { gu, category, data } = premiumResult;
                     const results = data?.results || [];
                     const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
                     const trendIcon = { 상승: "↑", 하락: "↓", 유지: "→", 없음: "?" };
                     const trendColor = { 상승: "#10B981", 하락: "#EF4444", 유지: "#6B7280", 없음: "#D1D5DB" };
+
+                    // ── 왼쪽 패널용 집계 ──
+                    const avgScore = results.length ? Math.round(results.reduce((s, r) => s + r.score, 0) / results.length) : 0;
+                    const avgGrowth = results.length ? Math.round(results.reduce((s, r) => s + r.성장확률, 0) / results.length) : 0;
+                    const totalPop = results.reduce((s, r) => s + (r.총유동인구 || 0), 0);
+                    const compCounts = { 낮음: 0, 중간: 0, 높음: 0 };
+                    results.forEach(r => { if (r.competition in compCounts) compCounts[r.competition]++; });
+                    const dominantComp = Object.entries(compCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "중간";
+                    const dominantCompColor = { 낮음: "#10B981", 중간: "#F59E0B", 높음: "#EF4444" }[dominantComp];
+                    const gradeCounts = { A: 0, B: 0, C: 0, D: 0 };
+                    results.forEach(r => { const g = r.등급; if (g in gradeCounts) gradeCounts[g]++; });
+                    const topResult = results[0];
+                    const topGrade = topResult?.등급 ?? "-";
+                    const topScore = topResult?.score ?? 0;
+                    const fmtPop = (v) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString()}만` : v.toLocaleString();
+
+                    // 예산 카드 계산
+                    const budgetEst = premiumBudget ? calcStartupCost(category) : null;
+                    const budgetFit = budgetEst === null ? null : (premiumBudget.max === null || budgetEst <= premiumBudget.max);
+
                     return (
-                      <div>
-                        <div style={{ marginBottom: 16 }}>
-                          <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 4 }}>
-                            {gu} × {category} 추천 행정동
+                      <div style={{ display: "flex", gap: 24, minHeight: 0 }}>
+
+                        {/* ── 왼쪽: 상권 분석 패널 ── */}
+                        <div style={{ flex: "0 0 260px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+                          {/* 타이틀 */}
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 2 }}>상권 분석</div>
+                            <div style={{ fontSize: 12, color: "#9CA3AF" }}>{gu} · {category} · {data?.quarter} 기준</div>
                           </div>
-                          <div style={{ fontSize: 13, color: "#6B7280" }}>AI 성장확률·매출·유동인구를 종합한 Top {results.length} 행정동입니다</div>
+
+                          {/* 종합 AI 점수 원형 게이지 */}
+                          <div style={{ padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 10, letterSpacing: "0.04em" }}>TOP 1위 종합 점수</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                              <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
+                                <svg width="68" height="68" viewBox="0 0 68 68">
+                                  <circle cx="34" cy="34" r="29" fill="none" stroke="#E5E7EB" strokeWidth="6" />
+                                  <circle cx="34" cy="34" r="29" fill="none" stroke={gradeColor[topGrade] ?? "#6B9FE4"} strokeWidth="6"
+                                    strokeDasharray={`${(topScore / 100) * 182.2} 182.2`}
+                                    strokeLinecap="round" transform="rotate(-90 34 34)" />
+                                </svg>
+                                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                                  <span style={{ fontSize: 17, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{topScore}</span>
+                                  <span style={{ fontSize: 9, color: "#9CA3AF" }}>/ 100</span>
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[topGrade] ?? "#6B9FE4", lineHeight: 1 }}>{topGrade}등급</div>
+                                <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>{topResult?.dongName}</div>
+                                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>성장확률 {topResult?.성장확률}%</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 핵심 지표 2×2 그리드 */}
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            {[
+                              { label: "평균 성장확률", value: `${avgGrowth}%`, color: avgGrowth >= 60 ? "#10B981" : avgGrowth >= 40 ? "#F59E0B" : "#EF4444" },
+                              { label: "평균 AI 점수", value: String(avgScore), color: "#6B9FE4" },
+                              { label: "경쟁 수준", value: dominantComp, color: dominantCompColor },
+                              { label: "총 유동인구", value: fmtPop(totalPop), color: "#374151" },
+                            ].map(({ label, value, color }) => (
+                              <div key={label} style={{ background: "#F9FAFB", borderRadius: 10, padding: "10px 8px", border: "1px solid #E5E7EB", textAlign: "center" }}>
+                                <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 4 }}>{label}</div>
+                                <div style={{ fontSize: 15, fontWeight: 700, color }}>{value}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* 등급 분포 */}
+                          <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "12px", border: "1px solid #E5E7EB" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 8, letterSpacing: "0.04em" }}>행정동 등급 분포 (Top {results.length})</div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              {["A", "B", "C", "D"].map(g => (
+                                <div key={g} style={{ flex: 1, textAlign: "center", padding: "6px 0", background: gradeCounts[g] > 0 ? `${gradeColor[g]}10` : "transparent", borderRadius: 8, border: gradeCounts[g] > 0 ? `1px solid ${gradeColor[g]}40` : "1px solid transparent" }}>
+                                  <div style={{ fontSize: 14, fontWeight: 800, color: gradeCounts[g] > 0 ? gradeColor[g] : "#D1D5DB" }}>{gradeCounts[g]}</div>
+                                  <div style={{ fontSize: 10, color: "#9CA3AF" }}>{g}등급</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 예산 카드 */}
+                          {budgetEst !== null && budgetFit !== null && (
+                            <div style={{ padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${budgetFit ? "#10B981" : "#F59E0B"}`, background: budgetFit ? "rgba(16,185,129,0.05)" : "rgba(245,158,11,0.05)" }}>
+                              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>{category} 예상 창업비용 <span style={{ fontSize: 10 }}>(20평)</span></div>
+                              <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
+                                약 {budgetEst >= 10000 ? `${(budgetEst / 10000).toFixed(1)}억` : `${budgetEst.toLocaleString()}만`}원
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: budgetFit ? "#10B981" : "#F59E0B", color: "#fff" }}>
+                                {budgetFit ? "✓ 예산 적합" : "⚠ 예산 초과"} · {premiumBudget.label}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* 소분류 트렌드 안내 */}
                           {premiumSubcategorySelected && (
-                            <div style={{ marginTop: 6, fontSize: 12, color: "#3B82F6" }}>
-                              📊 <b>{premiumSubcategorySelected}</b> 점포 트렌드 (2025 1→4분기) 포함
+                            <div style={{ fontSize: 11, color: "#3B82F6", background: "#EFF6FF", borderRadius: 8, padding: "8px 10px", border: "1px solid #DBEAFE" }}>
+                              📊 <b>{premiumSubcategorySelected}</b> 점포 트렌드 반영됨
                             </div>
                           )}
                         </div>
-                        {results.length === 0
-                          ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
-                          : results.map((item, i) => {
-                            const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
-                            const trend = premiumTrendData?.[item.dong];
-                            return (
-                              <div
-                                key={item.dong}
-                                onClick={() => navigatePremiumDong(item.dong, gu)}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.borderColor = "#93C5FD"; e.currentTarget.style.cursor = "pointer"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = "#FAFAFA"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
-                                style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA", transition: "background 0.15s, border-color 0.15s" }}
-                              >
-                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                  <span style={{ width: 26, height: 26, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                                      <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{item.dong}</span>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontSize: 11, color: "#93C5FD" }}>📍 지도로 이동</span>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[item.grade] ?? "#6B7280", background: `${gradeColor[item.grade] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{item.grade}등급</span>
+
+                        {/* ── 오른쪽: 행정동 추천 리스트 ── */}
+                        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 2 }}>추천 행정동 Top {results.length}</div>
+                            <div style={{ fontSize: 12, color: "#6B7280" }}>클릭하면 지도에서 해당 행정동으로 이동합니다</div>
+                          </div>
+
+                          {results.length === 0
+                            ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
+                            : results.map((item, i) => {
+                              const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                              const trend = premiumTrendData?.[item.dongName];
+                              const isTop = i === 0;
+                              return (
+                                <div
+                                  key={item.dongName}
+                                  onClick={() => navigatePremiumDong(item.dongName, gu)}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.borderColor = "#93C5FD"; e.currentTarget.style.cursor = "pointer"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = isTop ? "#F8FBFF" : "#FAFAFA"; e.currentTarget.style.borderColor = isTop ? "#BFDBFE" : "#E5E7EB"; }}
+                                  style={{
+                                    padding: "12px 14px",
+                                    border: `1.5px solid ${isTop ? "#BFDBFE" : "#E5E7EB"}`,
+                                    borderLeft: isTop ? "4px solid #2563EB" : undefined,
+                                    borderRadius: 12,
+                                    marginBottom: 8,
+                                    background: isTop ? "#F8FBFF" : "#FAFAFA",
+                                    transition: "background 0.15s, border-color 0.15s",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <span style={{ width: 26, height: 26, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                          <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{item.dongName}</span>
+                                          {isTop && <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "#2563EB", borderRadius: 4, padding: "1px 6px" }}>AI 1위</span>}
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                          <span style={{ fontSize: 11, color: "#93C5FD" }}>📍</span>
+                                          <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[item.등급] ?? "#6B7280", background: `${gradeColor[item.등급] ?? "#E5E7EB"}18`, padding: "2px 7px", borderRadius: 6 }}>{item.등급}등급</span>
+                                          <span style={{ fontSize: 13, fontWeight: 800, color: "#374151" }}>{item.score}</span>
+                                        </div>
                                       </div>
-                                    </div>
-                                    <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
-                                      <div style={{ height: "100%", width: `${item.score ?? item.성장확률 ?? 0}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4 }} />
-                                    </div>
-                                    <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280" }}>
-                                      <span>성장확률 <b style={{ color: "#374151" }}>{item.성장확률}점</b></span>
-                                      {item.점포당매출 > 0 && <span>점포당 매출 <b style={{ color: "#374151" }}>{Math.round(item.점포당매출 / 10000).toLocaleString()}만</b></span>}
-                                    </div>
-                                    {/* 소분류 트렌드 뱃지 */}
-                                    {trend && (
-                                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F3F4F6", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                        <span style={{ fontSize: 11, color: "#6B7280" }}>{premiumSubcategorySelected}</span>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: trendColor[trend.trend] }}>
-                                          {trendIcon[trend.trend]} {trend.trend}
-                                        </span>
-                                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-                                          현재 {trend.latest_count}개
-                                          {trend.change !== 0 && (
-                                            <span style={{ color: trend.change > 0 ? "#10B981" : "#EF4444" }}>
-                                              {" "}({trend.change > 0 ? "+" : ""}{trend.change})
-                                            </span>
-                                          )}
-                                        </span>
-                                        {trend.counts && (
-                                          <span style={{ fontSize: 10, color: "#D1D5DB", marginLeft: "auto" }}>
-                                            {trend.counts.join(" → ")}
+                                      <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 5 }}>
+                                        <div style={{ height: "100%", width: `${item.score ?? 0}%`, background: isTop ? "linear-gradient(90deg,#2563EB,#6366F1)" : "linear-gradient(90deg,#6B9FE4,#8B5CF6)", borderRadius: 4 }} />
+                                      </div>
+                                      <div style={{ display: "flex", gap: 10, fontSize: 11, color: "#6B7280", flexWrap: "wrap" }}>
+                                        <span>성장확률 <b style={{ color: "#374151" }}>{item.성장확률}점</b></span>
+                                        {item.점포수 > 0 && <span>점포 <b style={{ color: "#374151" }}>{item.점포수}개</b></span>}
+                                        <span>경쟁 <b style={{ color: { 낮음: "#10B981", 중간: "#F59E0B", 높음: "#EF4444" }[item.competition] ?? "#374151" }}>{item.competition}</b></span>
+                                      </div>
+                                      {/* 소분류 트렌드 뱃지 */}
+                                      {trend && (
+                                        <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid #F3F4F6", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                          <span style={{ fontSize: 12, fontWeight: 700, color: trendColor[trend.trend] }}>{trendIcon[trend.trend]} {trend.trend}</span>
+                                          <span style={{ fontSize: 11, color: "#9CA3AF" }}>
+                                            현재 {trend.latest_count}개
+                                            {trend.change !== 0 && (
+                                              <span style={{ color: trend.change > 0 ? "#10B981" : "#EF4444" }}>
+                                                {" "}({trend.change > 0 ? "+" : ""}{trend.change})
+                                              </span>
+                                            )}
                                           </span>
-                                        )}
-                                      </div>
-                                    )}
+                                          {trend.counts && (
+                                            <span style={{ fontSize: 10, color: "#D1D5DB", marginLeft: "auto" }}>{trend.counts.join(" → ")}</span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })
-                        }
+                              );
+                            })
+                          }
+                        </div>
                       </div>
                     );
                   })()}
@@ -6401,94 +6510,136 @@ export default function MapPage() {
                     const composite = score?.score ?? 0;
                     const breakdown = score?.breakdown ?? [];
                     const streetResults = streets?.results ?? [];
+                    const barColor = (v) => v >= 70 ? "linear-gradient(90deg,#10B981,#34D399)" : v >= 40 ? "linear-gradient(90deg,#F59E0B,#FBBF24)" : "linear-gradient(90deg,#EF4444,#F87171)";
+
+                    // 예산 카드
+                    const budgetEst = premiumBudget ? calcStartupCost(category) : null;
+                    const budgetFit = budgetEst === null ? null : (premiumBudget.max === null || budgetEst <= premiumBudget.max);
+
                     return (
-                      <div style={{ display: "flex", gap: 20 }}>
-                        {/* 왼쪽: 행정동 종합 점수 */}
-                        <div style={{ flex: "0 0 260px" }}>
-                          <div
-                            onClick={() => navigatePremiumDong(dong, gu)}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.cursor = "pointer"; e.currentTarget.style.borderRadius = "8px"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, padding: "4px 6px", transition: "background 0.15s" }}
-                          >
-                            <div style={{ fontSize: 15, fontWeight: 800, color: "#111827" }}>{dong}</div>
-                            <span style={{ fontSize: 11, color: "#93C5FD", fontWeight: 600 }}>📍 지도로 이동</span>
-                          </div>
-                          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>{gu} · {category}</div>
+                      <div style={{ display: "flex", gap: 24, minHeight: 0 }}>
 
-                          {/* 종합 점수 원형 */}
-                          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF", marginBottom: 14 }}>
-                            <div style={{ position: "relative", width: 72, height: 72, flexShrink: 0 }}>
-                              <svg width="72" height="72" viewBox="0 0 72 72">
-                                <circle cx="36" cy="36" r="30" fill="none" stroke="#E5E7EB" strokeWidth="7" />
-                                <circle cx="36" cy="36" r="30" fill="none" stroke={gradeColor[grade] ?? "#6B9FE4"} strokeWidth="7"
-                                  strokeDasharray={`${(composite / 100) * 188.5} 188.5`}
-                                  strokeLinecap="round" transform="rotate(-90 36 36)" />
-                              </svg>
-                              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                                <span style={{ fontSize: 18, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{composite}</span>
-                                <span style={{ fontSize: 10, color: "#9CA3AF" }}>/ 100</span>
-                              </div>
-                            </div>
+                        {/* ── 왼쪽: 상권 분석 패널 ── */}
+                        <div style={{ flex: "0 0 260px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+                          {/* 타이틀 */}
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                             <div>
-                              <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}등급</div>
-                              <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>{score?.summary ?? ""}</div>
-                              {score?.is_fallback && (
-                                <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>※ 업종 평균 기반 추정값</div>
-                              )}
+                              <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 2 }}>상권 분석</div>
+                              <div style={{ fontSize: 12, color: "#9CA3AF" }}>{dong} · {gu} · {category}</div>
+                            </div>
+                            <button
+                              onClick={() => navigatePremiumDong(dong, gu)}
+                              style={{ fontSize: 11, color: "#93C5FD", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: 0, flexShrink: 0, marginTop: 2 }}
+                            >📍 지도 이동</button>
+                          </div>
+
+                          {/* 종합 점수 원형 게이지 */}
+                          <div style={{ padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 10, letterSpacing: "0.04em" }}>종합 AI 점수</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                              <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
+                                <svg width="68" height="68" viewBox="0 0 68 68">
+                                  <circle cx="34" cy="34" r="29" fill="none" stroke="#E5E7EB" strokeWidth="6" />
+                                  <circle cx="34" cy="34" r="29" fill="none" stroke={gradeColor[grade] ?? "#6B9FE4"} strokeWidth="6"
+                                    strokeDasharray={`${(composite / 100) * 182.2} 182.2`}
+                                    strokeLinecap="round" transform="rotate(-90 34 34)" />
+                                </svg>
+                                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                                  <span style={{ fontSize: 17, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{composite}</span>
+                                  <span style={{ fontSize: 9, color: "#9CA3AF" }}>/ 100</span>
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}등급</div>
+                                <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>{score?.summary ?? ""}</div>
+                                {score?.is_fallback && (
+                                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>※ 업종 평균 기반 추정값</div>
+                                )}
+                              </div>
                             </div>
                           </div>
 
-                          {/* Breakdown 게이지 */}
-                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {breakdown.map(item => (
-                              <div key={item.label}>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#374151", marginBottom: 4 }}>
-                                  <span>{item.label}</span>
-                                  <span style={{ fontWeight: 700 }}>{item.score}점</span>
+                          {/* Breakdown 게이지 (색상 추가) */}
+                          {breakdown.length > 0 && (
+                            <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "12px", border: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 10 }}>
+                              {breakdown.map(item => (
+                                <div key={item.label}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#374151", marginBottom: 4 }}>
+                                    <span>{item.label}</span>
+                                    <span style={{ fontWeight: 700, color: item.score >= 70 ? "#10B981" : item.score >= 40 ? "#F59E0B" : "#EF4444" }}>{item.score}점</span>
+                                  </div>
+                                  <div style={{ height: 6, background: "#E5E7EB", borderRadius: 4, overflow: "hidden" }}>
+                                    <div style={{ height: "100%", width: `${item.score}%`, background: barColor(item.score), borderRadius: 4, transition: "width 0.6s ease" }} />
+                                  </div>
                                 </div>
-                                <div style={{ height: 6, background: "#F3F4F6", borderRadius: 4, overflow: "hidden" }}>
-                                  <div style={{ height: "100%", width: `${item.score}%`, background: "linear-gradient(90deg, #6B9FE4, #8B5CF6)", borderRadius: 4, transition: "width 0.6s ease" }} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                              ))}
+                            </div>
+                          )}
 
                           {/* 장단점 */}
                           {(score?.pros?.length > 0 || score?.cons?.length > 0) && (
-                            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "12px", border: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 5 }}>
                               {(score.pros ?? []).map((p, i) => <div key={i} style={{ fontSize: 12, color: "#059669" }}>✓ {p}</div>)}
                               {(score.cons ?? []).map((c, i) => <div key={i} style={{ fontSize: 12, color: "#DC2626" }}>✗ {c}</div>)}
                             </div>
                           )}
+
+                          {/* 예산 카드 */}
+                          {budgetEst !== null && budgetFit !== null && (
+                            <div style={{ padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${budgetFit ? "#10B981" : "#F59E0B"}`, background: budgetFit ? "rgba(16,185,129,0.05)" : "rgba(245,158,11,0.05)" }}>
+                              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>{category} 예상 창업비용 <span style={{ fontSize: 10 }}>(20평)</span></div>
+                              <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
+                                약 {budgetEst >= 10000 ? `${(budgetEst / 10000).toFixed(1)}억` : `${budgetEst.toLocaleString()}만`}원
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: budgetFit ? "#10B981" : "#F59E0B", color: "#fff" }}>
+                                {budgetFit ? "✓ 예산 적합" : "⚠ 예산 초과"} · {premiumBudget.label}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
-                        {/* 오른쪽: 길단위 상권 추천 */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 4 }}>{gu} 내 추천 상권</div>
-                          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 14 }}>{category} 창업에 유리한 길단위 상권 Top {streetResults.length}</div>
+                        {/* ── 오른쪽: 길단위 상권 추천 리스트 ── */}
+                        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 2 }}>{gu} 내 추천 상권 Top {streetResults.length}</div>
+                            <div style={{ fontSize: 12, color: "#6B7280" }}>클릭하면 지도에서 해당 상권으로 이동합니다</div>
+                          </div>
                           {streetResults.length === 0
                             ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 13 }}>길단위 상권 데이터가 없습니다.</div>
                             : streetResults.map((s, i) => {
                               const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
+                              const isTop = i === 0;
                               return (
                                 <div
                                   key={s.상권코드}
                                   onClick={() => navigatePremiumStreet(s, gu)}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#F0FDF4"; e.currentTarget.style.borderColor = "#6EE7B7"; e.currentTarget.style.cursor = "pointer"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#FAFAFA"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
-                                  style={{ padding: "12px 14px", border: "1.5px solid #E5E7EB", borderRadius: 12, marginBottom: 8, background: "#FAFAFA", transition: "background 0.15s, border-color 0.15s" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.borderColor = "#93C5FD"; e.currentTarget.style.cursor = "pointer"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = isTop ? "#F8FBFF" : "#FAFAFA"; e.currentTarget.style.borderColor = isTop ? "#BFDBFE" : "#E5E7EB"; }}
+                                  style={{
+                                    padding: "12px 14px",
+                                    border: `1.5px solid ${isTop ? "#BFDBFE" : "#E5E7EB"}`,
+                                    borderLeft: isTop ? "4px solid #2563EB" : undefined,
+                                    borderRadius: 12,
+                                    marginBottom: 8,
+                                    background: isTop ? "#F8FBFF" : "#FAFAFA",
+                                    transition: "background 0.15s, border-color 0.15s",
+                                  }}
                                 >
                                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                                     <span style={{ width: 24, height: 24, borderRadius: "50%", background: i < 3 ? rankColors[i] : "#E5E7EB", color: i < 3 ? "#fff" : "#6B7280", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                                    <span style={{ fontSize: 14, fontWeight: 700, color: "#111827", flex: 1 }}>{s.상권명}</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                                      <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{s.상권명}</span>
+                                      {isTop && <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "#2563EB", borderRadius: 4, padding: "1px 6px" }}>AI 1위</span>}
+                                    </div>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                      <span style={{ fontSize: 10, color: "#6EE7B7" }}>📍 {s.dong || gu}</span>
-                                      <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[s.등급] ?? "#6B7280", background: `${gradeColor[s.등급] ?? "#E5E7EB"}18`, padding: "2px 8px", borderRadius: 6 }}>{s.등급}등급</span>
+                                      <span style={{ fontSize: 11, color: "#93C5FD" }}>📍</span>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: gradeColor[s.등급] ?? "#6B7280", background: `${gradeColor[s.등급] ?? "#E5E7EB"}18`, padding: "2px 7px", borderRadius: 6 }}>{s.등급}등급</span>
+                                      <span style={{ fontSize: 13, fontWeight: 800, color: "#374151" }}>{s.score}</span>
                                     </div>
                                   </div>
                                   <div style={{ height: 5, background: "#F3F4F6", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
-                                    <div style={{ height: "100%", width: `${s.score ?? 0}%`, background: "linear-gradient(90deg, #10B981, #3B82F6)", borderRadius: 4 }} />
+                                    <div style={{ height: "100%", width: `${s.score ?? 0}%`, background: isTop ? "linear-gradient(90deg,#2563EB,#6366F1)" : "linear-gradient(90deg,#10B981,#3B82F6)", borderRadius: 4 }} />
                                   </div>
                                   <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280", flexWrap: "wrap" }}>
                                     <span>성장확률 <b style={{ color: "#374151" }}>{s.성장확률}점</b></span>
