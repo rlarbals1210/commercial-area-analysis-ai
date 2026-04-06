@@ -332,38 +332,50 @@ export default function TrendPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "'Pretendard', sans-serif" }}>
       {/* 상단 헤더 */}
-      <div style={{
-        background: "#fff",
-        borderBottom: "1px solid #E5E7EB",
+      <header style={{
+        background: "linear-gradient(135deg, #0f1a30, #162040)",
+        borderBottom: "1px solid #1e2d4a",
         padding: "0 32px",
-        height: 60,
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+        height: 64,
+        display: "flex", alignItems: "center",
+        gap: 0,
+        position: "sticky", top: 0, zIndex: 100,
+        boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
+        overflow: "hidden",
       }}>
-        <button
-          onClick={() => navigate("/")}
-          style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "8px 16px", borderRadius: 8, border: "none",
-            background: "#F1F5F9", color: "#374151",
-            fontSize: 14, fontWeight: 600, cursor: "pointer",
-          }}
-        >
-          ← 지도로 돌아가기
-        </button>
-        <div style={{ width: 1, height: 24, background: "#E5E7EB" }} />
-        <span style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>상권 트렌드</span>
+        {/* 웨이브 배경 */}
+        <svg viewBox="0 0 1200 64" width="100%" height="64" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, pointerEvents: "none" }} fill="none">
+          <path d="M0 48 Q100 38,200 48 Q300 58,400 48 Q500 38,600 48 Q700 58,800 48 Q900 38,1000 48 Q1100 58,1200 44" stroke="#93c5fd" strokeWidth="1.5" opacity=".15" strokeLinecap="round"/>
+          <path d="M0 54 Q120 42,240 54 Q360 66,480 54 Q600 42,720 54 Q840 66,960 54 Q1080 42,1200 50" stroke="#60a5fa" strokeWidth="1" opacity=".08" strokeLinecap="round"/>
+        </svg>
+
+        {/* 로고 */}
+        <div onClick={() => navigate("/")} style={{ flexShrink: 0, position: "relative", zIndex: 1, cursor: "pointer" }}>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.10 31.50" width="140" height="44" overflow="visible">
+            <text x="0" y="23.50" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="20" letterSpacing="1.20" fill="#cde0f0">NODAJI</text>
+            <g transform="translate(91.60,3.00) rotate(35)">
+              <circle cx="0" cy="0" r="5.5" fill="none" stroke="#8ab0cc" strokeWidth="0.44" opacity="0.80"/>
+              <line x1="0" y1="-4.84" x2="0" y2="-3.03" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <line x1="0" y1="4.84" x2="0" y2="3.03" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <line x1="-4.84" y1="0" x2="-3.03" y2="0" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <line x1="4.84" y1="0" x2="3.03" y2="0" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <polygon points="0,-4.51 0.82,0 0,0.88 -0.82,0" fill="#d94e30"/>
+              <polygon points="0,4.51 0.82,0 0,-0.88 -0.82,0" fill="#b8d0e8" opacity="0.85"/>
+              <circle cx="0" cy="0" r="0.66" fill="#1a2440"/>
+              <circle cx="0" cy="0" r="0.28" fill="#8ab0cc"/>
+            </g>
+          </svg>
+        </div>
+
+        {/* 구분선 + 트렌드 레이블 */}
+        <div style={{ width: 1, height: 28, background: "rgba(148,163,184,0.25)", margin: "0 16px", position: "relative", zIndex: 1 }} />
+        <span style={{ fontSize: 16, fontWeight: 700, color: "#cde0f0", letterSpacing: "0.03em", position: "relative", zIndex: 1 }}>상권 트렌드</span>
         {latestQuarter && (
-          <span style={{ fontSize: 13, color: "#6B7280", marginLeft: 4 }}>
+          <span style={{ fontSize: 12, color: "#64748b", marginLeft: 8, position: "relative", zIndex: 1 }}>
             기준: {fmtQ(latestQuarter)}
           </span>
         )}
-      </div>
+      </header>
 
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 48px" }}>
         {/* 업종별 트렌드 캐러셀 */}

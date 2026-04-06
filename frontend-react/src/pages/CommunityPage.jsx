@@ -538,37 +538,28 @@ export default function CommunityPage() {
           <path d="M0 54 Q120 42,240 54 Q360 66,480 54 Q600 42,720 54 Q840 66,960 54 Q1080 42,1200 50" stroke="#60a5fa" strokeWidth="1" opacity=".08" strokeLinecap="round"/>
         </svg>
 
-        {/* 로고 SVG */}
-        <svg viewBox="0 0 360 56" width="200" height="56" fill="none" style={{ position: "relative", zIndex: 1 }}>
-          <text x="0" y="42" fontFamily="Montserrat, sans-serif" fontWeight="900" fontSize="46" fill="#bfdbfe" letterSpacing="-1">NODAJI</text>
-          <g transform="translate(280,6) rotate(-15, 16, 22)">
-            <circle cx="16" cy="22" r="16" stroke="#60a5fa" strokeWidth="1" opacity=".5"/>
-            <circle cx="16" cy="22" r="11" stroke="#60a5fa" strokeWidth=".4" opacity=".2"/>
-            <line x1="16" y1="8" x2="16" y2="12" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="16" y1="32" x2="16" y2="36" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="2" y1="22" x2="6" y2="22" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="26" y1="22" x2="30" y2="22" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <polygon points="16,8 14,22 16,19 18,22" fill="#ef4444" opacity=".9"/>
-            <polygon points="16,36 14,22 16,25 18,22" fill="#bfdbfe" opacity=".3"/>
-            <circle cx="16" cy="22" r="2.5" fill="#3b82f6"/>
-            <circle cx="16" cy="22" r="1" fill="#0f1a30"/>
-          </g>
-        </svg>
+        {/* 로고 SVG — 사이드바 너비(200px)에서 헤더 padding(32px)을 뺀 168px 고정 */}
+        <div onClick={() => navigate("/")} style={{ width: 168, flexShrink: 0, position: "relative", zIndex: 1, cursor: "pointer" }}>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.10 31.50" width="140" height="44" overflow="visible">
+            <text x="0" y="23.50" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="20" letterSpacing="1.20" fill="#cde0f0">NODAJI</text>
+            <g transform="translate(91.60,3.00) rotate(35)">
+              <circle cx="0" cy="0" r="5.5" fill="none" stroke="#8ab0cc" strokeWidth="0.44" opacity="0.80"/>
+              <line x1="0" y1="-4.84" x2="0" y2="-3.03" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <line x1="0" y1="4.84" x2="0" y2="3.03" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <line x1="-4.84" y1="0" x2="-3.03" y2="0" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <line x1="4.84" y1="0" x2="3.03" y2="0" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+              <polygon points="0,-4.51 0.82,0 0,0.88 -0.82,0" fill="#d94e30"/>
+              <polygon points="0,4.51 0.82,0 0,-0.88 -0.82,0" fill="#b8d0e8" opacity="0.85"/>
+              <circle cx="0" cy="0" r="0.66" fill="#1a2440"/>
+              <circle cx="0" cy="0" r="0.28" fill="#8ab0cc"/>
+            </g>
+          </svg>
+        </div>
 
-        {/* 구분선 + 커뮤니티 레이블 */}
-        <div style={{ width: 1, height: 28, background: "rgba(148,163,184,0.25)", margin: "0 16px", position: "relative", zIndex: 1 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b", letterSpacing: "0.05em", position: "relative", zIndex: 1 }}>커뮤니티</span>
+        {/* 구분선 + 커뮤니티 레이블 — 사이드바 경계에 맞춰 정렬 */}
+        <div style={{ width: 1, height: 28, background: "rgba(148,163,184,0.25)", marginRight: 16, position: "relative", zIndex: 1 }} />
+        <span style={{ fontSize: 16, fontWeight: 700, color: "#cde0f0", letterSpacing: "0.03em", position: "relative", zIndex: 1 }}>커뮤니티</span>
 
-        {/* 우측 메인으로 버튼 */}
-        <button
-          onClick={() => navigate("/")}
-          style={{
-            marginLeft: "auto", position: "relative", zIndex: 1,
-            padding: "6px 14px", background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(148,163,184,0.2)", borderRadius: 8,
-            color: "#94a3b8", fontSize: 13, cursor: "pointer",
-          }}
-        >← 메인으로</button>
       </header>
 
       <div style={pageStyle}>

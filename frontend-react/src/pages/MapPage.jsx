@@ -6538,19 +6538,26 @@ export default function MapPage() {
         </svg>
 
         {/* 로고 */}
-        <svg viewBox="0 0 300 46" width="150" height="46" fill="none" style={{ position: "relative", zIndex: 1, flexShrink: 0 }}>
-          <text x="0" y="36" fontFamily="Montserrat, sans-serif" fontWeight="900" fontSize="38" fill="#bfdbfe" letterSpacing="-1">NODAJI</text>
-          <g transform="translate(233,5) rotate(-15, 14, 18)">
-            <circle cx="14" cy="18" r="14" stroke="#60a5fa" strokeWidth="1" opacity=".5"/>
-            <circle cx="14" cy="18" r="9" stroke="#60a5fa" strokeWidth=".4" opacity=".2"/>
-            <line x1="14" y1="6" x2="14" y2="10" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="14" y1="26" x2="14" y2="30" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="2" y1="18" x2="6" y2="18" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="22" y1="18" x2="26" y2="18" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <polygon points="14,6 12,18 14,15 16,18" fill="#ef4444" opacity=".9"/>
-            <polygon points="14,30 12,18 14,21 16,18" fill="#bfdbfe" opacity=".3"/>
-            <circle cx="14" cy="18" r="2" fill="#3b82f6"/>
-            <circle cx="14" cy="18" r=".8" fill="#0f1a30"/>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.10 31.50" width="140" height="44" overflow="visible"
+          style={{ position: "relative", zIndex: 1, flexShrink: 0, cursor: "pointer" }}
+          onClick={() => {
+            setSelectedDong(null); setSelectedGu(null); setReportOpen(false);
+            setAiModalOpen(false); clearSpotMarkers();
+            const map = mapInstanceRef.current;
+            if (map) smoothZoom(map, 9, () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780)));
+          }}
+        >
+          <text x="0" y="23.50" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="20" letterSpacing="1.20" fill="#cde0f0">NODAJI</text>
+          <g transform="translate(91.60,3.00) rotate(35)">
+            <circle cx="0" cy="0" r="5.5" fill="none" stroke="#8ab0cc" strokeWidth="0.44" opacity="0.80"/>
+            <line x1="0" y1="-4.84" x2="0" y2="-3.03" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+            <line x1="0" y1="4.84" x2="0" y2="3.03" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+            <line x1="-4.84" y1="0" x2="-3.03" y2="0" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+            <line x1="4.84" y1="0" x2="3.03" y2="0" stroke="#8ab0cc" strokeWidth="0.55" opacity="0.65"/>
+            <polygon points="0,-4.51 0.82,0 0,0.88 -0.82,0" fill="#d94e30"/>
+            <polygon points="0,4.51 0.82,0 0,-0.88 -0.82,0" fill="#b8d0e8" opacity="0.85"/>
+            <circle cx="0" cy="0" r="0.66" fill="#1a2440"/>
+            <circle cx="0" cy="0" r="0.28" fill="#8ab0cc"/>
           </g>
         </svg>
 
