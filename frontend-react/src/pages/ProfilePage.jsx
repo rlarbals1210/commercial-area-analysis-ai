@@ -174,6 +174,20 @@ export default function ProfilePage() {
   };
 
   const handleDelete = async () => {
+    const refresh = localStorage.getItem("refresh");
+    if (refresh) {
+      try {
+        const r = await fetch(`${API}/api/accounts/token/refresh/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          localStorage.setItem("access", d.access);
+        }
+      } catch {}
+    }
     await authFetch(`${API}/api/accounts/delete/`, { method: "DELETE" });
     localStorage.clear();
     navigate("/");
