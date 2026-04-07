@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import "./LoginPage.css";
 
 export default function LoginPage() {
@@ -8,6 +8,13 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [pwVisible, setPwVisible] = useState(false);
+  const [mapZooming, setMapZooming] = useState(false);
+
+  const goSignup = (e) => {
+    e.preventDefault();
+    setMapZooming(true);
+    setTimeout(() => navigate("/signup"), 820);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -49,6 +56,7 @@ export default function LoginPage() {
       {/* ── 배경 SVG 지도 ── */}
       <svg
         style={styles.mapBg}
+        className={mapZooming ? "lp-map-zooming" : ""}
         viewBox="0 0 1400 900"
         xmlns="http://www.w3.org/2000/svg"
         preserveAspectRatio="xMidYMid slice"
@@ -281,7 +289,7 @@ export default function LoginPage() {
       <div style={styles.mapArea} />
 
       {/* ── 우측 로그인 패널 ── */}
-      <div style={styles.loginPanel}>
+      <div style={styles.loginPanel} className={mapZooming ? "lp-panel-hiding" : ""}>
         {/* 로고 */}
         <div style={styles.loginLogo}>
           <svg
@@ -405,7 +413,7 @@ export default function LoginPage() {
         <div style={styles.loginFooter}>
           <p style={styles.footerText}>
             계정이 없으신가요?{" "}
-            <Link to="/signup" className="lp-footer-link">회원가입</Link>
+            <a href="/signup" className="lp-footer-link" onClick={goSignup}>회원가입</a>
           </p>
           <button className="lp-back-link" onClick={() => navigate("/")}>
             ← 지도로 돌아가기
