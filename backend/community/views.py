@@ -196,3 +196,41 @@ def comment_delete(request, comment_id):
 
     comment.delete()
     return JsonResponse({'message': '삭제되었습니다.'})
+
+
+# ── 내 활동 내역 ───────────────────────────────────────────
+def post_to_dict_preview(post, user=None):
+    """활동 내역용 — 본문 미리보기 포함"""
+    d = post_to_dict(post, user)
+    d['content_preview'] = post.content[:80] + ('…' if len(post.content) > 80 else '')
+    return d
+
+
+# GET /api/community/my-posts/
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_posts(request):
+    posts = Post.objects.filter(author=request.user)
+    return JsonResponse([post_to_dict_preview(p, request.user) for p in posts], safe=False)
+
+
+# GET /api/community/my-likes/
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_likes(request):
+    liked_ids = Like.objects.filter(user=request.user).values_list('post_id', flat=True)
+    posts = Post.objects.filter(id__in=liked_ids)
+    return JsonResponse([post_to_dict_preview(p, request.user) for p in posts], safe=False)
+
+
+# GET /api/community/my-comments/
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_comments(request):
+    commented_ids = (
+        Comment.objects.filter(author=request.user)
+        .values_list('post_id', flat=True)
+        .distinct()
+    )
+    posts = Post.objects.filter(id__in=commented_ids)
+    return JsonResponse([post_to_dict_preview(p, request.user) for p in posts], safe=False)

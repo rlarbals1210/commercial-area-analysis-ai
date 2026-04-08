@@ -1,0 +1,85 @@
+/* 진입: 지도에서 빠져나오는 느낌 (줌아웃) */
+@keyframes sp-mapEntrance {
+  from { transform: scale(2.0); opacity: 0.6; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+@keyframes sp-panelEntrance {
+  from { opacity: 0; transform: translateX(48px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* 퇴장: 다시 지도 속으로 (줌인) */
+@keyframes sp-mapExit {
+  from { transform: scale(1);   opacity: 1; }
+  to   { transform: scale(2.8); opacity: 0.6; }
+}
+@keyframes sp-panelExit {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(48px); }
+}
+
+.sp-map-enter {
+  animation: sp-mapEntrance 0.7s cubic-bezier(0,0,0.2,1) forwards;
+  transform-origin: 40% 50%;
+}
+.sp-panel-enter {
+  animation: sp-panelEntrance 0.5s cubic-bezier(0,0,0.2,1) 0.1s forwards;
+  opacity: 0;
+}
+.sp-map-exit {
+  animation: sp-mapExit 0.7s cubic-bezier(0.4,0,1,1) forwards;
+  transform-origin: 40% 50%;
+}
+.sp-panel-exit {
+  animation: sp-panelExit 0.35s ease-out forwards;
+  pointer-events: none;
+}
+
+/* 스텝 인디케이터 */
+.sp-step-circle {
+  width: 26px; height: 26px; border-radius: 50%;
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.3s, color 0.3s;
+}
+.sp-step-circle.active   { background: #2563EB; color: #fff; }
+.sp-step-circle.inactive { background: #E2E8F0; color: #94A3B8; }
+
+.sp-step-label {
+  font-size: 12px; font-weight: 600;
+  transition: color 0.3s;
+}
+.sp-step-label.active   { color: #2563EB; }
+.sp-step-label.inactive { color: #94A3B8; }
+
+.sp-step-line {
+  flex: 1; height: 2px; margin: 0 8px; border-radius: 2px;
+  transition: background 0.3s;
+}
+.sp-step-line.active   { background: #2563EB; }
+.sp-step-line.inactive { background: #E2E8F0; }
+
+/* 가입 완료 체크 아이콘 */
+.sp-success-icon {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: #2563EB;
+  color: #fff; font-size: 24px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+  box-shadow: 0 4px 18px rgba(37,99,235,0.35);
+}
+
+/* ghost 버튼 (← 이전) */
+.sp-btn-ghost {
+  height: 52px;
+  background: transparent;
+  color: #64748B;
+  border: 1.5px solid #BAE6FD;
+  border-radius: 13px;
+  font-size: 14px; font-weight: 600;
+  font-family: 'Noto Sans KR', 'Pretendard', sans-serif;
+  cursor: pointer;
+  padding: 0 18px;
+  transition: background 0.15s;
+}
+.sp-btn-ghost:hover { background: #F0F9FF; }

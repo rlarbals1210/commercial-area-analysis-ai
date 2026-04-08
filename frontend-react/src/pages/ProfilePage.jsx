@@ -14,20 +14,80 @@ function authFetch(url, options = {}) {
   });
 }
 
+const BOARD_LABEL = { free: "자유", info: "정보", notice: "공지" };
+
+const NavIcon = ({ type, active }) => {
+  const color = active ? "#93C6E7" : "rgba(205,224,240,0.45)";
+  if (type === "info") return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+  );
+  if (type === "password") return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+  );
+  if (type === "account") return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  );
+  if (type === "activity") return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+  return null;
+};
+
+const NAV_ITEMS = [
+  { key: "info",     label: "정보 변경" },
+  { key: "password", label: "비밀번호"  },
+  { key: "activity", label: "활동 내역" },
+  { key: "account",  label: "계정 관리" },
+];
+
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("info");
   const [user, setUser] = useState(null);
+
+  // 정보 변경
   const [form, setForm] = useState({ nickname: "", email: "", birth_date: "" });
-  const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", new_password_confirm: "" });
-  const [msg, setMsg] = useState({ profile: "", pw: "" });
-  const [err, setErr] = useState({ profile: "", pw: "" });
-  const [loading, setLoading] = useState({ profile: false, pw: false });
+  const [profileMsg, setProfileMsg] = useState("");
+  const [profileErr, setProfileErr] = useState("");
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  // 비밀번호 게이트
+  const [pwVerified, setPwVerified] = useState(false);
+  const [gateInput, setGateInput] = useState("");
+  const [gateErr, setGateErr] = useState("");
+  const [gateLoading, setGateLoading] = useState(false);
+
+  // 비밀번호 변경
+  const [pwForm, setPwForm] = useState({ new_password: "", new_password_confirm: "" });
+  const [pwMsg, setPwMsg] = useState("");
+  const [pwErr, setPwErr] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+
+  // 활동 내역
+  const [activityTab, setActivityTab] = useState(null);
+  const [activityExpanded, setActivityExpanded] = useState(false);
+  const [activityData, setActivityData] = useState({ posts: null, likes: null, comments: null });
+
+  // 계정 삭제
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [activeTab, setActiveTab] = useState("profile");
 
   useEffect(() => {
     authFetch(`${API}/api/accounts/profile/`)
-      .then((r) => { if (r.status === 401) { navigate("/login"); return null; } return r.json(); })
+      .then((res) => {
+        if (res.status === 401) { navigate("/login"); return null; }
+        return res.json();
+      })
       .then((data) => {
         if (!data) return;
         setUser(data);
@@ -35,319 +95,823 @@ export default function ProfilePage() {
       });
   }, []);
 
+  // 활동 내역 탭 진입 시 데이터 로드
+  useEffect(() => {
+    if (activeTab !== "activity") return;
+    const load = async (sub, url) => {
+      if (activityData[sub] !== null) return; // 이미 로드됨
+      const res = await authFetch(`${API}${url}`);
+      const data = await res.json();
+      setActivityData((p) => ({ ...p, [sub]: data }));
+    };
+    load("posts",    "/api/community/my-posts/");
+    load("likes",    "/api/community/my-likes/");
+    load("comments", "/api/community/my-comments/");
+  }, [activeTab]);
+
+  // 탭 전환 시 비밀번호 게이트 리셋
+  const handleTabChange = (key) => {
+    if (key === "activity") {
+      setActivityExpanded((prev) => !prev);
+      return; // activeTab은 그대로 유지
+    }
+    setActiveTab(key);
+    setActivityExpanded(false);
+    setActivityTab(null);
+    if (key !== "password") {
+      setPwVerified(false);
+      setGateInput("");
+      setGateErr("");
+    }
+  };
+
   const handleProfileSave = async (e) => {
     e.preventDefault();
-    setErr((p) => ({ ...p, profile: "" })); setMsg((p) => ({ ...p, profile: "" }));
-    setLoading((p) => ({ ...p, profile: true }));
+    setProfileErr(""); setProfileMsg("");
+    setProfileLoading(true);
     const res = await authFetch(`${API}/api/accounts/profile/`, { method: "PUT", body: JSON.stringify(form) });
     const data = await res.json();
-    setLoading((p) => ({ ...p, profile: false }));
-    if (!res.ok) { setErr((p) => ({ ...p, profile: data.error })); return; }
-    setMsg((p) => ({ ...p, profile: "변경사항이 저장되었습니다." }));
+    setProfileLoading(false);
+    if (!res.ok) { setProfileErr(data.error); return; }
+    setProfileMsg("저장되었습니다.");
     const stored = JSON.parse(localStorage.getItem("user") || "{}");
     localStorage.setItem("user", JSON.stringify({ ...stored, nickname: form.nickname }));
   };
 
+  // 현재 비밀번호 검증 (로그인 API 활용)
+  const handleGateVerify = async (e) => {
+    e.preventDefault();
+    setGateErr("");
+    setGateLoading(true);
+    const res = await fetch(`${API}/api/accounts/login/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user.username, password: gateInput }),
+    });
+    setGateLoading(false);
+    if (!res.ok) { setGateErr("비밀번호가 올바르지 않습니다."); return; }
+    setPwVerified(true);
+  };
+
   const handlePwChange = async (e) => {
     e.preventDefault();
-    setErr((p) => ({ ...p, pw: "" })); setMsg((p) => ({ ...p, pw: "" }));
+    setPwErr(""); setPwMsg("");
     if (pwForm.new_password !== pwForm.new_password_confirm) {
-      setErr((p) => ({ ...p, pw: "새 비밀번호가 일치하지 않습니다." })); return;
+      setPwErr("새 비밀번호가 일치하지 않습니다."); return;
     }
-    setLoading((p) => ({ ...p, pw: true }));
+    setPwLoading(true);
     const res = await authFetch(`${API}/api/accounts/change-password/`, {
       method: "POST",
-      body: JSON.stringify({ current_password: pwForm.current_password, new_password: pwForm.new_password }),
+      body: JSON.stringify({ current_password: gateInput, new_password: pwForm.new_password }),
     });
     const data = await res.json();
-    setLoading((p) => ({ ...p, pw: false }));
-    if (!res.ok) { setErr((p) => ({ ...p, pw: data.error })); return; }
-    setMsg((p) => ({ ...p, pw: data.message }));
-    setPwForm({ current_password: "", new_password: "", new_password_confirm: "" });
+    setPwLoading(false);
+    if (!res.ok) { setPwErr(data.error); return; }
+    setPwMsg(data.message || "비밀번호가 변경되었습니다.");
+    setPwForm({ new_password: "", new_password_confirm: "" });
+    setGateInput("");
+    setPwVerified(false);
   };
 
   const handleDelete = async () => {
+    const refresh = localStorage.getItem("refresh");
+    if (refresh) {
+      try {
+        const r = await fetch(`${API}/api/accounts/token/refresh/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          localStorage.setItem("access", d.access);
+        }
+      } catch {}
+    }
     await authFetch(`${API}/api/accounts/delete/`, { method: "DELETE" });
-    localStorage.clear(); navigate("/");
+    localStorage.clear();
+    navigate("/");
   };
 
   if (!user) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", color: "#aaa", fontSize: 14, fontFamily: "Pretendard, sans-serif" }}>
-      로딩 중
+    <div style={s.loadingWrap}>
+      <div style={s.loadingDot} />
+      불러오는 중...
     </div>
   );
 
-  const tabs = [
-    { key: "profile", label: "프로필" },
-    ...(user.login_type === "local" ? [{ key: "security", label: "보안" }] : []),
-    { key: "account", label: "계정" },
-  ];
-
-  const initial = (user.nickname || user.username || "?")[0].toUpperCase();
-
   return (
-    <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "'Pretendard', -apple-system, sans-serif" }}>
+    <div style={s.page}>
+      {/* ── 사이드바 ── */}
+      <aside style={s.sidebar}>
+        {/* 로고 */}
+        <div style={s.logoWrap} onClick={() => navigate("/")} title="메인으로">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 197.20 56.00" width="120" height="34" overflow="visible">
+            <text x="0" y="43.00" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="40" letterSpacing="2.40" fill="#cde0f0">NODAJI</text>
+            <g transform="translate(183.20,3.00) rotate(35)">
+              <circle cx="0" cy="0" r="10.0" fill="none" stroke="#8ab0cc" strokeWidth="0.80" opacity="0.80" />
+              <line x1="0" y1="-8.80" x2="0" y2="-5.50" stroke="#8ab0cc" strokeWidth="1.00" opacity="0.65" />
+              <line x1="0" y1="8.80"  x2="0" y2="5.50"  stroke="#8ab0cc" strokeWidth="1.00" opacity="0.65" />
+              <line x1="-8.80" y1="0" x2="-5.50" y2="0" stroke="#8ab0cc" strokeWidth="1.00" opacity="0.65" />
+              <line x1="8.80"  y1="0" x2="5.50"  y2="0" stroke="#8ab0cc" strokeWidth="1.00" opacity="0.65" />
+              <polygon points="0,-8.20  1.50,0  0,1.60  -1.50,0" fill="#d94e30" />
+              <polygon points="0,8.20   1.50,0  0,-1.60 -1.50,0" fill="#b8d0e8" opacity="0.85" />
+              <circle cx="0" cy="0" r="1.20" fill="#1a2440" />
+              <circle cx="0" cy="0" r="0.50" fill="#8ab0cc" />
+            </g>
+          </svg>
+          <span style={s.logoSub}>개인정보 설정</span>
+        </div>
 
-      {/* 헤더 */}
-      <header style={{
-        background: "linear-gradient(135deg, #0f1a30, #162040)",
-        borderBottom: "1px solid #1e2d4a",
-        height: 56, padding: "0 28px",
-        display: "flex", alignItems: "center",
-        position: "relative", overflow: "hidden",
-      }}>
-        <svg viewBox="0 0 1200 56" width="100%" height="56" preserveAspectRatio="none"
-          style={{ position: "absolute", inset: 0, pointerEvents: "none" }} fill="none">
-          <path d="M0 36 Q300 24,600 36 Q900 48,1200 32" stroke="#93c5fd" strokeWidth="1" opacity=".1" strokeLinecap="round"/>
-        </svg>
-        <svg viewBox="0 0 300 44" width="130" height="44" fill="none" style={{ position: "relative", zIndex: 1 }}>
-          <text x="0" y="34" fontFamily="Montserrat, sans-serif" fontWeight="900" fontSize="36" fill="#bfdbfe" letterSpacing="-1">NODAJI</text>
-          <g transform="translate(224,4) rotate(-15, 13, 17)">
-            <circle cx="13" cy="17" r="13" stroke="#60a5fa" strokeWidth="1" opacity=".5"/>
-            <line x1="13" y1="5" x2="13" y2="9" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="13" y1="25" x2="13" y2="29" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="1"  y1="17" x2="5"  y2="17" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <line x1="21" y1="17" x2="25" y2="17" stroke="#60a5fa" strokeWidth="1" opacity=".6"/>
-            <polygon points="13,5 11,17 13,14 15,17" fill="#ef4444" opacity=".9"/>
-            <polygon points="13,29 11,17 13,20 15,17" fill="#bfdbfe" opacity=".3"/>
-            <circle cx="13" cy="17" r="2" fill="#3b82f6"/>
-          </g>
-        </svg>
-        <div style={{ width: 1, height: 22, background: "rgba(148,163,184,0.2)", margin: "0 14px", position: "relative", zIndex: 1 }} />
-        <span style={{ fontSize: 13, color: "#475569", position: "relative", zIndex: 1 }}>설정</span>
-        <button onClick={() => navigate("/")} style={{
-          marginLeft: "auto", zIndex: 1, position: "relative",
-          padding: "5px 12px", background: "transparent",
-          border: "1px solid rgba(148,163,184,0.2)", borderRadius: 6,
-          color: "#64748b", fontSize: 12, cursor: "pointer",
-        }}>← 메인으로</button>
-      </header>
-
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 20px", display: "flex", gap: 28, alignItems: "flex-start" }}>
-
-        {/* 사이드바 */}
-        <aside style={{ width: 200, flexShrink: 0 }}>
-          {/* 유저 요약 */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "20px 0 24px", gap: 10 }}>
-            <div style={{
-              width: 60, height: 60, borderRadius: "50%",
-              background: user.is_staff ? "#1e1b4b" : "#1e3a5f",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 22, fontWeight: 800, color: "#fff",
-              position: "relative",
-            }}>
-              {initial}
-              {user.is_staff && (
-                <span style={{
-                  position: "absolute", bottom: -2, right: -2,
-                  fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 10,
-                  background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                  color: "#fff", border: "2px solid #fafafa",
-                }}>DEV</span>
-              )}
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{user.nickname || user.username}</div>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>@{user.username}</div>
-            </div>
+        {/* 유저 정보 */}
+        <div style={s.userBox}>
+          <div style={s.avatar}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="8" r="4" fill="rgba(255,255,255,0.9)"/>
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" fill="rgba(255,255,255,0.9)"/>
+            </svg>
           </div>
+          <div>
+            <div style={s.userName}>{user.nickname || user.username}</div>
+            <div style={s.userType}>{user.login_type === "kakao" ? "카카오 계정" : "일반 계정"}</div>
+          </div>
+        </div>
 
-          {/* 탭 메뉴 */}
-          <nav style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                style={{
-                  width: "100%", padding: "9px 14px", border: "none", borderRadius: 8,
-                  textAlign: "left", fontSize: 13, cursor: "pointer",
-                  background: activeTab === tab.key ? "#f0f4ff" : "transparent",
-                  color: activeTab === tab.key ? "#3B82F6" : "#6B7280",
-                  fontWeight: activeTab === tab.key ? 600 : 400,
-                  transition: "all 0.1s",
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </aside>
+        {/* 내비게이션 */}
+        <nav style={s.nav}>
+          {NAV_ITEMS.map(({ key, label }) => {
+            if (key === "password" && user.login_type === "kakao") return null;
+            const isActive = key === "activity"
+              ? (activeTab === "activity" && !!activityTab)
+              : activeTab === key;
+            const isActivityOpen = key === "activity" && activityExpanded;
+            return (
+              <div key={key}>
+                <button
+                  style={{ ...s.navItem, ...(isActive ? s.navItemActive : {}) }}
+                  onClick={() => handleTabChange(key)}
+                >
+                  <span style={s.navIcon}><NavIcon type={key} active={isActive} /></span>
+                  {label}
+                  {key === "activity" && (
+                    <svg
+                      style={{ marginLeft: "auto", transition: "transform 0.25s", transform: isActivityOpen ? "rotate(-90deg)" : "rotate(90deg)" }}
+                      width="12" height="12" viewBox="0 0 24 24" fill="none"
+                      stroke="rgba(205,224,240,0.4)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    >
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  )}
+                  {isActive && <span style={s.navActiveBar} />}
+                </button>
 
-        {/* 본문 */}
-        <main style={{ flex: 1, minWidth: 0 }}>
-
-          {/* 프로필 탭 */}
-          {activeTab === "profile" && (
-            <div>
-              <div style={sectionHeadStyle}>
-                <h2 style={h2Style}>프로필</h2>
-                <p style={descStyle}>이름, 이메일 등 기본 정보를 관리합니다.</p>
-              </div>
-
-              <div style={cardStyle}>
-                <div style={rowStyle}>
-                  <span style={labelStyle}>아이디</span>
-                  <span style={valueStyle}>{user.username}</span>
-                </div>
-                <div style={dividerStyle} />
-                <div style={rowStyle}>
-                  <span style={labelStyle}>가입 경로</span>
-                  <span style={valueStyle}>{user.login_type === "kakao" ? "카카오" : "이메일"}</span>
-                </div>
-                <div style={dividerStyle} />
-                <div style={rowStyle}>
-                  <span style={labelStyle}>가입일</span>
-                  <span style={valueStyle}>{new Date(user.created_at).toLocaleDateString("ko-KR")}</span>
-                </div>
-              </div>
-
-              <form onSubmit={handleProfileSave}>
-                <div style={cardStyle}>
-                  <FormRow label="닉네임">
-                    <StyledInput value={form.nickname} onChange={(e) => setForm((p) => ({ ...p, nickname: e.target.value }))} placeholder="닉네임을 입력하세요" />
-                  </FormRow>
-                  <div style={dividerStyle} />
-                  <FormRow label="이메일">
-                    <StyledInput type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} placeholder="이메일을 입력하세요" />
-                  </FormRow>
-                  <div style={dividerStyle} />
-                  <FormRow label="생년월일">
-                    <StyledInput type="date" value={form.birth_date} onChange={(e) => setForm((p) => ({ ...p, birth_date: e.target.value }))} />
-                  </FormRow>
-                </div>
-                {err.profile && <p style={errStyle}>{err.profile}</p>}
-                {msg.profile && <p style={okStyle}>{msg.profile}</p>}
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-                  <button type="submit" style={saveBtnStyle} disabled={loading.profile}>
-                    {loading.profile ? "저장 중..." : "저장"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* 보안 탭 */}
-          {activeTab === "security" && (
-            <div>
-              <div style={sectionHeadStyle}>
-                <h2 style={h2Style}>보안</h2>
-                <p style={descStyle}>비밀번호를 변경합니다.</p>
-              </div>
-              <form onSubmit={handlePwChange}>
-                <div style={cardStyle}>
-                  <FormRow label="현재 비밀번호">
-                    <StyledInput type="password" value={pwForm.current_password} onChange={(e) => setPwForm((p) => ({ ...p, current_password: e.target.value }))} placeholder="현재 비밀번호" />
-                  </FormRow>
-                  <div style={dividerStyle} />
-                  <FormRow label="새 비밀번호">
-                    <StyledInput type="password" value={pwForm.new_password} onChange={(e) => setPwForm((p) => ({ ...p, new_password: e.target.value }))} placeholder="8자 이상" />
-                  </FormRow>
-                  <div style={dividerStyle} />
-                  <FormRow label="새 비밀번호 확인">
-                    <StyledInput type="password" value={pwForm.new_password_confirm} onChange={(e) => setPwForm((p) => ({ ...p, new_password_confirm: e.target.value }))} placeholder="새 비밀번호 재입력" />
-                  </FormRow>
-                </div>
-                {err.pw && <p style={errStyle}>{err.pw}</p>}
-                {msg.pw && <p style={okStyle}>{msg.pw}</p>}
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-                  <button type="submit" style={saveBtnStyle} disabled={loading.pw}>
-                    {loading.pw ? "변경 중..." : "변경"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* 계정 탭 */}
-          {activeTab === "account" && (
-            <div>
-              <div style={sectionHeadStyle}>
-                <h2 style={h2Style}>계정</h2>
-                <p style={descStyle}>계정 삭제 등 위험한 작업을 수행합니다.</p>
-              </div>
-              <div style={{ ...cardStyle, border: "1px solid #fee2e2" }}>
-                <div style={{ padding: "4px 0 16px" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#111", marginBottom: 4 }}>계정 삭제</div>
-                  <div style={{ fontSize: 13, color: "#9CA3AF", lineHeight: 1.6 }}>
-                    계정을 삭제하면 모든 데이터가 영구 삭제되며 복구할 수 없습니다.
-                  </div>
-                </div>
-                {!showDeleteConfirm ? (
-                  <button style={dangerBtnStyle} onClick={() => setShowDeleteConfirm(true)}>계정 삭제</button>
-                ) : (
-                  <div style={{ background: "#fff5f5", borderRadius: 8, padding: "14px 16px", border: "1px solid #fecaca" }}>
-                    <p style={{ margin: "0 0 12px", fontSize: 13, color: "#b91c1c" }}>정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button style={dangerBtnStyle} onClick={handleDelete}>삭제 확인</button>
-                      <button style={cancelBtnStyle} onClick={() => setShowDeleteConfirm(false)}>취소</button>
-                    </div>
+                {/* 활동 내역 하위 항목 */}
+                {isActivityOpen && (
+                  <div style={s.subNav}>
+                    {[
+                      { key: "posts",    label: "내가 쓴 글"  },
+                      { key: "likes",    label: "좋아요한 글" },
+                      { key: "comments", label: "댓글 단 글"  },
+                    ].map(({ key: subKey, label: subLabel }) => (
+                      <button
+                        key={subKey}
+                        style={{ ...s.subNavItem, ...(activityTab === subKey ? s.subNavItemActive : {}) }}
+                        onClick={() => { setActiveTab("activity"); setActivityTab(subKey); }}
+                      >
+                        {activityTab === subKey && <span style={s.subNavActiveBar} />}
+                        {subLabel}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
-            </div>
+            );
+          })}
+        </nav>
+
+        {/* 하단 메인 버튼 */}
+        <button style={s.backBtn} onClick={() => navigate("/")}>← 지도로 돌아가기</button>
+      </aside>
+
+      {/* ── 콘텐츠 영역 ── */}
+      <main style={s.content}>
+        <div style={s.card}>
+
+          {/* ── 정보 변경 ── */}
+          {activeTab === "info" && (
+            <>
+              <h2 style={s.cardTitle}>정보 변경</h2>
+
+              {/* 읽기 전용 */}
+              <div style={s.readonlyBox}>
+                <InfoRow label="아이디">
+                  <span style={s.infoVal}>{user.username}</span>
+                  {user.is_staff && <span style={s.devBadge}>DEV</span>}
+                </InfoRow>
+                <InfoRow label="가입 경로">
+                  <span style={s.infoVal}>{user.login_type === "kakao" ? "카카오 로그인" : "자체 가입"}</span>
+                </InfoRow>
+                <InfoRow label="가입일" last>
+                  <span style={s.infoVal}>{new Date(user.created_at).toLocaleDateString("ko-KR")}</span>
+                </InfoRow>
+              </div>
+
+              {/* 수정 폼 */}
+              <form onSubmit={handleProfileSave} style={s.form}>
+                <Field label="닉네임">
+                  <input style={s.input} value={form.nickname}
+                    onChange={(e) => setForm((p) => ({ ...p, nickname: e.target.value }))}
+                    placeholder="닉네임 입력" />
+                </Field>
+                <Field label="이메일">
+                  <input style={s.input} type="email" value={form.email}
+                    onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                    placeholder="이메일 입력" />
+                </Field>
+                <Field label="생년월일">
+                  <input style={s.input} type="date" value={form.birth_date}
+                    onChange={(e) => setForm((p) => ({ ...p, birth_date: e.target.value }))} />
+                </Field>
+                {profileErr && <p style={s.err}>{profileErr}</p>}
+                {profileMsg && <p style={s.success}>{profileMsg}</p>}
+                <button type="submit" style={s.primaryBtn} disabled={profileLoading}>
+                  {profileLoading ? "저장 중..." : "저장하기"}
+                </button>
+              </form>
+            </>
           )}
 
-        </main>
-      </div>
+          {/* ── 비밀번호 ── */}
+          {activeTab === "password" && (
+            <>
+              <h2 style={s.cardTitle}>비밀번호 변경</h2>
+              {!pwVerified ? (
+                /* 현재 비밀번호 확인 게이트 */
+                <div style={s.gateWrap}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8ab0cc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  <p style={s.gateDesc}>본인 확인을 위해<br />현재 비밀번호를 입력해주세요</p>
+                  <form onSubmit={handleGateVerify} style={{ width: "100%", maxWidth: 380 }}>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        style={{ ...s.input, flex: 1 }}
+                        type="password"
+                        value={gateInput}
+                        onChange={(e) => setGateInput(e.target.value)}
+                        placeholder="현재 비밀번호"
+                        autoFocus
+                        required
+                      />
+                      <button type="submit" style={s.gateBtn} disabled={gateLoading}>
+                        {gateLoading ? "..." : "확인"}
+                      </button>
+                    </div>
+                    {gateErr && <p style={{ ...s.err, marginTop: 8 }}>{gateErr}</p>}
+                  </form>
+                </div>
+              ) : (
+                /* 비밀번호 변경 폼 */
+                <form onSubmit={handlePwChange} style={s.form}>
+                  <Field label="새 비밀번호">
+                    <input style={s.input} type="password" value={pwForm.new_password}
+                      onChange={(e) => setPwForm((p) => ({ ...p, new_password: e.target.value }))}
+                      placeholder="8자 이상 입력" required />
+                  </Field>
+                  <Field label="새 비밀번호 확인">
+                    <input style={s.input} type="password" value={pwForm.new_password_confirm}
+                      onChange={(e) => setPwForm((p) => ({ ...p, new_password_confirm: e.target.value }))}
+                      placeholder="새 비밀번호 재입력" required />
+                  </Field>
+                  {pwErr && <p style={s.err}>{pwErr}</p>}
+                  {pwMsg && <p style={s.success}>{pwMsg}</p>}
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button type="button" style={s.ghostBtn}
+                      onClick={() => { setPwVerified(false); setGateInput(""); setGateErr(""); setPwMsg(""); setPwErr(""); }}>
+                      ← 다시 입력
+                    </button>
+                    <button type="submit" style={{ ...s.primaryBtn, flex: 1, marginTop: 0 }} disabled={pwLoading}>
+                      {pwLoading ? "변경 중..." : "비밀번호 변경"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
+          )}
+
+          {/* ── 활동 내역 ── */}
+          {activeTab === "activity" && (
+            <>
+              <h2 style={s.cardTitle}>
+                {{ posts: "내가 쓴 글", likes: "좋아요한 글", comments: "댓글 단 글" }[activityTab] || "활동 내역"}
+              </h2>
+
+              {/* 선택 전 안내 */}
+              {!activityTab && (
+                <p style={s.activityEmpty}>왼쪽에서 항목을 선택하세요.</p>
+              )}
+
+              {/* 카드 목록 */}
+              {activityTab && (() => {
+                const list = activityData[activityTab];
+                if (list === null) return <p style={s.activityEmpty}>불러오는 중...</p>;
+                if (list.length === 0) return <p style={s.activityEmpty}>게시글이 없습니다.</p>;
+                return (
+                  <div style={s.postList}>
+                    {list.map((post) => (
+                      <div key={post.id} style={s.postCard}
+                        onClick={() => navigate(`/community?post=${post.id}`)}
+                      >
+                        <div style={s.postCardHeader}>
+                          <span style={s.postBoard}>{BOARD_LABEL[post.board] || post.board}</span>
+                          <span style={s.postCardDate}>{post.created_at}</span>
+                        </div>
+                        <div style={s.postCardTitle}>{post.title}</div>
+                        {post.content_preview && (
+                          <div style={s.postCardPreview}>{post.content_preview}</div>
+                        )}
+                        <div style={s.postCardMeta}>
+                          <span>♥ {post.like_count}</span>
+                          <span>💬 {post.comment_count}</span>
+                          <span>👁 {post.view_count}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </>
+          )}
+
+          {/* ── 계정 관리 ── */}
+          {activeTab === "account" && (
+            <>
+              <h2 style={{ ...s.cardTitle, color: "#EF4444" }}>계정 관리</h2>
+              <p style={{ margin: "0 0 20px", fontSize: 14, color: "#6B7280", lineHeight: 1.7 }}>
+                계정을 탈퇴하면 모든 데이터가 삭제되며 복구할 수 없습니다.
+              </p>
+              {!showDeleteConfirm ? (
+                <button style={s.deleteBtn} onClick={() => setShowDeleteConfirm(true)}>회원 탈퇴</button>
+              ) : (
+                <div style={s.deleteConfirmBox}>
+                  <p style={{ margin: "0 0 16px", fontSize: 14, color: "#991B1B", fontWeight: 600, lineHeight: 1.6 }}>
+                    정말 탈퇴하시겠어요?<br />
+                    <span style={{ fontSize: 13, fontWeight: 400 }}>모든 데이터가 삭제되며 복구할 수 없습니다.</span>
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button style={s.deleteBtn} onClick={handleDelete}>탈퇴 확인</button>
+                    <button style={s.ghostBtn} onClick={() => setShowDeleteConfirm(false)}>취소</button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+        </div>
+      </main>
     </div>
   );
 }
 
-/* ── 서브 컴포넌트 ── */
-function FormRow({ label, children }) {
+/* ── 작은 컴포넌트 ── */
+function InfoRow({ label, children, last }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "4px 0" }}>
-      <span style={{ width: 90, flexShrink: 0, fontSize: 13, color: "#6B7280", fontWeight: 500 }}>{label}</span>
-      <div style={{ flex: 1 }}>{children}</div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+      padding: "10px 0", borderBottom: last ? "none" : "1px solid #F3F4F6" }}>
+      <span style={{ fontSize: 13, color: "#6B7280" }}>{label}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>{children}</span>
     </div>
   );
 }
 
-function StyledInput(props) {
-  const [focused, setFocused] = useState(false);
+function Field({ label, children }) {
   return (
-    <input
-      {...props}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      style={{
-        width: "100%", height: 38, padding: "0 12px",
-        border: `1px solid ${focused ? "#3B82F6" : "#E5E7EB"}`,
-        borderRadius: 8, fontSize: 13, outline: "none",
-        color: "#111", background: "#fff",
-        boxSizing: "border-box", fontFamily: "inherit",
-        transition: "border-color 0.15s",
-      }}
-    />
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{label}</label>
+      {children}
+    </div>
   );
 }
 
 /* ── 스타일 ── */
-const sectionHeadStyle = { marginBottom: 20 };
-const h2Style = { margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#111" };
-const descStyle = { margin: 0, fontSize: 13, color: "#9CA3AF" };
-const cardStyle = {
-  background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12,
-  padding: "16px 20px", marginBottom: 4,
+const s = {
+  page: {
+    display: "flex",
+    height: "100vh",
+    fontFamily: "'Pretendard', sans-serif",
+    background: "#F1F5F9",
+    overflow: "hidden",
+  },
+
+  /* 사이드바 */
+  sidebar: {
+    width: 220,
+    flexShrink: 0,
+    background: "linear-gradient(180deg, #0f1a30 0%, #1a2e4a 100%)",
+    display: "flex",
+    flexDirection: "column",
+    padding: "28px 0",
+    boxShadow: "2px 0 16px rgba(0,0,0,0.18)",
+  },
+  logoWrap: {
+    padding: "0 24px 24px",
+    borderBottom: "1px solid rgba(255,255,255,0.07)",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  logoSub: {
+    fontSize: 12,
+    color: "rgba(205,224,240,0.5)",
+    letterSpacing: "0.05em",
+  },
+  userBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "20px 24px",
+    borderBottom: "1px solid rgba(255,255,255,0.07)",
+    marginBottom: 8,
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    background: "linear-gradient(160deg, #1a3a5c, #0f1a30)",
+    border: "1.5px solid #8ab0cc",
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  userName: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#cde0f0",
+    maxWidth: 120,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  userType: {
+    fontSize: 11,
+    color: "rgba(205,224,240,0.45)",
+    marginTop: 2,
+  },
+  nav: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: "0 12px",
+    flex: 1,
+  },
+  navItem: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "11px 14px",
+    background: "none",
+    border: "none",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 500,
+    color: "rgba(205,224,240,0.55)",
+    textAlign: "left",
+    transition: "background 0.15s, color 0.15s",
+  },
+  navItemActive: {
+    background: "rgba(255,255,255,0.09)",
+    color: "#cde0f0",
+    fontWeight: 700,
+  },
+  navIcon: { fontSize: 15, width: 20, textAlign: "center" },
+  navActiveBar: {
+    position: "absolute",
+    left: 0, top: "50%",
+    transform: "translateY(-50%)",
+    width: 3, height: 18,
+    background: "#2563EB",
+    borderRadius: "0 3px 3px 0",
+  },
+  subNav: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+    padding: "2px 0 4px 28px",
+  },
+  subNavItem: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "9px 14px",
+    background: "none",
+    border: "none",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 500,
+    color: "rgba(205,224,240,0.45)",
+    textAlign: "left",
+    fontFamily: "inherit",
+    transition: "background 0.15s, color 0.15s",
+    width: "100%",
+  },
+  subNavItemActive: {
+    background: "rgba(255,255,255,0.06)",
+    color: "#93C6E7",
+    fontWeight: 700,
+  },
+  subNavActiveBar: {
+    position: "absolute",
+    left: 0, top: "50%",
+    transform: "translateY(-50%)",
+    width: 2, height: 14,
+    background: "#93C6E7",
+    borderRadius: "0 2px 2px 0",
+  },
+  backBtn: {
+    margin: "0 12px",
+    padding: "10px 14px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontSize: 12,
+    color: "rgba(205,224,240,0.35)",
+    textAlign: "left",
+    transition: "color 0.15s",
+  },
+
+  /* 콘텐츠 */
+  content: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "48px 56px",
+    background: "#F8FAFC",
+  },
+  card: {
+    width: "100%",
+  },
+  cardTitle: {
+    margin: "0 0 28px",
+    paddingBottom: 16,
+    borderBottom: "1.5px solid #E2E8F0",
+    fontSize: 20,
+    fontWeight: 700,
+    color: "#0C1A2E",
+  },
+
+  /* 정보 */
+  readonlyBox: {
+    background: "#F8FAFC",
+    border: "1px solid #E2E8F0",
+    borderRadius: 12,
+    padding: "4px 16px",
+    marginBottom: 24,
+  },
+  infoVal: { fontSize: 13, color: "#0C1A2E", fontWeight: 500 },
+  devBadge: {
+    fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+    background: "linear-gradient(135deg,#6366F1,#8B5CF6)", color: "#fff", letterSpacing: "0.05em",
+  },
+
+  /* 비밀번호 게이트 */
+  gateWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "24px 0",
+    gap: 12,
+  },
+  gateBtn: {
+    height: 46,
+    padding: "0 22px",
+    background: "#2563EB",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+    flexShrink: 0,
+    fontFamily: "inherit",
+  },
+  gateDesc: {
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 1.7,
+    margin: 0,
+  },
+
+  /* 계정 삭제 */
+  deleteBtn: {
+    height: 42,
+    background: "#FEF2F2",
+    color: "#EF4444",
+    border: "1.5px solid #FECACA",
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: "0 20px",
+  },
+  deleteConfirmBox: {
+    background: "#FEF2F2",
+    border: "1px solid #FECACA",
+    borderRadius: 12,
+    padding: 20,
+  },
+
+  /* 공통 폼 */
+  form: { display: "flex", flexDirection: "column", gap: 16 },
+  input: {
+    height: 46,
+    padding: "0 14px",
+    border: "1.5px solid #E2E8F0",
+    borderRadius: 10,
+    fontSize: 14,
+    outline: "none",
+    color: "#0C1A2E",
+    background: "#F8FAFC",
+    boxSizing: "border-box",
+    width: "100%",
+    fontFamily: "inherit",
+  },
+  primaryBtn: {
+    height: 48,
+    background: "#2563EB",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+    marginTop: 4,
+    fontFamily: "inherit",
+  },
+  ghostBtn: {
+    height: 48,
+    background: "transparent",
+    color: "#64748B",
+    border: "1.5px solid #E2E8F0",
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: "0 20px",
+    fontFamily: "inherit",
+  },
+  /* 활동 내역 */
+  subTabBar: {
+    display: "flex",
+    gap: 8,
+    marginBottom: 20,
+  },
+  subTab: {
+    padding: "7px 16px",
+    borderRadius: 20,
+    border: "1.5px solid #E2E8F0",
+    background: "transparent",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#64748B",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    transition: "all 0.15s",
+  },
+  subTabActive: {
+    background: "#2563EB",
+    borderColor: "#2563EB",
+    color: "#fff",
+  },
+  postList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  postRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "12px 14px",
+    borderRadius: 10,
+    cursor: "pointer",
+    transition: "background 0.12s",
+    background: "transparent",
+  },
+  postBoard: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "2px 8px",
+    borderRadius: 10,
+    background: "#EFF6FF",
+    color: "#2563EB",
+  },
+  postTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: 500,
+    color: "#0C1A2E",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  postMeta: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: "#94A3B8",
+  },
+  activityEmpty: {
+    textAlign: "center",
+    padding: "48px 0",
+    fontSize: 14,
+    color: "#94A3B8",
+    margin: 0,
+  },
+  backChip: {
+    width: 30, height: 30,
+    background: "#F1F5F9",
+    border: "none", borderRadius: 8,
+    fontSize: 14, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontFamily: "inherit",
+  },
+  activitySelectGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 14,
+  },
+  activitySelectCard: {
+    display: "flex", flexDirection: "column", alignItems: "center",
+    gap: 8, padding: "24px 16px",
+    background: "#F8FAFC",
+    border: "1.5px solid #E2E8F0",
+    borderRadius: 14,
+    cursor: "pointer", fontFamily: "inherit",
+    transition: "border-color 0.15s, box-shadow 0.15s",
+    textAlign: "center",
+  },
+  activitySelectIcon: {
+    width: 52, height: 52, borderRadius: "50%",
+    background: "#fff",
+    border: "1.5px solid #E2E8F0",
+    display: "flex", alignItems: "center", justifyContent: "center",
+  },
+  activitySelectLabel: {
+    fontSize: 14, fontWeight: 700, color: "#0C1A2E",
+  },
+  activitySelectDesc: {
+    fontSize: 12, color: "#94A3B8",
+  },
+  activitySelectCount: {
+    marginTop: 2,
+    fontSize: 13, fontWeight: 700, color: "#2563EB",
+  },
+  postCard: {
+    padding: "16px 18px",
+    background: "#F8FAFC",
+    border: "1.5px solid #E2E8F0",
+    borderRadius: 12,
+    cursor: "pointer",
+    transition: "border-color 0.15s, box-shadow 0.15s",
+    display: "flex", flexDirection: "column", gap: 6,
+  },
+  postCardHeader: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+  },
+  postCardDate: {
+    fontSize: 12, color: "#94A3B8",
+  },
+  postCardTitle: {
+    fontSize: 15, fontWeight: 700, color: "#0C1A2E",
+    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+  },
+  postCardPreview: {
+    fontSize: 13, color: "#64748B", lineHeight: 1.5,
+  },
+  postCardMeta: {
+    display: "flex", gap: 12,
+    fontSize: 12, color: "#94A3B8", marginTop: 2,
+  },
+
+  err: { margin: 0, fontSize: 13, color: "#EF4444" },
+  success: { margin: 0, fontSize: 13, color: "#10B981" },
+
+  loadingWrap: {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    gap: 10, height: "100vh", color: "#6B7280", fontFamily: "Pretendard, sans-serif",
+  },
+  loadingDot: {
+    width: 8, height: 8, borderRadius: "50%",
+    background: "#2563EB", animation: "pulse 1s infinite",
+  },
 };
-const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" };
-const dividerStyle = { borderTop: "1px solid #F3F4F6", margin: "0" };
-const labelStyle = { fontSize: 13, color: "#6B7280" };
-const valueStyle = { fontSize: 13, color: "#111", fontWeight: 500 };
-const saveBtnStyle = {
-  height: 36, padding: "0 20px", background: "#111", color: "#fff",
-  border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
-  cursor: "pointer",
-};
-const dangerBtnStyle = {
-  height: 36, padding: "0 16px", background: "#fff", color: "#EF4444",
-  border: "1px solid #FECACA", borderRadius: 8, fontSize: 13,
-  fontWeight: 600, cursor: "pointer",
-};
-const cancelBtnStyle = {
-  height: 36, padding: "0 16px", background: "#fff", color: "#6B7280",
-  border: "1px solid #E5E7EB", borderRadius: 8, fontSize: 13,
-  fontWeight: 600, cursor: "pointer",
-};
-const errStyle = { margin: "8px 0 0", fontSize: 12, color: "#EF4444" };
-const okStyle  = { margin: "8px 0 0", fontSize: 12, color: "#10B981" };
