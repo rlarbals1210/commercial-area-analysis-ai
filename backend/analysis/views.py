@@ -1361,6 +1361,8 @@ def recommend_score(request):
         "category": category,
         "quarter": latest_q,
         "is_fallback": is_fallback,
+        "당월매출합": 매출,
+        "점포수": getattr(c, "점포수", 0) or 0,
     })
 
 
@@ -2596,6 +2598,86 @@ def trend_sales_per_store(request):
     for i, r in enumerate(result, 1):
         r["순위"] = i
     return JsonResponse({"quarter": latest_q, "results": result})
+
+
+# ── 네이버 데이터랩 검색 트렌드 ──────────────────────────────────────
+_NAVER_TREND_KEYWORDS = {
+    "한식": ["한식", "한식집", "밥집"],
+    "분식/간식": ["분식", "떡볶이", "김밥"],
+    "베이커리/디저트": ["베이커리", "디저트카페", "케이크"],
+    "중식": ["중국집", "짜장면", "짬뽕"],
+    "일식": ["일식", "초밥", "라멘"],
+    "양식/기타외식": ["양식", "파스타", "스테이크"],
+    "치킨전문점": ["치킨", "후라이드치킨", "양념치킨"],
+    "패스트푸드": ["버거", "햄버거", "패스트푸드"],
+    "카페": ["카페", "커피숍", "커피전문점"],
+    "주점": ["포차", "술집", "이자카야"],
+    "편의점": ["편의점"],
+    "슈퍼마켓": ["슈퍼마켓", "마트"],
+    "미용실": ["미용실", "헤어샵", "헤어살롱"],
+    "네일숍": ["네일샵", "네일아트"],
+    "피부관리실": ["피부관리", "에스테틱"],
+    "일반의원": ["내과", "가정의학과", "의원"],
+    "치과의원": ["치과", "임플란트"],
+    "한의원": ["한의원", "한방"],
+    "외국어학원": ["영어학원", "외국어학원"],
+    "일반교습학원": ["학원", "보습학원"],
+    "골프연습장": ["골프연습장", "스크린골프"],
+    "스포츠클럽": ["헬스장", "피트니스센터"],
+    "PC방": ["PC방", "게임방"],
+    "노래방": ["노래방", "노래연습장"],
+    "애완동물": ["펫샵", "애견미용", "동물병원"],
+    "세탁소": ["세탁소", "드라이클리닝"],
+    "카페": ["카페", "커피숍", "커피전문점"],
+}
+
+def trend_naver(request):
+    """네이버 데이터랩 검색어 트렌드 (GET, category 필수) — 최근 12개월"""
+    category = request.GET.get("category", "").strip()
+    if not category:
+        return JsonResponse({"error": "category 파라미터가 필요합니다."}, status=400)
+
+    keywords = _NAVER_TREND_KEYWORDS.get(category)
+    if not keywords:
+        return JsonResponse({"error": "지원하지 않는 업종입니다."}, status=404)
+
+    client_id = os.environ.get("NAVER_CLIENT_ID", "")
+    client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        return JsonResponse({"error": "네이버 API 키가 설정되지 않았습니다."}, status=503)
+
+    from datetime import datetime, timedelta
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=365)
+
+    payload = {
+        "startDate": start_dt.strftime("%Y-%m-%d"),
+        "endDate": end_dt.strftime("%Y-%m-%d"),
+        "timeUnit": "month",
+        "keywordGroups": [{"groupName": category, "keywords": keywords[:5]}],
+    }
+
+    try:
+        resp = http_requests.post(
+            "https://openapi.naver.com/v1/datalab/search",
+            headers={
+                "X-Naver-Client-Id": client_id,
+                "X-Naver-Client-Secret": client_secret,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=8,
+        )
+    except Exception:
+        return JsonResponse({"error": "네이버 API 요청에 실패했습니다."}, status=502)
+
+    if resp.status_code != 200:
+        return JsonResponse({"error": f"네이버 API 오류 ({resp.status_code})"}, status=502)
+
+    results = resp.json().get("results", [{}])
+    data = results[0].get("data", []) if results else []
+
+    return JsonResponse({"category": category, "data": data})
 
 
 def report(request):
