@@ -2345,10 +2345,14 @@ def trend_weekday_industries(request):
     if not latest_q:
         return JsonResponse({"results": []})
 
+    dongs_param = request.GET.get("dongs", "").strip()
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q).exclude(주중매출합__isnull=True)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
+
     rows = list(
-        CommercialData.objects
-        .filter(기준_년분기_코드=latest_q)
-        .exclude(주중매출합__isnull=True)
+        qs
         .values("통합카테고리")
         .annotate(
             총매출=Sum("당월매출합"),
@@ -2374,10 +2378,14 @@ def trend_weekend_industries(request):
     if not latest_q:
         return JsonResponse({"results": []})
 
+    dongs_param = request.GET.get("dongs", "").strip()
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q).exclude(주말매출합__isnull=True)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
+
     rows = list(
-        CommercialData.objects
-        .filter(기준_년분기_코드=latest_q)
-        .exclude(주말매출합__isnull=True)
+        qs
         .values("통합카테고리")
         .annotate(
             총매출=Sum("당월매출합"),
@@ -2398,8 +2406,9 @@ def trend_weekend_industries(request):
 
 
 def trend_age_breakdown(request):
-    """업종별 연령대 매출 비율 (GET, category 파라미터)"""
+    """업종별 연령대 매출 비율 (GET, category / dongs 파라미터)"""
     category = request.GET.get("category", "").strip()
+    dongs_param = request.GET.get("dongs", "").strip()
     latest_q = _latest_quarter()
     if not latest_q:
         return JsonResponse({"error": "데이터 없음"}, status=404)
@@ -2407,6 +2416,9 @@ def trend_age_breakdown(request):
     qs = CommercialData.objects.filter(기준_년분기_코드=latest_q)
     if category:
         qs = qs.filter(통합카테고리=category)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
 
     agg = qs.aggregate(
         a10=Sum("매출_10대합"),
@@ -2427,6 +2439,163 @@ def trend_age_breakdown(request):
     total = sum(vals.values()) or 1
     result = [{"age": k, "value": v, "ratio": round(v / total * 100, 1)} for k, v in vals.items()]
     return JsonResponse({"category": category or "전체", "quarter": latest_q, "breakdown": result})
+
+
+def trend_time_breakdown(request):
+    """시간대별 매출 비율 (GET, category/dongs 선택)"""
+    category = request.GET.get("category", "").strip()
+    dongs_param = request.GET.get("dongs", "").strip()
+    latest_q = _latest_quarter()
+    if not latest_q:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q)
+    if category:
+        qs = qs.filter(통합카테고리=category)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
+
+    agg = qs.aggregate(
+        t0006=Sum("시간대_00_06_매출"),
+        t0611=Sum("시간대_06_11_매출"),
+        t1114=Sum("시간대_11_14_매출"),
+        t1417=Sum("시간대_14_17_매출"),
+        t1721=Sum("시간대_17_21_매출"),
+        t2124=Sum("시간대_21_24_매출"),
+    )
+    slots = [
+        {"time": "00~06시", "value": agg["t0006"] or 0},
+        {"time": "06~11시", "value": agg["t0611"] or 0},
+        {"time": "11~14시", "value": agg["t1114"] or 0},
+        {"time": "14~17시", "value": agg["t1417"] or 0},
+        {"time": "17~21시", "value": agg["t1721"] or 0},
+        {"time": "21~24시", "value": agg["t2124"] or 0},
+    ]
+    total = sum(s["value"] for s in slots) or 1
+    result = [{"time": s["time"], "ratio": round(s["value"] / total * 100, 1)} for s in slots]
+    return JsonResponse({"category": category or "전체", "quarter": latest_q, "breakdown": result})
+
+
+def trend_gender_breakdown(request):
+    """업종별 성별 매출 비율 (GET, dongs 선택)"""
+    dongs_param = request.GET.get("dongs", "").strip()
+    latest_q = _latest_quarter()
+    if not latest_q:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q).exclude(남성매출합__isnull=True)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
+
+    rows = list(
+        qs.values("통합카테고리")
+        .annotate(남성=Sum("남성매출합"), 여성=Sum("여성매출합"))
+    )
+    result = []
+    for r in rows:
+        남성 = r["남성"] or 0
+        여성 = r["여성"] or 0
+        total = 남성 + 여성 or 1
+        result.append({
+            "통합카테고리": r["통합카테고리"],
+            "남성비율": round(남성 / total * 100, 1),
+            "여성비율": round(여성 / total * 100, 1),
+        })
+    result.sort(key=lambda x: x["여성비율"], reverse=True)
+    return JsonResponse({"quarter": latest_q, "results": result})
+
+
+def trend_weekday_pattern(request):
+    """요일별 매출 비율 (GET, category/dongs 선택)"""
+    category = request.GET.get("category", "").strip()
+    dongs_param = request.GET.get("dongs", "").strip()
+    latest_q = _latest_quarter()
+    if not latest_q:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q)
+    if category:
+        qs = qs.filter(통합카테고리=category)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
+
+    agg = qs.aggregate(
+        월=Sum("월요일매출합"), 화=Sum("화요일매출합"), 수=Sum("수요일매출합"),
+        목=Sum("목요일매출합"), 금=Sum("금요일매출합"), 토=Sum("토요일매출합"), 일=Sum("일요일매출합"),
+    )
+    slots = [
+        {"day": "월", "value": agg["월"] or 0},
+        {"day": "화", "value": agg["화"] or 0},
+        {"day": "수", "value": agg["수"] or 0},
+        {"day": "목", "value": agg["목"] or 0},
+        {"day": "금", "value": agg["금"] or 0},
+        {"day": "토", "value": agg["토"] or 0},
+        {"day": "일", "value": agg["일"] or 0},
+    ]
+    total = sum(s["value"] for s in slots) or 1
+    result = [{"day": s["day"], "ratio": round(s["value"] / total * 100, 1)} for s in slots]
+    return JsonResponse({"category": category or "전체", "quarter": latest_q, "breakdown": result})
+
+
+def trend_open_close(request):
+    """업종별 개업/폐업률 (GET, dongs 선택)"""
+    dongs_param = request.GET.get("dongs", "").strip()
+    latest_q = _latest_quarter()
+    if not latest_q:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q).exclude(개업_율_평균__isnull=True)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
+
+    rows = list(
+        qs.values("통합카테고리")
+        .annotate(개업률=Avg("개업_율_평균"), 폐업률=Avg("폐업_률_평균"))
+    )
+    result = [
+        {
+            "통합카테고리": r["통합카테고리"],
+            "개업률": round(r["개업률"] or 0, 1),
+            "폐업률": round(r["폐업률"] or 0, 1),
+        }
+        for r in rows
+    ]
+    result.sort(key=lambda x: x["개업률"] - x["폐업률"], reverse=True)
+    return JsonResponse({"quarter": latest_q, "results": result})
+
+
+def trend_sales_per_store(request):
+    """업종별 점포당 매출 (GET, dongs 선택)"""
+    dongs_param = request.GET.get("dongs", "").strip()
+    latest_q = _latest_quarter()
+    if not latest_q:
+        return JsonResponse({"error": "데이터 없음"}, status=404)
+
+    qs = CommercialData.objects.filter(기준_년분기_코드=latest_q).exclude(업종_점포당매출__isnull=True).filter(업종_점포당매출__gt=0)
+    if dongs_param:
+        dongs = [normalize_dong(d) for d in dongs_param.split(",") if d.strip()]
+        qs = qs.filter(행정동명__in=dongs)
+
+    rows = list(
+        qs.values("통합카테고리")
+        .annotate(점포당매출=Avg("업종_점포당매출"), 점포수=Sum("점포수"))
+    )
+    result = [
+        {
+            "통합카테고리": r["통합카테고리"],
+            "점포당매출": round(r["점포당매출"] or 0),
+            "점포수": r["점포수"] or 0,
+        }
+        for r in rows
+    ]
+    result.sort(key=lambda x: x["점포당매출"], reverse=True)
+    for i, r in enumerate(result, 1):
+        r["순위"] = i
+    return JsonResponse({"quarter": latest_q, "results": result})
 
 
 def report(request):

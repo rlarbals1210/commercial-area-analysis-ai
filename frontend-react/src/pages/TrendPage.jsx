@@ -64,6 +64,58 @@ function AgeCategoryDropdown({ value, onChange }) {
   );
 }
 
+function DongDropdown({ dongList, selectedDong, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          padding: "8px 14px", borderRadius: 8, border: "1px solid #D1D5DB",
+          fontSize: 14, color: "#374151", background: "#fff", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 8, minWidth: 140,
+        }}
+      >
+        {selectedDong || "동 선택"}
+        <span style={{ fontSize: 11, color: "#9CA3AF" }}>▼</span>
+      </button>
+      {open && (
+        <div className="gu-dropdown-list" style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
+          background: "#fff", border: "1px solid #E5E7EB", borderRadius: 8,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.1)", maxHeight: 260, overflowY: "auto",
+          minWidth: 160,
+        }}>
+          {dongList.map((dong) => (
+            <div
+              key={dong}
+              onClick={() => { onChange(dong); setOpen(false); }}
+              style={{
+                padding: "9px 14px", fontSize: 14, cursor: "pointer",
+                color: dong === selectedDong ? "#1D4ED8" : "#374151",
+                fontWeight: dong === selectedDong ? 600 : 400,
+                background: dong === selectedDong ? "#EFF6FF" : "transparent",
+              }}
+              onMouseEnter={(e) => { if (dong !== selectedDong) e.currentTarget.style.background = "#F9FAFB"; }}
+              onMouseLeave={(e) => { if (dong !== selectedDong) e.currentTarget.style.background = "transparent"; }}
+            >
+              {dong}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GuDropdown({ guList, selectedGu, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -117,7 +169,7 @@ function GuDropdown({ guList, selectedGu, onChange }) {
 }
 
 const API = "http://localhost:8000";
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 const CAT_ICON = {
   "한식": Utensils, "중식": Utensils, "일식": Fish, "양식/기타외식": ChefHat,
@@ -196,10 +248,13 @@ export default function TrendPage() {
 
   const [guList, setGuList] = useState([]);
   const [guToDongs, setGuToDongs] = useState({});
-  const [selectedGu, setSelectedGu] = useState("");
-  const [guIndustries, setGuIndustries] = useState([]);
-  const [guLoading, setGuLoading] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const [regionMode, setRegionMode] = useState("구"); // "구" | "동"
+  const [regionGu, setRegionGu] = useState("");
+  const [regionDong, setRegionDong] = useState("");
+  const [regionIndustries, setRegionIndustries] = useState([]);
+  const [regionLoading, setRegionLoading] = useState(false);
+  const [regionVisibleCount, setRegionVisibleCount] = useState(PAGE_SIZE);
 
   const [mzVisible, setMzVisible] = useState(PAGE_SIZE);
   const [weekdayIndustries, setWeekdayIndustries] = useState([]);
@@ -209,6 +264,28 @@ export default function TrendPage() {
   const [ageCategory, setAgeCategory] = useState("");
   const [ageData, setAgeData] = useState([]);
   const [ageLoading, setAgeLoading] = useState(false);
+
+  const [timeCategory, setTimeCategory] = useState("");
+  const [timeData, setTimeData] = useState([]);
+  const [timeLoading, setTimeLoading] = useState(false);
+
+  const [genderData, setGenderData] = useState([]);
+  const [genderLoading, setGenderLoading] = useState(false);
+  const [genderVisible, setGenderVisible] = useState(PAGE_SIZE);
+
+  const [fullViewSection, setFullViewSection] = useState(null); // 'region'|'weekday'|'weekend'|'gender'|'weekdayPattern'|'openClose'|'salesPerStore'
+
+  const [weekdayPatternCategory, setWeekdayPatternCategory] = useState("");
+  const [weekdayPatternData, setWeekdayPatternData] = useState([]);
+  const [weekdayPatternLoading, setWeekdayPatternLoading] = useState(false);
+
+  const [openCloseData, setOpenCloseData] = useState([]);
+  const [openCloseLoading, setOpenCloseLoading] = useState(false);
+  const [openCloseVisible, setOpenCloseVisible] = useState(PAGE_SIZE);
+
+  const [salesPerStoreData, setSalesPerStoreData] = useState([]);
+  const [salesPerStoreLoading, setSalesPerStoreLoading] = useState(false);
+  const [salesPerStoreVisible, setSalesPerStoreVisible] = useState(PAGE_SIZE);
 
   const upCarouselRef = useRef(null);
   const downCarouselRef = useRef(null);
@@ -256,45 +333,139 @@ export default function TrendPage() {
         const sorted = Object.keys(map).sort();
         setGuToDongs(map);
         setGuList(sorted);
-        setSelectedGu(sorted[0] || "");
+        setRegionGu(sorted[0] || "");
       });
   }, []);
 
-  // 구 선택 시 인기 업종 로드
+  // 구 변경 시 첫 번째 동으로 초기화
   useEffect(() => {
-    if (!selectedGu || !guToDongs[selectedGu]) return;
-    setGuLoading(true);
-    setVisibleCount(PAGE_SIZE);
+    if (!regionGu || !guToDongs[regionGu]) return;
+    setRegionDong(guToDongs[regionGu][0] || "");
+    setRegionVisibleCount(PAGE_SIZE);
+  }, [regionGu, guToDongs]);
+
+  // 지역 선택 시 인기 업종 로드
+  useEffect(() => {
+    const dongs = regionMode === "구"
+      ? (guToDongs[regionGu] || [])
+      : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    setRegionLoading(true);
+    setRegionVisibleCount(PAGE_SIZE);
     fetch(`${API}/api/trend/gu-industries/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gu: selectedGu, dongs: guToDongs[selectedGu] }),
+      body: JSON.stringify({ gu: regionGu, dongs }),
     })
       .then((r) => r.json())
       .then((data) => {
-        setGuIndustries(data.results || []);
-        setGuLoading(false);
+        setRegionIndustries(data.results || []);
+        setRegionLoading(false);
       });
-  }, [selectedGu, guToDongs]);
+  }, [regionMode, regionGu, regionDong, guToDongs]);
 
-  // MZ / 주중 / 주말 인기 업종 로드
+  // 주중 / 주말 매출 순위 로드 (인기 업종 섹션과 동일한 지역 state 공유)
   useEffect(() => {
-    fetch(`${API}/api/trend/weekday-industries/`)
+    const dongs = regionMode === "구"
+      ? (guToDongs[regionGu] || [])
+      : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    const dongsParam = dongs.join(",");
+    const qs = `?dongs=${encodeURIComponent(dongsParam)}`;
+    setMzVisible(PAGE_SIZE);
+    fetch(`${API}/api/trend/weekday-industries/${qs}`)
       .then((r) => r.json())
       .then((data) => setWeekdayIndustries(data.results || []));
-    fetch(`${API}/api/trend/weekend-industries/`)
+    fetch(`${API}/api/trend/weekend-industries/${qs}`)
       .then((r) => r.json())
       .then((data) => setWeekendIndustries(data.results || []));
-  }, []);
+  }, [regionMode, regionGu, regionDong, guToDongs]);
 
-  // 연령대 매출 비율 로드
+  // 연령대 매출 비율 로드 (인기 업종 섹션과 동일한 지역 state 공유)
   useEffect(() => {
+    const dongs = regionMode === "구"
+      ? (guToDongs[regionGu] || [])
+      : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    const params = new URLSearchParams();
+    if (ageCategory) params.set("category", ageCategory);
+    params.set("dongs", dongs.join(","));
     setAgeLoading(true);
-    fetch(`${API}/api/trend/age-breakdown/${ageCategory ? `?category=${encodeURIComponent(ageCategory)}` : ""}`)
+    fetch(`${API}/api/trend/age-breakdown/?${params}`)
       .then((r) => r.json())
       .then((data) => { setAgeData(data.breakdown || []); setAgeLoading(false); })
       .catch(() => setAgeLoading(false));
-  }, [ageCategory]);
+  }, [ageCategory, regionMode, regionGu, regionDong, guToDongs]);
+
+  // 시간대별 매출 로드
+  useEffect(() => {
+    const dongs = regionMode === "구" ? (guToDongs[regionGu] || []) : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    const params = new URLSearchParams();
+    if (timeCategory) params.set("category", timeCategory);
+    params.set("dongs", dongs.join(","));
+    setTimeLoading(true);
+    fetch(`${API}/api/trend/time-breakdown/?${params}`)
+      .then((r) => r.json())
+      .then((data) => { setTimeData(data.breakdown || []); setTimeLoading(false); })
+      .catch(() => setTimeLoading(false));
+  }, [timeCategory, regionMode, regionGu, regionDong, guToDongs]);
+
+  // 성별 매출 비율 로드
+  useEffect(() => {
+    const dongs = regionMode === "구" ? (guToDongs[regionGu] || []) : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    const params = new URLSearchParams();
+    params.set("dongs", dongs.join(","));
+    setGenderLoading(true);
+    setGenderVisible(PAGE_SIZE);
+    fetch(`${API}/api/trend/gender-breakdown/?${params}`)
+      .then((r) => r.json())
+      .then((data) => { setGenderData(data.results || []); setGenderLoading(false); })
+      .catch(() => setGenderLoading(false));
+  }, [regionMode, regionGu, regionDong, guToDongs]);
+
+  // 요일별 매출 패턴 로드
+  useEffect(() => {
+    const dongs = regionMode === "구" ? (guToDongs[regionGu] || []) : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    const params = new URLSearchParams();
+    if (weekdayPatternCategory) params.set("category", weekdayPatternCategory);
+    params.set("dongs", dongs.join(","));
+    setWeekdayPatternLoading(true);
+    fetch(`${API}/api/trend/weekday-pattern/?${params}`)
+      .then((r) => r.json())
+      .then((data) => { setWeekdayPatternData(data.breakdown || []); setWeekdayPatternLoading(false); })
+      .catch(() => setWeekdayPatternLoading(false));
+  }, [weekdayPatternCategory, regionMode, regionGu, regionDong, guToDongs]);
+
+  // 개업/폐업률 로드
+  useEffect(() => {
+    const dongs = regionMode === "구" ? (guToDongs[regionGu] || []) : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    const params = new URLSearchParams();
+    params.set("dongs", dongs.join(","));
+    setOpenCloseLoading(true);
+    setOpenCloseVisible(PAGE_SIZE);
+    fetch(`${API}/api/trend/open-close/?${params}`)
+      .then((r) => r.json())
+      .then((data) => { setOpenCloseData(data.results || []); setOpenCloseLoading(false); })
+      .catch(() => setOpenCloseLoading(false));
+  }, [regionMode, regionGu, regionDong, guToDongs]);
+
+  // 점포당 매출 로드
+  useEffect(() => {
+    const dongs = regionMode === "구" ? (guToDongs[regionGu] || []) : regionDong ? [regionDong] : [];
+    if (dongs.length === 0) return;
+    const params = new URLSearchParams();
+    params.set("dongs", dongs.join(","));
+    setSalesPerStoreLoading(true);
+    setSalesPerStoreVisible(PAGE_SIZE);
+    fetch(`${API}/api/trend/sales-per-store/?${params}`)
+      .then((r) => r.json())
+      .then((data) => { setSalesPerStoreData(data.results || []); setSalesPerStoreLoading(false); })
+      .catch(() => setSalesPerStoreLoading(false));
+  }, [regionMode, regionGu, regionDong, guToDongs]);
 
   // 캐러셀 자동 스크롤 헬퍼
   function startCarousel(elRef, animRef, posRef, speed = 0.6) {
@@ -326,10 +497,8 @@ export default function TrendPage() {
     return () => { stopUp(); stopDown(); };
   }, [categories]);
 
-  const visibleRows = guIndustries.slice(0, visibleCount);
-  const hasMore = visibleCount < guIndustries.length;
-
   return (
+    <>
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "'Pretendard', sans-serif" }}>
       {/* 상단 헤더 */}
       <header style={{
@@ -424,16 +593,39 @@ export default function TrendPage() {
           </div>
         </section>
 
-        {/* 구별 인기 업종 */}
+        {/* 인기 업종 */}
         <section>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 12 }}>
-            구별 인기 업종
-          </h2>
-          <div style={{ marginBottom: 16 }}>
-            <GuDropdown guList={guList} selectedGu={selectedGu} onChange={setSelectedGu} />
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>
+              {regionMode === "구" ? `${regionGu}의 인기 업종` : `${regionDong}의 인기 업종`}
+            </h2>
+            <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 8, padding: 3, gap: 2 }}>
+              {[{ key: "구", label: "구 단위" }, { key: "동", label: "행정동 단위" }].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setRegionMode(key)}
+                  style={{
+                    padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+                    fontSize: 13, fontWeight: 600,
+                    background: regionMode === key ? "#fff" : "transparent",
+                    color: regionMode === key ? "#111827" : "#9CA3AF",
+                    boxShadow: regionMode === key ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* 헤더 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <GuDropdown guList={guList} selectedGu={regionGu} onChange={setRegionGu} />
+            {regionMode === "동" && (
+              <DongDropdown dongList={guToDongs[regionGu] || []} selectedDong={regionDong} onChange={setRegionDong} />
+            )}
+          </div>
+
           <div style={{
             display: "grid",
             gridTemplateColumns: "80px 1fr 1fr 1fr 1fr",
@@ -444,18 +636,17 @@ export default function TrendPage() {
           }}>
             <span style={{ textAlign: "center" }}>순위</span>
             <span style={{ textAlign: "center" }}>업종</span>
-            <span style={{ textAlign: "center" }}>인기 행정동</span>
+            <span style={{ textAlign: "center" }}>{regionMode === "구" ? "인기 행정동" : "점포수"}</span>
             <span style={{ textAlign: "center" }}>매출</span>
             <span style={{ textAlign: "center" }}>매출 증감률</span>
           </div>
 
-          {/* 카드 목록 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {guLoading ? (
+            {regionLoading ? (
               <div style={{ padding: 32, textAlign: "center", color: "#9CA3AF", fontSize: 14 }}>불러오는 중...</div>
-            ) : visibleRows.length === 0 ? (
+            ) : regionIndustries.slice(0, regionVisibleCount).length === 0 ? (
               <div style={{ padding: 32, textAlign: "center", color: "#9CA3AF", fontSize: 14 }}>데이터 없음</div>
-            ) : visibleRows.map((row) => (
+            ) : regionIndustries.slice(0, regionVisibleCount).map((row) => (
               <div
                 key={row.순위}
                 style={{
@@ -469,36 +660,31 @@ export default function TrendPage() {
                   boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
                 }}
               >
-                {/* 순위 */}
                 <span style={{ fontSize: 14, fontWeight: 700, color: row.순위 <= 3 ? "#1D4ED8" : "#9CA3AF", textAlign: "center" }}>
                   {row.순위}위
                 </span>
-                {/* 아이콘 + 업종 */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                   <CatIcon cat={row.통합카테고리} size={20} />
                   <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
                 </div>
-                <span style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{row.최고_행정동}</span>
+                {regionMode === "구" ? (
+                  <span style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{row.최고_행정동}</span>
+                ) : (
+                  <span style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{row.점포수?.toLocaleString()}개</span>
+                )}
                 <span style={{ textAlign: "center", fontSize: 14, color: "#111827", fontWeight: 500 }}>{fmt억(row.매출)}</span>
                 <span style={{ textAlign: "center" }}><ChangeRate value={row.매출_증감률} /></span>
               </div>
             ))}
           </div>
 
-          {hasMore && (
+          {regionIndustries.length > PAGE_SIZE && (
             <div style={{ marginTop: 12, textAlign: "center" }}>
               <button
-                onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
-                style={{
-                  border: "none", background: "none", cursor: "pointer",
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  color: "#9CA3AF", fontSize: 13, fontWeight: 500,
-                }}
+                onClick={() => setFullViewSection("region")}
+                style={{ border: "1px solid #E5E7EB", background: "#fff", cursor: "pointer", padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#374151" }}
               >
-                더 보기
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
+                전체 보기
               </button>
             </div>
           )}
@@ -506,8 +692,10 @@ export default function TrendPage() {
 
         {/* 주중매출 / 주말매출 인기 업종 */}
         <section style={{ marginTop: 48 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>업종별 매출 순위</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>
+              {regionMode === "구" ? `${regionGu}의 업종별 매출 순위` : `${regionDong}의 업종별 매출 순위`}
+            </h2>
             <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 8, padding: 3, gap: 2 }}>
               {[{ key: "weekday", label: "주중 매출" }, { key: "weekend", label: "주말 매출" }].map(({ key, label }) => (
                 <button
@@ -527,9 +715,6 @@ export default function TrendPage() {
               ))}
             </div>
           </div>
-          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
-            {activeTab === "weekday" ? "주중(월~금) 매출이 높은 업종 순위" : "주말(토~일) 매출이 높은 업종 순위"}
-          </p>
 
           <div style={{
             display: "grid",
@@ -586,20 +771,13 @@ export default function TrendPage() {
             })()}
           </div>
 
-          {mzVisible < (activeTab === "weekday" ? weekdayIndustries : weekendIndustries).length && (
+          {(activeTab === "weekday" ? weekdayIndustries : weekendIndustries).length > PAGE_SIZE && (
             <div style={{ marginTop: 12, textAlign: "center" }}>
               <button
-                onClick={() => setMzVisible((v) => v + PAGE_SIZE)}
-                style={{
-                  border: "none", background: "none", cursor: "pointer",
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  color: "#9CA3AF", fontSize: 13, fontWeight: 500,
-                }}
+                onClick={() => setFullViewSection(activeTab)}
+                style={{ border: "1px solid #E5E7EB", background: "#fff", cursor: "pointer", padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#374151" }}
               >
-                더 보기
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
+                전체 보기
               </button>
             </div>
           )}
@@ -607,7 +785,9 @@ export default function TrendPage() {
 
         {/* 연령대별 매출 비율 */}
         <section style={{ marginTop: 48 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>연령대별 매출 비율</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+            {regionMode === "구" ? `${regionGu}의 연령대별 매출 비율` : `${regionDong}의 연령대별 매출 비율`}
+          </h2>
           <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>업종을 선택하면 해당 업종의 연령대별 매출 비율을 확인할 수 있어요</p>
 
           {/* 업종 선택 */}
@@ -659,7 +839,403 @@ export default function TrendPage() {
             )}
           </div>
         </section>
+
+        {/* 시간대별 매출 패턴 */}
+        <section style={{ marginTop: 48 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+            {regionMode === "구" ? `${regionGu}의 시간대별 매출 패턴` : `${regionDong}의 시간대별 매출 패턴`}
+          </h2>
+          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>어느 시간대에 매출이 집중되는지 확인할 수 있어요</p>
+          <AgeCategoryDropdown value={timeCategory} onChange={setTimeCategory} />
+          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #F3F4F6", padding: "28px 32px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", minHeight: 200 }}>
+            {timeLoading ? (
+              <div style={{ textAlign: "center", color: "#9CA3AF", fontSize: 14, padding: 32 }}>불러오는 중...</div>
+            ) : timeData.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#9CA3AF", fontSize: 14, padding: 32 }}>데이터가 없습니다.</div>
+            ) : (() => {
+              const maxRatio = Math.max(...timeData.map((d) => d.ratio));
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {timeData.map((d) => {
+                    const isPeak = d.ratio === maxRatio;
+                    const barColor = isPeak ? "#2563EB" : "#93C5FD";
+                    return (
+                      <div key={d.time} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: 13, color: "#6B7280", width: 64, flexShrink: 0 }}>{d.time}</span>
+                        <div style={{ flex: 1, height: 10, background: "#F3F4F6", borderRadius: 5, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${(d.ratio / maxRatio) * 100}%`, background: barColor, borderRadius: 5, transition: "width 0.4s ease" }} />
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: isPeak ? 700 : 500, color: isPeak ? "#1D4ED8" : "#374151", width: 40, textAlign: "right" }}>{d.ratio}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </section>
+
+        {/* 업종별 성별 매출 비율 */}
+        <section style={{ marginTop: 48 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+            {regionMode === "구" ? `${regionGu}의 업종별 성별 매출 비율` : `${regionDong}의 업종별 성별 매출 비율`}
+          </h2>
+          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>업종별 남성·여성 매출 비율을 비교해요. 여성 비율이 높은 순으로 정렬됩니다.</p>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: "#3B82F6", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: "#374151" }}>남성</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: "#F472B6", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: "#374151" }}>여성</span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {genderLoading ? (
+              <div style={{ padding: 32, textAlign: "center", color: "#9CA3AF", fontSize: 14 }}>불러오는 중...</div>
+            ) : genderData.slice(0, genderVisible).map((row) => (
+              <div
+                key={row.통합카테고리}
+                style={{ background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "12px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", display: "grid", gridTemplateColumns: "1fr 2fr 120px", alignItems: "center", gap: 16 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <CatIcon cat={row.통합카테고리} size={18} />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                </div>
+                <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ width: `${row.남성비율}%`, background: "#3B82F6", transition: "width 0.4s ease" }} />
+                  <div style={{ width: `${row.여성비율}%`, background: "#F472B6", transition: "width 0.4s ease" }} />
+                </div>
+                <div style={{ fontSize: 13, color: "#6B7280", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <span style={{ color: "#3B82F6", fontWeight: 600 }}>{row.남성비율}%</span>
+                  <span style={{ margin: "0 4px" }}>·</span>
+                  <span style={{ color: "#F472B6", fontWeight: 600 }}>{row.여성비율}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {genderData.length > PAGE_SIZE && (
+            <div style={{ marginTop: 12, textAlign: "center" }}>
+              <button
+                onClick={() => setFullViewSection("gender")}
+                style={{ border: "1px solid #E5E7EB", background: "#fff", cursor: "pointer", padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#374151" }}
+              >
+                전체 보기
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* 요일별 매출 패턴 */}
+        <section style={{ marginTop: 48 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+            {regionMode === "구" ? `${regionGu}의 요일별 매출 패턴` : `${regionDong}의 요일별 매출 패턴`}
+          </h2>
+          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>요일별 매출 비중을 확인할 수 있어요</p>
+          <AgeCategoryDropdown value={weekdayPatternCategory} onChange={setWeekdayPatternCategory} />
+          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #F3F4F6", padding: "28px 32px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", minHeight: 200 }}>
+            {weekdayPatternLoading ? (
+              <div style={{ textAlign: "center", color: "#9CA3AF", fontSize: 14, padding: 32 }}>불러오는 중...</div>
+            ) : weekdayPatternData.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#9CA3AF", fontSize: 14, padding: 32 }}>데이터가 없습니다.</div>
+            ) : (() => {
+              const maxRatio = Math.max(...weekdayPatternData.map((d) => d.ratio));
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {weekdayPatternData.map((d) => {
+                    const isWeekend = d.day === "토" || d.day === "일";
+                    const isPeak = d.ratio === maxRatio;
+                    const barColor = isPeak ? "#2563EB" : isWeekend ? "#7C3AED" : "#93C5FD";
+                    return (
+                      <div key={d.day} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: 13, fontWeight: isWeekend ? 600 : 400, color: isWeekend ? "#7C3AED" : "#6B7280", width: 24, flexShrink: 0, textAlign: "center" }}>{d.day}</span>
+                        <div style={{ flex: 1, height: 10, background: "#F3F4F6", borderRadius: 5, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${(d.ratio / maxRatio) * 100}%`, background: barColor, borderRadius: 5, transition: "width 0.4s ease" }} />
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: isPeak ? 700 : 500, color: isPeak ? "#1D4ED8" : "#374151", width: 40, textAlign: "right" }}>{d.ratio}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </section>
+
+        {/* 업종별 개업/폐업률 */}
+        <section style={{ marginTop: 48 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+            {regionMode === "구" ? `${regionGu}의 업종별 개업/폐업률` : `${regionDong}의 업종별 개업/폐업률`}
+          </h2>
+          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>개업률 - 폐업률 차이가 높은 순으로 정렬됩니다.</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#22C55E" }} /><span style={{ fontSize: 13, color: "#374151" }}>개업률</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#EF4444" }} /><span style={{ fontSize: 13, color: "#374151" }}>폐업률</span></div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {openCloseLoading ? (
+              <div style={{ padding: 32, textAlign: "center", color: "#9CA3AF", fontSize: 14 }}>불러오는 중...</div>
+            ) : (() => {
+              const maxVal = Math.max(...openCloseData.map((r) => Math.max(r.개업률, r.폐업률)), 1);
+              return openCloseData.slice(0, openCloseVisible).map((row) => (
+                <div key={row.통합카테고리} style={{ background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "14px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", display: "grid", gridTemplateColumns: "1fr 2fr", alignItems: "center", gap: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <CatIcon cat={row.통합카테고리} size={18} />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: "#22C55E", fontWeight: 600, width: 32 }}>{row.개업률}%</span>
+                      <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${(row.개업률 / maxVal) * 100}%`, background: "#22C55E", borderRadius: 3, transition: "width 0.4s ease" }} />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600, width: 32 }}>{row.폐업률}%</span>
+                      <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${(row.폐업률 / maxVal) * 100}%`, background: "#EF4444", borderRadius: 3, transition: "width 0.4s ease" }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+          {openCloseData.length > PAGE_SIZE && (
+            <div style={{ marginTop: 12, textAlign: "center" }}>
+              <button onClick={() => setFullViewSection("openClose")} style={{ border: "1px solid #E5E7EB", background: "#fff", cursor: "pointer", padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#374151" }}>전체 보기</button>
+            </div>
+          )}
+        </section>
+
+        {/* 업종별 점포당 매출 */}
+        <section style={{ marginTop: 48, marginBottom: 64 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+            {regionMode === "구" ? `${regionGu}의 업종별 점포당 매출` : `${regionDong}의 업종별 점포당 매출`}
+          </h2>
+          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>점포 1개당 평균 매출이 높은 업종 순입니다.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr 1fr", padding: "10px 20px", fontSize: 13, fontWeight: 600, color: "#6B7280", borderBottom: "1px solid #E5E7EB", marginBottom: 8 }}>
+            <span style={{ textAlign: "center" }}>순위</span>
+            <span style={{ textAlign: "center" }}>업종</span>
+            <span style={{ textAlign: "center" }}>점포당 매출</span>
+            <span style={{ textAlign: "center" }}>점포수</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {salesPerStoreLoading ? (
+              <div style={{ padding: 32, textAlign: "center", color: "#9CA3AF", fontSize: 14 }}>불러오는 중...</div>
+            ) : salesPerStoreData.slice(0, salesPerStoreVisible).map((row) => (
+              <div key={row.통합카테고리} style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr 1fr", alignItems: "center", background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "12px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: row.순위 <= 3 ? "#1D4ED8" : "#9CA3AF", textAlign: "center" }}>{row.순위}위</span>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <CatIcon cat={row.통합카테고리} size={20} />
+                  <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                </div>
+                <span style={{ textAlign: "center", fontSize: 14, fontWeight: 600, color: "#1D4ED8" }}>{fmt억(row.점포당매출)}</span>
+                <span style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{row.점포수?.toLocaleString()}개</span>
+              </div>
+            ))}
+          </div>
+          {salesPerStoreData.length > PAGE_SIZE && (
+            <div style={{ marginTop: 12, textAlign: "center" }}>
+              <button onClick={() => setFullViewSection("salesPerStore")} style={{ border: "1px solid #E5E7EB", background: "#fff", cursor: "pointer", padding: "7px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#374151" }}>전체 보기</button>
+            </div>
+          )}
+        </section>
+
       </div>
     </div>
+
+    {/* 전체 보기 풀스크린 오버레이 */}
+    {fullViewSection && (() => {
+      const regionLabel = regionMode === "구" ? regionGu : regionDong;
+      const titles = {
+        region: `${regionLabel}의 인기 업종 전체`,
+        weekday: `${regionLabel}의 주중 업종별 매출 순위 전체`,
+        weekend: `${regionLabel}의 주말 업종별 매출 순위 전체`,
+        gender: `${regionLabel}의 업종별 성별 매출 비율 전체`,
+        openClose: `${regionLabel}의 업종별 개업/폐업률 전체`,
+        salesPerStore: `${regionLabel}의 업종별 점포당 매출 전체`,
+      };
+      return (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#F8FAFC", overflowY: "auto", fontFamily: "'Pretendard', sans-serif" }}>
+          {/* 헤더 */}
+          <div style={{ position: "sticky", top: 0, background: "#fff", borderBottom: "1px solid #E5E7EB", padding: "16px 40px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>{titles[fullViewSection]}</h2>
+            <button
+              onClick={() => setFullViewSection(null)}
+              style={{ border: "1px solid #E5E7EB", background: "#fff", cursor: "pointer", padding: "7px 18px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "#374151", display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              닫기
+            </button>
+          </div>
+
+          {/* 본문 */}
+          <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 40px" }}>
+
+            {/* 인기 업종 */}
+            {fullViewSection === "region" && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr 1fr 1fr", padding: "10px 20px", fontSize: 13, fontWeight: 600, color: "#6B7280", borderBottom: "1px solid #E5E7EB", marginBottom: 8 }}>
+                  <span style={{ textAlign: "center" }}>순위</span>
+                  <span style={{ textAlign: "center" }}>업종</span>
+                  <span style={{ textAlign: "center" }}>{regionMode === "구" ? "인기 행정동" : "점포수"}</span>
+                  <span style={{ textAlign: "center" }}>매출</span>
+                  <span style={{ textAlign: "center" }}>매출 증감률</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {regionIndustries.map((row) => (
+                    <div key={row.순위} style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr 1fr 1fr", alignItems: "center", background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "12px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: row.순위 <= 3 ? "#1D4ED8" : "#9CA3AF", textAlign: "center" }}>{row.순위}위</span>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                        <CatIcon cat={row.통합카테고리} size={20} />
+                        <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                      </div>
+                      {regionMode === "구" ? <span style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{row.최고_행정동}</span> : <span style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{row.점포수?.toLocaleString()}개</span>}
+                      <span style={{ textAlign: "center", fontSize: 14, color: "#111827", fontWeight: 500 }}>{fmt억(row.매출)}</span>
+                      <span style={{ textAlign: "center" }}><ChangeRate value={row.매출_증감률} /></span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* 주중 / 주말 매출 순위 */}
+            {(fullViewSection === "weekday" || fullViewSection === "weekend") && (() => {
+              const data = fullViewSection === "weekday" ? weekdayIndustries : weekendIndustries;
+              const barKey = fullViewSection === "weekday" ? "주중_매출비율" : "주말_매출비율";
+              const maxVal = data.length > 0 ? Math.max(...data.map(r => r[barKey] || 0)) : 1;
+              const barColor = fullViewSection === "weekday" ? "#3B82F6" : "#0EA5E9";
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", padding: "10px 20px", fontSize: 13, fontWeight: 600, color: "#6B7280", borderBottom: "1px solid #E5E7EB", marginBottom: 8 }}>
+                    <span style={{ textAlign: "center" }}>순위</span>
+                    <span style={{ textAlign: "center" }}>업종</span>
+                    <span style={{ textAlign: "center" }}>{fullViewSection === "weekday" ? "주중 매출 비율" : "주말 매출 비율"}</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {data.map((row) => {
+                      const barPct = maxVal > 0 ? ((row[barKey] || 0) / maxVal) * 100 : 0;
+                      return (
+                        <div key={row.순위} style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", alignItems: "center", background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "12px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: row.순위 <= 3 ? "#1D4ED8" : "#9CA3AF", textAlign: "center" }}>{row.순위}위</span>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                            <CatIcon cat={row.통합카테고리} size={20} />
+                            <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                          </div>
+                          <div style={{ textAlign: "center" }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: barColor }}>{row[barKey]}%</span>
+                            <div style={{ height: 4, background: "#F3F4F6", borderRadius: 2, width: "80%", margin: "5px auto 0" }}>
+                              <div style={{ height: "100%", width: `${barPct}%`, background: barColor, borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* 성별 매출 비율 */}
+            {fullViewSection === "gender" && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#3B82F6" }} /><span style={{ fontSize: 13, color: "#374151" }}>남성</span></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#F472B6" }} /><span style={{ fontSize: 13, color: "#374151" }}>여성</span></div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {genderData.map((row) => (
+                    <div key={row.통합카테고리} style={{ background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "12px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", display: "grid", gridTemplateColumns: "1fr 2fr 120px", alignItems: "center", gap: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <CatIcon cat={row.통합카테고리} size={18} />
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                      </div>
+                      <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden" }}>
+                        <div style={{ width: `${row.남성비율}%`, background: "#3B82F6" }} />
+                        <div style={{ width: `${row.여성비율}%`, background: "#F472B6" }} />
+                      </div>
+                      <div style={{ fontSize: 13, color: "#6B7280", textAlign: "right", whiteSpace: "nowrap" }}>
+                        <span style={{ color: "#3B82F6", fontWeight: 600 }}>{row.남성비율}%</span>
+                        <span style={{ margin: "0 4px" }}>·</span>
+                        <span style={{ color: "#F472B6", fontWeight: 600 }}>{row.여성비율}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* 개업/폐업률 */}
+            {fullViewSection === "openClose" && (() => {
+              const maxVal = Math.max(...openCloseData.map((r) => Math.max(r.개업률, r.폐업률)), 1);
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#22C55E" }} /><span style={{ fontSize: 13, color: "#374151" }}>개업률</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#EF4444" }} /><span style={{ fontSize: 13, color: "#374151" }}>폐업률</span></div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {openCloseData.map((row) => (
+                      <div key={row.통합카테고리} style={{ background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "14px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", display: "grid", gridTemplateColumns: "1fr 2fr", alignItems: "center", gap: 16 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <CatIcon cat={row.통합카테고리} size={18} />
+                          <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 12, color: "#22C55E", fontWeight: 600, width: 32 }}>{row.개업률}%</span>
+                            <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${(row.개업률 / maxVal) * 100}%`, background: "#22C55E", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600, width: 32 }}>{row.폐업률}%</span>
+                            <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${(row.폐업률 / maxVal) * 100}%`, background: "#EF4444", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* 점포당 매출 */}
+            {fullViewSection === "salesPerStore" && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr 1fr", padding: "10px 20px", fontSize: 13, fontWeight: 600, color: "#6B7280", borderBottom: "1px solid #E5E7EB", marginBottom: 8 }}>
+                  <span style={{ textAlign: "center" }}>순위</span>
+                  <span style={{ textAlign: "center" }}>업종</span>
+                  <span style={{ textAlign: "center" }}>점포당 매출</span>
+                  <span style={{ textAlign: "center" }}>점포수</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {salesPerStoreData.map((row) => (
+                    <div key={row.통합카테고리} style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr 1fr", alignItems: "center", background: "#fff", borderRadius: 12, border: "1px solid #F3F4F6", padding: "12px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: row.순위 <= 3 ? "#1D4ED8" : "#9CA3AF", textAlign: "center" }}>{row.순위}위</span>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                        <CatIcon cat={row.통합카테고리} size={20} />
+                        <span style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{row.통합카테고리}</span>
+                      </div>
+                      <span style={{ textAlign: "center", fontSize: 14, fontWeight: 600, color: "#1D4ED8" }}>{fmt억(row.점포당매출)}</span>
+                      <span style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{row.점포수?.toLocaleString()}개</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+          </div>
+        </div>
+      );
+    })()}
+    </>
   );
 }

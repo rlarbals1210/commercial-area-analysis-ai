@@ -104,7 +104,7 @@ commercial-area-analysis-ai/
 │           ├── SignupPage.jsx        # 회원가입 (479줄)
 │           ├── ProfilePage.jsx       # 프로필 (917줄)
 │           ├── CommunityPage.jsx     # 게시판 (705줄)
-│           ├── TrendPage.jsx         # 트렌드 분석 (665줄)
+│           ├── TrendPage.jsx         # 트렌드 분석 (지역별 필터 통합)
 │           └── SocialCallbackPage.jsx # 카카오/네이버 소셜 로그인 콜백
 │
 ├── ai/                               # AI/ML 파이프라인
@@ -315,14 +315,13 @@ PC방, 가방, 가전제품, 가전제품수리, 골프연습장, 기타 B2B서�
 | `/api/gu-report/` | POST | `gu`, `dongs[]`, `category` | 구 AI 보고서 (Gemini) |
 
 ### 트렌드
-| URL | 설명 |
-|-----|------|
-| `/api/trend/categories/` | 트렌드 카테고리 목록 |
-| `/api/trend/gu-industries/` | 구별 업종별 트렌드 |
-| `/api/trend/mz-industries/` | MZ 세대 트렌드 |
-| `/api/trend/weekday-industries/` | 요일별 업종 트렌드 |
-| `/api/trend/weekend-industries/` | 주말 업종 트렌드 |
-| `/api/trend/age-breakdown/` | 나이별 분석 |
+| URL | 메서드 | 파라미터 | 설명 |
+|-----|--------|----------|------|
+| `/api/trend/categories/` | GET | - | 전체 업종별 매출 증감률 (캐러셀용) |
+| `/api/trend/gu-industries/` | POST | `gu`, `dongs[]` | 지역 인기 업종 순위. dongs에 구 전체 동 목록 → 구 단위, 동 1개 → 행정동 단위 |
+| `/api/trend/weekday-industries/` | GET | `dongs` (선택, comma-separated) | 주중 매출 비율 높은 업종 순위. dongs 없으면 전국 |
+| `/api/trend/weekend-industries/` | GET | `dongs` (선택, comma-separated) | 주말 매출 비율 높은 업종 순위. dongs 없으면 전국 |
+| `/api/trend/age-breakdown/` | GET | `category` (선택), `dongs` (선택, comma-separated) | 연령대별 매출 비율. 둘 다 없으면 전국 전업종 |
 
 ### 비교 및 기타
 | URL | 설명 |
@@ -447,6 +446,54 @@ tooltipPos            // 지도 마우스오버 툴팁 위치
 | `AiText` 컴포넌트 + 다시 시도 버튼 | line ~2710 |
 | 업종 심화분석 드롭다운 | line ~2850 |
 | AI 모달 업종 선택 UI | line ~2980 |
+
+---
+
+## TrendPage.jsx 상세
+
+### 공유 지역 State
+TrendPage의 세 섹션(인기 업종 / 업종별 매출 순위 / 연령대별 매출 비율)은 아래 3개 state를 공유한다.
+지역 선택 UI는 **"인기 업종" 섹션 헤더에만** 있고, 아래 두 섹션은 자동으로 연동된다.
+
+| state | 타입 | 설명 |
+|-------|------|------|
+| `regionMode` | `"구"` \| `"동"` | 구 단위 / 행정동 단위 토글 |
+| `regionGu` | string | 선택된 구 (예: "강남구") |
+| `regionDong` | string | 선택된 행정동. `regionMode="동"`일 때만 유효 |
+
+### 주요 컴포넌트 (TrendPage 내부)
+| 컴포넌트 | 설명 |
+|----------|------|
+| `GuDropdown` | 25개 서울 구 드롭다운 |
+| `DongDropdown` | 선택된 구의 행정동 드롭다운. `regionMode="동"`일 때만 표시 |
+| `AgeCategoryDropdown` | 51개 업종 드롭다운 (연령대별 섹션 업종 필터용) |
+
+### 섹션 구성 및 데이터 흐름
+```
+1. 업종별 트렌드 캐러셀        → /api/trend/categories/  (전국 고정, 지역 무관)
+2. 인기 업종                   → /api/trend/gu-industries/ (POST, dongs[] 전송)
+   ← 지역 선택 UI (regionMode/regionGu/regionDong) — 이 3개 state가 아래 섹션에도 공유됨
+3. 업종별 매출 순위 (주중/주말) → /api/trend/weekday|weekend-industries/?dongs=...
+4. 연령대별 매출 비율           → /api/trend/age-breakdown/?dongs=...&category=...
+```
+
+### 지역 필터 API 호출 패턴
+```javascript
+// 구 모드: 해당 구의 모든 동 목록을 comma-separated로 전송
+const dongs = regionMode === "구" ? guToDongs[regionGu] : [regionDong];
+const dongsParam = dongs.join(",");
+
+// gu-industries: POST body
+{ gu: regionGu, dongs }
+
+// weekday/weekend/age-breakdown: GET query
+`?dongs=${encodeURIComponent(dongsParam)}`
+```
+
+### 섹션별 타이틀 패턴
+- 인기 업종: `${regionGu}의 인기 업종` / `${regionDong}의 인기 업종`
+- 업종별 매출 순위: `${regionGu}의 업종별 매출 순위` / `${regionDong}의 업종별 매출 순위`
+- 연령대별 매출 비율: `${regionGu}의 연령대별 매출 비율` / `${regionDong}의 연령대별 매출 비율`
 
 ---
 
