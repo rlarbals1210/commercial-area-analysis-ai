@@ -2311,7 +2311,7 @@ export default function MapPage() {
 
 
       {/* ── 플로팅 보고서 카드 (항상 표시, 보고서 열리면 숨김) ── */}
-      {!reportOpen && (
+      {!reportOpen && !premiumMapPickMode && (
         <div
           className="anim-pop-in"
           style={{
@@ -2465,7 +2465,7 @@ export default function MapPage() {
           })()}
 
           {/* 보고서 생성 버튼 */}
-          <div style={{ padding: "12px 18px 16px", display: premiumMapPickMode ? "none" : undefined }}>
+          <div style={{ padding: "12px 18px 16px" }}>
             <button
               disabled={!selectedDong && !selectedGu}
               onClick={() => {
