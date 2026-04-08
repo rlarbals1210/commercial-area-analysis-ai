@@ -2465,7 +2465,7 @@ export default function MapPage() {
           })()}
 
           {/* 보고서 생성 버튼 */}
-          <div style={{ padding: "12px 18px 16px" }}>
+          <div style={{ padding: "12px 18px 16px", display: premiumMapPickMode ? "none" : undefined }}>
             <button
               disabled={!selectedDong && !selectedGu}
               onClick={() => {
