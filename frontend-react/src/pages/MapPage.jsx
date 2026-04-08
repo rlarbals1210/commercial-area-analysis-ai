@@ -6717,20 +6717,13 @@ export default function MapPage() {
                                         <span>성장확률 <b style={{ color: "#374151" }}>{item.성장확률}점</b></span>
                                         {item.점포수 > 0 && <span>점포 <b style={{ color: "#374151" }}>{item.점포수}개</b></span>}
                                         <span>경쟁 <b style={{ color: { 낮음: "#10B981", 중간: "#F59E0B", 높음: "#EF4444" }[item.competition] ?? "#374151" }}>{item.competition}</b></span>
+                                        {item.점포수 > 0 && (() => {
+                                          const roi = calcROI(category, item.당월매출합, item.점포수);
+                                          if (!roi) return null;
+                                          const fmtW = (v) => v >= 1e8 ? `${(v / 1e8).toFixed(1)}억` : `${Math.round(v / 10000).toLocaleString()}만`;
+                                          return <span style={{ color: roi.월순익 >= 0 ? "#10B981" : "#EF4444" }}>월순익 <b>{roi.월순익 >= 0 ? "+" : ""}{fmtW(Math.abs(roi.월순익))}</b></span>;
+                                        })()}
                                       </div>
-                                      {/* 권리금/ROI 뱃지 */}
-                                      {item.점포수 > 0 && (() => {
-                                        const rf = calcRightFee(category, item.당월매출합, item.점포수);
-                                        const roi = calcROI(category, item.당월매출합, item.점포수);
-                                        if (!rf && !roi) return null;
-                                        const fmtW = (v) => v >= 1e8 ? `${(v / 1e8).toFixed(1)}억` : `${Math.round(v / 10000).toLocaleString()}만`;
-                                        return (
-                                          <div style={{ marginTop: 5, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
-                                            {rf && <span style={{ color: "#6B7280" }}>권리금 <b style={{ color: "#374151" }}>약 {fmtW(rf)}원</b></span>}
-                                            {roi && <span style={{ color: roi.월순익 >= 0 ? "#10B981" : "#EF4444" }}>월순익 <b>{roi.월순익 >= 0 ? "+" : ""}{fmtW(Math.abs(roi.월순익))}원</b></span>}
-                                          </div>
-                                        );
-                                      })()}
                                       {/* 소분류 트렌드 뱃지 */}
                                       {trend && (
                                         <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid #F3F4F6", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -6937,204 +6930,224 @@ export default function MapPage() {
                             >📍 지도 이동</button>
                           </div>
 
-                          {/* 종합 점수 원형 게이지 */}
-                          <div style={{ padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF" }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 10, letterSpacing: "0.04em" }}>종합 AI 점수</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                              <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
-                                <svg width="68" height="68" viewBox="0 0 68 68">
-                                  <circle cx="34" cy="34" r="29" fill="none" stroke="#E5E7EB" strokeWidth="6" />
-                                  <circle cx="34" cy="34" r="29" fill="none" stroke={gradeColor[grade] ?? "#6B9FE4"} strokeWidth="6"
-                                    strokeDasharray={`${(composite / 100) * 182.2} 182.2`}
-                                    strokeLinecap="round" transform="rotate(-90 34 34)" />
-                                </svg>
-                                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                                  <span style={{ fontSize: 17, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{composite}</span>
-                                  <span style={{ fontSize: 9, color: "#9CA3AF" }}>/ 100</span>
-                                </div>
-                              </div>
-                              <div>
-                                <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}등급</div>
-                                <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>{score?.summary ?? ""}</div>
-                                {score?.is_fallback && (
-                                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>※ 업종 평균 기반 추정값</div>
-                                )}
-                              </div>
-                            </div>
+                          {/* 탭 스트립 */}
+                          <div style={{ display: "flex", gap: 4, background: "#F3F4F6", borderRadius: 10, padding: 4 }}>
+                            {[["기본", "기본 분석"], ["수익", "수익 예측"], ["트렌드", "트렌드"]].map(([key, label]) => (
+                              <button key={key} onClick={() => setPremiumLeftTab(key)}
+                                style={{ flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 700, border: "none", borderRadius: 7, cursor: "pointer", transition: "all 0.15s",
+                                  background: premiumLeftTab === key ? "#fff" : "transparent",
+                                  color: premiumLeftTab === key ? "#2563EB" : "#6B7280",
+                                  boxShadow: premiumLeftTab === key ? "0 1px 4px rgba(0,0,0,0.10)" : "none" }}>
+                                {label}
+                              </button>
+                            ))}
                           </div>
 
-                          {/* Breakdown 게이지 (색상 추가) */}
-                          {breakdown.length > 0 && (
-                            <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "12px", border: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 10 }}>
-                              {breakdown.map(item => (
-                                <div key={item.label}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#374151", marginBottom: 4 }}>
-                                    <span>{item.label}</span>
-                                    <span style={{ fontWeight: 700, color: item.score >= 70 ? "#10B981" : item.score >= 40 ? "#F59E0B" : "#EF4444" }}>{item.score}점</span>
-                                  </div>
-                                  <div style={{ height: 6, background: "#E5E7EB", borderRadius: 4, overflow: "hidden" }}>
-                                    <div style={{ height: "100%", width: `${item.score}%`, background: barColor(item.score), borderRadius: 4, transition: "width 0.6s ease" }} />
+                          {/* ── 기본 분석 탭 ── */}
+                          {premiumLeftTab === "기본" && (<>
+                            {/* 종합 점수 원형 게이지 */}
+                            <div style={{ padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF" }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 10, letterSpacing: "0.04em" }}>종합 AI 점수</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
+                                  <svg width="68" height="68" viewBox="0 0 68 68">
+                                    <circle cx="34" cy="34" r="29" fill="none" stroke="#E5E7EB" strokeWidth="6" />
+                                    <circle cx="34" cy="34" r="29" fill="none" stroke={gradeColor[grade] ?? "#6B9FE4"} strokeWidth="6"
+                                      strokeDasharray={`${(composite / 100) * 182.2} 182.2`}
+                                      strokeLinecap="round" transform="rotate(-90 34 34)" />
+                                  </svg>
+                                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                                    <span style={{ fontSize: 17, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{composite}</span>
+                                    <span style={{ fontSize: 9, color: "#9CA3AF" }}>/ 100</span>
                                   </div>
                                 </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* 장단점 */}
-                          {(score?.pros?.length > 0 || score?.cons?.length > 0) && (
-                            <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "12px", border: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 5 }}>
-                              {(score.pros ?? []).map((p, i) => <div key={i} style={{ fontSize: 12, color: "#059669" }}>✓ {p}</div>)}
-                              {(score.cons ?? []).map((c, i) => <div key={i} style={{ fontSize: 12, color: "#DC2626" }}>✗ {c}</div>)}
-                            </div>
-                          )}
-
-                          {/* 예산 카드 */}
-                          {budgetEst !== null && budgetFit !== null && (
-                            <div style={{ padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${budgetFit ? "#10B981" : "#F59E0B"}`, background: budgetFit ? "rgba(16,185,129,0.05)" : "rgba(245,158,11,0.05)" }}>
-                              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>{category} 예상 창업비용 <span style={{ fontSize: 10 }}>(20평)</span></div>
-                              <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
-                                약 {budgetEst >= 10000 ? `${(budgetEst / 10000).toFixed(1)}억` : `${budgetEst.toLocaleString()}만`}원
+                                <div>
+                                  <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}등급</div>
+                                  <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>{score?.summary ?? ""}</div>
+                                  {score?.is_fallback && (
+                                    <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>※ 업종 평균 기반 추정값</div>
+                                  )}
+                                </div>
                               </div>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: budgetFit ? "#10B981" : "#F59E0B", color: "#fff" }}>
-                                {budgetFit ? "✓ 예산 적합" : "⚠ 예산 초과"} · {premiumBudget.label}
-                              </span>
                             </div>
-                          )}
 
-                          {/* 생존율 카드 */}
-                          {(() => {
-                            const sr = SURVIVAL_RATES[category];
-                            if (!sr) return null;
-                            const gradeBonus = { A: 8, B: 3, C: 0, D: -5 }[grade] ?? 0;
-                            const adj1 = Math.min(99, sr.y1 + gradeBonus);
-                            const adj3 = Math.min(99, sr.y3 + gradeBonus);
-                            const adj5 = Math.min(99, sr.y5 + gradeBonus);
-                            return (
-                              <div style={{ padding: "12px 14px", borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 8, letterSpacing: "0.04em" }}>업종 생존율 추정</div>
-                                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                                  {[["1년", adj1], ["3년", adj3], ["5년", adj5]].map(([label, val]) => (
-                                    <div key={label} style={{ flex: 1, textAlign: "center", background: "#F3F4F6", borderRadius: 8, padding: "8px 4px" }}>
-                                      <div style={{ fontSize: 14, fontWeight: 800, color: val >= 70 ? "#10B981" : val >= 50 ? "#F59E0B" : "#EF4444" }}>{val}%</div>
-                                      <div style={{ fontSize: 10, color: "#9CA3AF" }}>{label} 생존</div>
+                            {/* Breakdown 게이지 */}
+                            {breakdown.length > 0 && (
+                              <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "12px", border: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 10 }}>
+                                {breakdown.map(item => (
+                                  <div key={item.label}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#374151", marginBottom: 4 }}>
+                                      <span>{item.label}</span>
+                                      <span style={{ fontWeight: 700, color: item.score >= 70 ? "#10B981" : item.score >= 40 ? "#F59E0B" : "#EF4444" }}>{item.score}점</span>
                                     </div>
-                                  ))}
-                                </div>
-                                {gradeBonus !== 0 && (
-                                  <div style={{ fontSize: 10, color: gradeBonus > 0 ? "#10B981" : "#EF4444", textAlign: "center" }}>
-                                    {grade}등급 지역 기준 전국 평균 {gradeBonus > 0 ? `+${gradeBonus}` : gradeBonus}%p 보정
+                                    <div style={{ height: 6, background: "#E5E7EB", borderRadius: 4, overflow: "hidden" }}>
+                                      <div style={{ height: "100%", width: `${item.score}%`, background: barColor(item.score), borderRadius: 4, transition: "width 0.6s ease" }} />
+                                    </div>
                                   </div>
-                                )}
-                                <div style={{ fontSize: 9, color: "#D1D5DB", marginTop: 4, textAlign: "right" }}>소상공인진흥공단 통계 기반</div>
+                                ))}
                               </div>
-                            );
-                          })()}
+                            )}
 
-                          {/* 재무 추정 카드 (권리금 + ROI) */}
-                          {score?.점포수 > 0 && (() => {
-                            const rf = calcRightFee(category, score.당월매출합, score.점포수);
-                            const roi = calcROI(category, score.당월매출합, score.점포수);
-                            if (!rf && !roi) return null;
-                            const fmtW = (v) => v >= 1e8 ? `${(v / 1e8).toFixed(1)}억` : `${Math.round(v / 10000).toLocaleString()}만`;
-                            return (
-                              <div style={{ padding: "12px 14px", borderRadius: 12, border: "1.5px solid #E0EAFF", background: "#F8FAFF" }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 8, letterSpacing: "0.04em" }}>재무 추정</div>
-                                <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 8 }}>{dong} 기준 · 점포당</div>
-                                {rf && (
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                    <span style={{ fontSize: 11, color: "#6B7280" }}>예상 권리금</span>
-                                    <span style={{ fontSize: 14, fontWeight: 800, color: "#374151" }}>약 {fmtW(rf)}원</span>
+                            {/* 장단점 */}
+                            {(score?.pros?.length > 0 || score?.cons?.length > 0) && (
+                              <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "12px", border: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 5 }}>
+                                {(score.pros ?? []).map((p, i) => <div key={i} style={{ fontSize: 12, color: "#059669" }}>✓ {p}</div>)}
+                                {(score.cons ?? []).map((c, i) => <div key={i} style={{ fontSize: 12, color: "#DC2626" }}>✗ {c}</div>)}
+                              </div>
+                            )}
+
+                            {/* 예산 카드 */}
+                            {budgetEst !== null && budgetFit !== null && (
+                              <div style={{ padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${budgetFit ? "#10B981" : "#F59E0B"}`, background: budgetFit ? "rgba(16,185,129,0.05)" : "rgba(245,158,11,0.05)" }}>
+                                <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>{category} 예상 창업비용 <span style={{ fontSize: 10 }}>(20평)</span></div>
+                                <div style={{ fontSize: 17, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
+                                  약 {budgetEst >= 10000 ? `${(budgetEst / 10000).toFixed(1)}억` : `${budgetEst.toLocaleString()}만`}원
+                                </div>
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: budgetFit ? "#10B981" : "#F59E0B", color: "#fff" }}>
+                                  {budgetFit ? "✓ 예산 적합" : "⚠ 예산 초과"} · {premiumBudget.label}
+                                </span>
+                              </div>
+                            )}
+                          </>)}
+
+                          {/* ── 수익 예측 탭 ── */}
+                          {premiumLeftTab === "수익" && (<>
+                            {/* 생존율 카드 */}
+                            {(() => {
+                              const sr = SURVIVAL_RATES[category];
+                              if (!sr) return <div style={{ fontSize: 13, color: "#9CA3AF", padding: "20px 0", textAlign: "center" }}>해당 업종의 생존율 데이터가 없습니다.</div>;
+                              const gradeBonus = { A: 8, B: 3, C: 0, D: -5 }[grade] ?? 0;
+                              const adj1 = Math.min(99, sr.y1 + gradeBonus);
+                              const adj3 = Math.min(99, sr.y3 + gradeBonus);
+                              const adj5 = Math.min(99, sr.y5 + gradeBonus);
+                              return (
+                                <div style={{ padding: "14px", borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 10, letterSpacing: "0.04em" }}>업종 생존율 추정</div>
+                                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                                    {[["1년", adj1], ["3년", adj3], ["5년", adj5]].map(([label, val]) => (
+                                      <div key={label} style={{ flex: 1, textAlign: "center", background: "#F3F4F6", borderRadius: 10, padding: "10px 4px" }}>
+                                        <div style={{ fontSize: 18, fontWeight: 900, color: val >= 70 ? "#10B981" : val >= 50 ? "#F59E0B" : "#EF4444" }}>{val}%</div>
+                                        <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 2 }}>{label} 생존</div>
+                                      </div>
+                                    ))}
                                   </div>
-                                )}
-                                {roi && (
-                                  <>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                      <span style={{ fontSize: 11, color: "#6B7280" }}>월 예상 순익</span>
-                                      <span style={{ fontSize: 14, fontWeight: 800, color: roi.월순익 >= 0 ? "#10B981" : "#EF4444" }}>
+                                  {gradeBonus !== 0 && (
+                                    <div style={{ fontSize: 10, color: gradeBonus > 0 ? "#10B981" : "#EF4444", textAlign: "center", marginBottom: 4 }}>
+                                      {grade}등급 지역 기준 전국 평균 {gradeBonus > 0 ? `+${gradeBonus}` : gradeBonus}%p 보정
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: 9, color: "#D1D5DB", textAlign: "right" }}>소상공인진흥공단 통계 기반</div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* 재무 추정 카드 (권리금 + ROI) */}
+                            {score?.점포수 > 0 ? (() => {
+                              const rf = calcRightFee(category, score.당월매출합, score.점포수);
+                              const roi = calcROI(category, score.당월매출합, score.점포수);
+                              if (!rf && !roi) return <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0", textAlign: "center" }}>재무 추정 데이터가 부족합니다.</div>;
+                              const fmtW = (v) => v >= 1e8 ? `${(v / 1e8).toFixed(1)}억` : `${Math.round(v / 10000).toLocaleString()}만`;
+                              return (
+                                <div style={{ padding: "14px", borderRadius: 12, border: "1.5px solid #E0EAFF", background: "#F8FAFF" }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 4, letterSpacing: "0.04em" }}>재무 추정</div>
+                                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 10 }}>{dong} 기준 · 점포당</div>
+                                  {rf && (
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                      <span style={{ fontSize: 12, color: "#6B7280" }}>예상 권리금</span>
+                                      <span style={{ fontSize: 15, fontWeight: 800, color: "#374151" }}>약 {fmtW(rf)}원</span>
+                                    </div>
+                                  )}
+                                  {roi && (<>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                      <span style={{ fontSize: 12, color: "#6B7280" }}>월 예상 순익</span>
+                                      <span style={{ fontSize: 15, fontWeight: 800, color: roi.월순익 >= 0 ? "#10B981" : "#EF4444" }}>
                                         {roi.월순익 >= 0 ? "+" : ""}{fmtW(Math.abs(roi.월순익))}원
                                       </span>
                                     </div>
                                     {roi.손익분기 && (
                                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                        <span style={{ fontSize: 11, color: "#6B7280" }}>손익분기점</span>
-                                        <span style={{ fontSize: 14, fontWeight: 800, color: roi.손익분기 <= 24 ? "#10B981" : roi.손익분기 <= 48 ? "#F59E0B" : "#EF4444" }}>
+                                        <span style={{ fontSize: 12, color: "#6B7280" }}>손익분기점</span>
+                                        <span style={{ fontSize: 15, fontWeight: 800, color: roi.손익분기 <= 24 ? "#10B981" : roi.손익분기 <= 48 ? "#F59E0B" : "#EF4444" }}>
                                           약 {roi.손익분기}개월
                                         </span>
                                       </div>
                                     )}
-                                  </>
-                                )}
-                                <div style={{ fontSize: 9, color: "#D1D5DB", marginTop: 8, textAlign: "right" }}>임대료 매출의 10% · 직원 1명 기준 추정</div>
-                              </div>
-                            );
-                          })()}
+                                  </>)}
+                                  <div style={{ fontSize: 9, color: "#D1D5DB", marginTop: 10, textAlign: "right" }}>임대료 매출의 10% · 직원 1명 기준 추정</div>
+                                </div>
+                              );
+                            })() : <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0", textAlign: "center" }}>재무 추정 데이터가 부족합니다.</div>}
+                          </>)}
 
-                          {/* 배달 비중 카드 */}
-                          {(() => {
-                            const ratio = DELIVERY_RATIO[category];
-                            if (ratio === undefined) return null;
-                            const offline = 100 - ratio;
-                            const label = ratio >= 50 ? "배달 중심" : ratio >= 20 ? "배달·오프라인 혼합" : ratio > 0 ? "오프라인 중심" : "오프라인 전용";
-                            const labelColor = ratio >= 50 ? "#3B82F6" : ratio >= 20 ? "#F59E0B" : "#10B981";
-                            return (
-                              <div style={{ padding: "12px 14px", borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", letterSpacing: "0.04em" }}>배달·오프라인 비중</div>
-                                  <span style={{ fontSize: 10, fontWeight: 700, color: labelColor, background: `${labelColor}18`, borderRadius: 4, padding: "1px 6px" }}>{label}</span>
+                          {/* ── 트렌드 탭 ── */}
+                          {premiumLeftTab === "트렌드" && (<>
+                            {/* 배달 비중 카드 */}
+                            {(() => {
+                              const ratio = DELIVERY_RATIO[category];
+                              if (ratio === undefined) return <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0", textAlign: "center" }}>배달 비중 데이터가 없습니다.</div>;
+                              const offline = 100 - ratio;
+                              const label = ratio >= 50 ? "배달 중심" : ratio >= 20 ? "배달·오프라인 혼합" : ratio > 0 ? "오프라인 중심" : "오프라인 전용";
+                              const labelColor = ratio >= 50 ? "#3B82F6" : ratio >= 20 ? "#F59E0B" : "#10B981";
+                              return (
+                                <div style={{ padding: "14px", borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", letterSpacing: "0.04em" }}>배달·오프라인 비중</div>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: labelColor, background: `${labelColor}18`, borderRadius: 4, padding: "2px 7px" }}>{label}</span>
+                                  </div>
+                                  <div style={{ height: 10, borderRadius: 5, overflow: "hidden", background: "#E5E7EB", marginBottom: 10 }}>
+                                    <div style={{ height: "100%", width: `${ratio}%`, background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 5 }} />
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                                    <span style={{ color: "#3B82F6", fontWeight: 700 }}>배달 {ratio}%</span>
+                                    <span style={{ color: "#6B7280", fontWeight: 700 }}>오프라인 {offline}%</span>
+                                  </div>
+                                  {ratio >= 30 && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 8 }}>배달 플랫폼 입점 전략이 매출에 영향을 미칩니다</div>}
                                 </div>
-                                <div style={{ height: 8, borderRadius: 4, overflow: "hidden", background: "#E5E7EB", marginBottom: 8 }}>
-                                  <div style={{ height: "100%", width: `${ratio}%`, background: "linear-gradient(90deg, #3B82F6, #60A5FA)", borderRadius: 4 }} />
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                                  <span style={{ color: "#3B82F6", fontWeight: 700 }}>배달 {ratio}%</span>
-                                  <span style={{ color: "#6B7280", fontWeight: 700 }}>오프라인 {offline}%</span>
-                                </div>
-                                {ratio >= 30 && <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>배달 플랫폼 입점 전략이 매출에 영향을 미칩니다</div>}
-                              </div>
-                            );
-                          })()}
+                              );
+                            })()}
 
-                          {/* 네이버 검색 트렌드 카드 */}
-                          {premiumNaverTrend?.data?.length > 0 && (() => {
-                            const pts = premiumNaverTrend.data;
-                            const vals = pts.map(p => p.ratio);
-                            const minV = Math.min(...vals), maxV = Math.max(...vals);
-                            const range = maxV - minV || 1;
-                            const W = 220, H = 48, PAD = 4;
-                            const cx = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
-                            const cy = (v) => H - PAD - ((v - minV) / range) * (H - PAD * 2);
-                            const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${cx(i).toFixed(1)},${cy(p.ratio).toFixed(1)}`).join(" ");
-                            const lastRatio = vals[vals.length - 1];
-                            const firstRatio = vals[0];
-                            const trend = lastRatio > firstRatio * 1.05 ? "상승" : lastRatio < firstRatio * 0.95 ? "하락" : "유지";
-                            const trendColor = trend === "상승" ? "#10B981" : trend === "하락" ? "#EF4444" : "#6B7280";
-                            const trendIcon = trend === "상승" ? "↑" : trend === "하락" ? "↓" : "→";
-                            const lastPeriod = pts[pts.length - 1]?.period?.slice(0, 7) ?? "";
-                            return (
-                              <div style={{ padding: "12px 14px", borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", letterSpacing: "0.04em" }}>네이버 검색 트렌드</div>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: trendColor }}>{trendIcon} {trend}</span>
+                            {/* 네이버 검색 트렌드 카드 */}
+                            {premiumNaverTrend?.data?.length > 0 ? (() => {
+                              const pts = premiumNaverTrend.data;
+                              const vals = pts.map(p => p.ratio);
+                              const minV = Math.min(...vals), maxV = Math.max(...vals);
+                              const range = maxV - minV || 1;
+                              const W = 220, H = 52, PAD = 4;
+                              const cx = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
+                              const cy = (v) => H - PAD - ((v - minV) / range) * (H - PAD * 2);
+                              const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${cx(i).toFixed(1)},${cy(p.ratio).toFixed(1)}`).join(" ");
+                              const lastRatio = vals[vals.length - 1];
+                              const firstRatio = vals[0];
+                              const trend = lastRatio > firstRatio * 1.05 ? "상승" : lastRatio < firstRatio * 0.95 ? "하락" : "유지";
+                              const trendClr = trend === "상승" ? "#10B981" : trend === "하락" ? "#EF4444" : "#6B7280";
+                              const trendIco = trend === "상승" ? "↑" : trend === "하락" ? "↓" : "→";
+                              const lastPeriod = pts[pts.length - 1]?.period?.slice(0, 7) ?? "";
+                              return (
+                                <div style={{ padding: "14px", borderRadius: 12, border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", letterSpacing: "0.04em" }}>네이버 검색 트렌드</div>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: trendClr }}>{trendIco} {trend}</span>
+                                  </div>
+                                  <svg width={W} height={H} style={{ display: "block", overflow: "visible" }}>
+                                    <defs>
+                                      <linearGradient id="trendGradDong" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#6B9FE4" stopOpacity="0.3" />
+                                        <stop offset="100%" stopColor="#6B9FE4" stopOpacity="0.0" />
+                                      </linearGradient>
+                                    </defs>
+                                    <path d={`${pathD} L${cx(pts.length - 1).toFixed(1)},${H} L${cx(0).toFixed(1)},${H} Z`} fill="url(#trendGradDong)" />
+                                    <path d={pathD} fill="none" stroke="#6B9FE4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    <circle cx={cx(pts.length - 1)} cy={cy(lastRatio)} r="3.5" fill={trendClr} />
+                                  </svg>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>
+                                    <span>{pts[0]?.period?.slice(0, 7)}</span>
+                                    <span>{lastPeriod} 기준</span>
+                                  </div>
+                                  <div style={{ fontSize: 9, color: "#D1D5DB", marginTop: 2, textAlign: "right" }}>네이버 데이터랩 기반</div>
                                 </div>
-                                <svg width={W} height={H} style={{ display: "block", overflow: "visible" }}>
-                                  <defs>
-                                    <linearGradient id="trendGradDong" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor="#6B9FE4" stopOpacity="0.3" />
-                                      <stop offset="100%" stopColor="#6B9FE4" stopOpacity="0.0" />
-                                    </linearGradient>
-                                  </defs>
-                                  <path d={`${pathD} L${cx(pts.length - 1).toFixed(1)},${H} L${cx(0).toFixed(1)},${H} Z`} fill="url(#trendGradDong)" />
-                                  <path d={pathD} fill="none" stroke="#6B9FE4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                  <circle cx={cx(pts.length - 1)} cy={cy(lastRatio)} r="3" fill={trendColor} />
-                                </svg>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#9CA3AF", marginTop: 4 }}>
-                                  <span>{pts[0]?.period?.slice(0, 7)}</span>
-                                  <span>{lastPeriod} 기준</span>
-                                </div>
-                                <div style={{ fontSize: 9, color: "#D1D5DB", marginTop: 2, textAlign: "right" }}>네이버 데이터랩 기반</div>
-                              </div>
-                            );
-                          })()}
+                              );
+                            })() : <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0", textAlign: "center" }}>트렌드 데이터를 불러오는 중입니다...</div>}
+                          </>)}
                         </div>
 
                         {/* ── 오른쪽: 길단위 상권 추천 리스트 ── */}
