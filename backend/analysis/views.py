@@ -814,9 +814,13 @@ def suggest_industries_with_category(request):
 
 
 def recommend_location(request):
-    """소분류 업종 입력 → 최적 창업 행정동 추천 (GET, 업종=소분류명, gu=구명(선택))"""
+    """소분류 업종 입력 → 최적 창업 행정동 추천 (GET, 업종=소분류명, gu=구명(선택), limit=숫자(선택))"""
     소분류 = request.GET.get("업종", "").strip()
     gu_filter = request.GET.get("gu", "").strip()  # 선택: 특정 구 내 행정동만 추천
+    try:
+        result_limit = min(int(request.GET.get("limit", 10)), 50)
+    except (ValueError, TypeError):
+        result_limit = 10
     if not 소분류:
         return JsonResponse({"error": "업종 파라미터가 필요합니다."}, status=400)
 
@@ -927,7 +931,7 @@ def recommend_location(request):
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    top = results[:10]
+    top = results[:result_limit]
 
     for i, r in enumerate(top):
         r["rank"] = i + 1

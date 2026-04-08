@@ -6267,13 +6267,15 @@ export default function MapPage() {
                       if (!premiumPreference) return;
                       const category = premiumIndustrySelected;
                       const region = premiumRegionSelected;
+                      const prefKey = premiumPreference?.key;
+                      const locLimit = (prefKey && prefKey !== "균형") ? 30 : 10;
                       setPremiumResultLoading(true);
                       setPremiumStep("result");
                       setPremiumLeftTab("기본");
 
                       if (category && region) {
                         if (region.type === "gu") {
-                          fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(category)}&gu=${encodeURIComponent(region.gu)}`)
+                          fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(category)}&gu=${encodeURIComponent(region.gu)}&limit=${locLimit}`)
                             .then(r => r.json())
                             .then(data => setPremiumResult({ type: "gu", gu: region.gu, category, data }))
                             .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
@@ -6288,7 +6290,7 @@ export default function MapPage() {
                             .finally(() => setPremiumResultLoading(false));
                         }
                       } else if (category && !region) {
-                        fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(category)}`)
+                        fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(category)}&limit=${locLimit}`)
                           .then(r => r.json())
                           .then(data => setPremiumResult({ type: "gu", gu: "서울 전체", category, data }))
                           .catch(() => setPremiumResult({ error: "데이터를 불러오지 못했습니다." }))
@@ -6393,8 +6395,8 @@ export default function MapPage() {
                             w.유동 * ((r.총유동인구 || 0) / maxPop) * 100 +
                             w.포화 * Math.max(0, 1 - (r.업종_포화도 || 0) / maxSat) * 100
                           ),
-                        })).sort((a, b) => b.score - a.score).map((r, i) => ({ ...r, rank: i + 1 }))
-                      : rawResults
+                        })).sort((a, b) => b.score - a.score).slice(0, 10).map((r, i) => ({ ...r, rank: i + 1 }))
+                      : rawResults.slice(0, 10)
                     );
 
                     const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
