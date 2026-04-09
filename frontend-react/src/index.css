@@ -11,18 +11,10 @@
 }
 
 .gu-dropdown-list {
-  scrollbar-width: thin;
-  scrollbar-color: #E5E7EB transparent;
+  scrollbar-width: none;
 }
 .gu-dropdown-list::-webkit-scrollbar {
-  width: 4px;
-}
-.gu-dropdown-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-.gu-dropdown-list::-webkit-scrollbar-thumb {
-  background: #E5E7EB;
-  border-radius: 4px;
+  display: none;
 }
 
 /* 전체 페이지 스크롤바 숨김 */

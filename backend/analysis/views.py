@@ -2853,7 +2853,7 @@ def report(request):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
             body = {"contents": [{"parts": [{"text": prompt}]}]}
             import time
-            for attempt in range(3):
+            for attempt in range(2):
                 resp = http_requests.post(url, json=body, timeout=60)
                 if resp.status_code == 200:
                     resp_json = json.loads(resp.content.decode("utf-8"))
@@ -2869,10 +2869,11 @@ def report(request):
                     if all(k in parsed and parsed[k] for k in required_keys):
                         ai_descriptions = parsed
                         break
-                    elif attempt < 2:
-                        time.sleep(5)
-                elif resp.status_code == 429 and attempt < 2:
-                    time.sleep(10)
+                    elif attempt < 1:
+                        time.sleep(3)
+                elif resp.status_code == 429:
+                    ai_descriptions = {"rate_limited": True}
+                    break
                 else:
                     break
     except Exception as e:
@@ -3085,7 +3086,7 @@ def gu_report(request):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
             body = {"contents": [{"parts": [{"text": prompt}]}]}
             import time
-            for attempt in range(3):
+            for attempt in range(2):
                 resp = http_requests.post(url, json=body, timeout=60)
                 if resp.status_code == 200:
                     resp_json = json.loads(resp.content.decode("utf-8"))
@@ -3101,10 +3102,11 @@ def gu_report(request):
                     if all(k in parsed and parsed[k] for k in required_keys):
                         ai_descriptions = parsed
                         break
-                    elif attempt < 2:
-                        time.sleep(5)
-                elif resp.status_code == 429 and attempt < 2:
-                    time.sleep(10)
+                    elif attempt < 1:
+                        time.sleep(3)
+                elif resp.status_code == 429:
+                    ai_descriptions = {"rate_limited": True}
+                    break
                 else:
                     break
     except Exception as e:

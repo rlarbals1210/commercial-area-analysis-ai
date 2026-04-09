@@ -432,6 +432,9 @@ export default function MapPage() {
   const [reportLoading, setReportLoading] = useState(false);  // 보고서 로딩
   const [reportCategoryLoading, setReportCategoryLoading] = useState(false); // 업종 심화 분석 로딩
   const [reportLoadingStep, setReportLoadingStep] = useState(0); // 로딩 문구 단계
+  const [reportSaved, setReportSaved] = useState(false);      // 저장 완료 여부
+  const [reportSaving, setReportSaving] = useState(false);    // 저장 중
+  const [reportSavedId, setReportSavedId] = useState(null);   // 저장된 보고서 ID
   const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
   const [reportRegion, setReportRegion] = useState(null);     // 보고서 생성 시점의 지역 { name, subName }
   const reportMapStateRef = useRef(null);                      // 보고서 생성 시점의 지도 상태 { lat, lng, level }
@@ -619,6 +622,22 @@ export default function MapPage() {
   const drawingMousemoveListenerRef = useRef(null);
 
   // 사이드바 안 검색 input에 포커스를 주기 위한 ref
+
+  // ── 앱 마운트 시 토큰 유효성 검증 ──
+  useEffect(() => {
+    const token = localStorage.getItem("access");
+    if (!token) { setCurrentUser(null); return; }
+    fetch(`${API}/api/accounts/me/`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => {
+      if (r.status === 401) {
+        localStorage.removeItem("access");
+        localStorage.removeItem("refresh");
+        localStorage.removeItem("user");
+        setCurrentUser(null);
+      }
+    }).catch(() => {});
+  }, []);
 
   // ── 행정동/구 선택 시 사이드바 자동 열기 ──
   useEffect(() => {
@@ -2472,6 +2491,8 @@ export default function MapPage() {
                 setReportOpen(true);
                 setReportData(null);
                 setReportLoading(true);
+                setReportSaved(false);
+                setReportSavedId(null);
                 if (selectedDong) {
                   setReportRegion({ name: selectedDong.dongName, subName: `서울특별시 ${selectedDong.guName}` });
                 } else if (selectedGu) {
@@ -2500,12 +2521,13 @@ export default function MapPage() {
                       const ai = d.ai_descriptions || {};
                       if (reqKeys.every((k) => ai[k])) {
                         setReportData({ ...d, _dong: dong }); setReportLoading(false);
-                      } else if (left === 0) {
-                        setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportLoading(false);
+                      } else if (ai.rate_limited || ai.error || left === 0) {
+                        const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                        setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportLoading(false);
                       } else { setTimeout(() => tryFetch(left - 1), 3000); }
                     }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
                   };
-                  tryFetch(9);
+                  tryFetch(2);
                 } else if (selectedGu) {
                   const dongs = guToDongsRef.current[selectedGu] || [];
                   const reqKeys = reportCategory ? catKeys : baseKeys;
@@ -2517,24 +2539,25 @@ export default function MapPage() {
                       const ai = d.ai_descriptions || {};
                       if (reqKeys.every((k) => ai[k])) {
                         setReportData({ ...d, _gu: selectedGu }); setReportLoading(false);
-                      } else if (left === 0) {
-                        setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _gu: selectedGu }); setReportLoading(false);
+                      } else if (ai.rate_limited || ai.error || left === 0) {
+                        const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                        setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _gu: selectedGu }); setReportLoading(false);
                       } else { setTimeout(() => tryFetch(left - 1), 3000); }
                     }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
                   };
-                  tryFetch(9);
+                  tryFetch(2);
                 }
               }}
               style={{
                 width: "100%", padding: "11px 0",
-                background: (selectedDong || selectedGu) ? "#111827" : "#E5E7EB",
+                background: (selectedDong || selectedGu) ? "#3B82F6" : "#E5E7EB",
                 color: (selectedDong || selectedGu) ? "#fff" : "#9CA3AF",
                 border: "none", borderRadius: 9,
                 fontSize: 14, fontWeight: 700,
                 cursor: (selectedDong || selectedGu) ? "pointer" : "default",
               }}
-              onMouseEnter={(e) => { if (selectedDong || selectedGu) e.currentTarget.style.background = "#374151"; }}
-              onMouseLeave={(e) => { if (selectedDong || selectedGu) e.currentTarget.style.background = "#111827"; }}
+              onMouseEnter={(e) => { if (selectedDong || selectedGu) e.currentTarget.style.background = "#2563EB"; }}
+              onMouseLeave={(e) => { if (selectedDong || selectedGu) e.currentTarget.style.background = "#3B82F6"; }}
             >
               상권분석 하기
             </button>
@@ -3078,18 +3101,77 @@ export default function MapPage() {
                 ← {savedGuReportRegion?.name || "구 보고서"}로 돌아가기
               </button>
             )}
-            <div style={{ fontSize: 11, color: "#9CA3AF", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
-              상권분석 결과
-              {reportData?.quarter && (
-                <span style={{ marginLeft: 10, color: "#9CA3AF" }}>
-                  {String(reportData.quarter).slice(0, 4)}년 {String(reportData.quarter).slice(4)}분기
-                </span>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
+                  상권분석 결과
+                  {reportData?.quarter && (
+                    <span style={{ marginLeft: 10, color: "#9CA3AF" }}>
+                      {String(reportData.quarter).slice(0, 4)}년 {String(reportData.quarter).slice(4)}분기
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>
+                  {reportRegion?.name}
+                </div>
+                <div style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>{reportRegion?.subName}</div>
+              </div>
+              {reportData && !reportLoading && (
+                <button
+                  onClick={async () => {
+                    if (reportSaving) return;
+                    const token = localStorage.getItem("access");
+                    if (!token) { navigate("/login"); return; }
+                    setReportSaving(true);
+                    try {
+                      if (reportSaved && reportSavedId) {
+                        const res = await fetch(`${API}/api/community/reports/saved/${reportSavedId}/delete/`, {
+                          method: "DELETE",
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (res.ok) { setReportSaved(false); setReportSavedId(null); }
+                      } else {
+                        const areaType = reportData._gu ? "gu" : "dong";
+                        const areaName = reportData._gu || reportData._dong || reportRegion?.name || "";
+                        const category = reportCategory || reportData.category || "";
+                        const title = category ? `${areaName} - ${category}` : areaName;
+                        const res = await fetch(`${API}/api/community/reports/save/`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ title, area_type: areaType, area_name: areaName, category, report_data: reportData }),
+                        });
+                        if (res.ok) { const data = await res.json(); setReportSaved(true); setReportSavedId(data.id); }
+                      }
+                    } finally {
+                      setReportSaving(false);
+                    }
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                    marginTop: 4,
+                    padding: "6px 12px", borderRadius: 8, border: "1px solid #E5E7EB",
+                    fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    background: reportSaved ? "#EFF6FF" : "#fff",
+                    color: reportSaved ? "#2563EB" : "#374151",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (reportSaved) { e.currentTarget.style.background = "#FEF2F2"; e.currentTarget.style.color = "#DC2626"; e.currentTarget.style.borderColor = "#FECACA"; }
+                    else e.currentTarget.style.background = "#F9FAFB";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (reportSaved) { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#E5E7EB"; }
+                    else e.currentTarget.style.background = "#fff";
+                  }}
+                >
+                  {reportSaving ? "처리 중..." : reportSaved ? (
+                    <><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>저장됨</>
+                  ) : (
+                    <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>저장</>
+                  )}
+                </button>
               )}
             </div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>
-              {reportRegion?.name}
-            </div>
-            <div style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>{reportRegion?.subName}</div>
           </div>
 
           {/* 본문 */}
@@ -3144,13 +3226,14 @@ export default function MapPage() {
                         if (catKeys.every((k) => ai[k])) {
                           setReportData((prev) => ({ ...prev, ai_descriptions: ai, data: { ...prev.data, category_data: d.data?.category_data } }));
                           setReportCategoryLoading(false);
-                        } else if (left === 0) {
-                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." } }));
+                        } else if (ai.rate_limited || ai.error || left === 0) {
+                          const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } }));
                           setReportCategoryLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
                       }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
                     };
-                    tryFetch(9);
+                    tryFetch(2);
                   } else if (reportData._gu) {
                     const gu = reportData._gu;
                     const dongs = guToDongsRef.current[gu] || [];
@@ -3163,13 +3246,14 @@ export default function MapPage() {
                         if (catKeys.every((k) => ai[k])) {
                           setReportData((prev) => ({ ...prev, ai_descriptions: ai, data: { ...prev.data, category_data: d.data?.category_data } }));
                           setReportCategoryLoading(false);
-                        } else if (left === 0) {
-                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." } }));
+                        } else if (ai.rate_limited || ai.error || left === 0) {
+                          const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } }));
                           setReportCategoryLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
                       }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
                     };
-                    tryFetch(9);
+                    tryFetch(2);
                   }
                 } else {
                   // 기본 보고서 전체 재시도
@@ -3182,12 +3266,13 @@ export default function MapPage() {
                         const ai = d.ai_descriptions || {};
                         if (baseKeys.every((k) => ai[k])) {
                           setReportData({ ...d, _dong: dong }); setReportLoading(false);
-                        } else if (left === 0) {
-                          setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportLoading(false);
+                        } else if (ai.rate_limited || ai.error || left === 0) {
+                          const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                          setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
                       }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
                     };
-                    tryFetch(9);
+                    tryFetch(2);
                   } else if (reportData._gu) {
                     const gu = reportData._gu;
                     const dongs = guToDongsRef.current[gu] || [];
@@ -3199,12 +3284,13 @@ export default function MapPage() {
                         const ai = d.ai_descriptions || {};
                         if (baseKeys.every((k) => ai[k])) {
                           setReportData({ ...d, _gu: gu }); setReportLoading(false);
-                        } else if (left === 0) {
-                          setReportData({ ...d, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _gu: gu }); setReportLoading(false);
+                        } else if (ai.rate_limited || ai.error || left === 0) {
+                          const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                          setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _gu: gu }); setReportLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
                       }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
                     };
-                    tryFetch(9);
+                    tryFetch(2);
                   }
                 }
               };
@@ -3356,10 +3442,13 @@ export default function MapPage() {
                           "곧 완성됩니다...",
                         ][reportLoadingStep]}</div>
                       ) : (
-                      <select
+                      <div style={{ marginLeft: 24, marginTop: 4 }}>
+                      <SidebarCategoryDropdown
                         value={reportCategory}
-                        onChange={(e) => {
-                          const cat = e.target.value;
+                        placeholder="업종 선택..."
+                        options={Object.keys(STARTUP_COSTS)}
+                        includeAll={false}
+                        onChange={(cat) => {
                           if (!cat) return;
                           setReportCategory(cat);
                           setReportCategoryLoading(true);
@@ -3374,12 +3463,13 @@ export default function MapPage() {
                                 const ai = data.ai_descriptions || {};
                                 if (catKeys.every((k) => ai[k])) {
                                   setReportData({ ...data, _dong: dong }); setReportCategoryLoading(false);
-                                } else if (left === 0) {
-                                  setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportCategoryLoading(false);
+                                } else if (ai.rate_limited || ai.error || left === 0) {
+                                  const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                                  setReportData({ ...data, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportCategoryLoading(false);
                                 } else { setTimeout(() => tryFetch(left - 1), 3000); }
                               }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
                             };
-                            tryFetch(9);
+                            tryFetch(2);
                           } else if (selectedGu) {
                             const dongs = guToDongsRef.current[selectedGu] || [];
                             const tryFetch = (left) => {
@@ -3390,21 +3480,17 @@ export default function MapPage() {
                                 const ai = data.ai_descriptions || {};
                                 if (catKeys.every((k) => ai[k])) {
                                   setReportData({ ...data, _gu: selectedGu }); setReportCategoryLoading(false);
-                                } else if (left === 0) {
-                                  setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _gu: selectedGu }); setReportCategoryLoading(false);
+                                } else if (ai.rate_limited || ai.error || left === 0) {
+                                  const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                                  setReportData({ ...data, ai_descriptions: { ...ai, error: errMsg }, _gu: selectedGu }); setReportCategoryLoading(false);
                                 } else { setTimeout(() => tryFetch(left - 1), 3000); }
                               }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
                             };
-                            tryFetch(9);
+                            tryFetch(2);
                           }
                         }}
-                        style={{ marginLeft: 24, width: "calc(100% - 24px)", padding: "10px 12px", background: "#fff", border: "1px solid #D1D5DB", borderRadius: 8, color: "#374151", fontSize: 13, cursor: "pointer", outline: "none" }}
-                      >
-                        <option value="">업종 선택...</option>
-                        {Object.keys(STARTUP_COSTS).map((cat) => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
+                      />
+                      </div>
                       )}
                     </>
                   )}
@@ -3605,16 +3691,17 @@ export default function MapPage() {
                                             const ai = data.ai_descriptions || {};
                                             if (catKeys.every((k) => ai[k])) {
                                               setReportData({ ...data, _dong: dong }); setReportLoading(false);
-                                            } else if (left === 0) {
-                                              setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: dong }); setReportLoading(false);
+                                            } else if (ai.rate_limited || ai.error || left === 0) {
+                                              const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                                              setReportData({ ...data, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportLoading(false);
                                             } else { setTimeout(() => tryFetch(left - 1), 3000); }
                                           }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
                                         };
-                                        tryFetch(9);
+                                        tryFetch(2);
                                       }}
-                                      style={{ width: "100%", padding: "8px 0", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                                      onMouseEnter={(e) => e.currentTarget.style.background = "#374151"}
-                                      onMouseLeave={(e) => e.currentTarget.style.background = "#111827"}
+                                      style={{ width: "100%", padding: "8px 0", background: "#2563EB", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = "#1D4ED8"}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = "#2563EB"}
                                     >
                                       이 행정동 보고서 보기 →
                                     </button>
@@ -3657,7 +3744,9 @@ export default function MapPage() {
                   <div style={{ marginLeft: 24, marginBottom: 20 }}>
                     <button
                       onClick={() => { returnToReportRef.current = true; setReportOpen(false); setStartupCalcOpen(true); }}
-                      style={{ width: "100%", padding: "10px 0", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                      style={{ width: "100%", padding: "10px 0", background: "#2563EB", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#1D4ED8"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "#2563EB"}
                     >창업비용 계산하러가기 →</button>
                   </div>
 
@@ -7391,7 +7480,7 @@ export default function MapPage() {
           {/* 메뉴 */}
           <div data-popup style={{ position: "relative" }}>
             <button
-              onClick={() => { setMenuOpen((v) => !v); setSearchExpanded(false); }}
+              onClick={() => { setMenuOpen((v) => !v); }}
               style={{
                 height: NAV_HEIGHT, padding: "0 14px", border: "none", background: "transparent",
                 color: menuOpen ? "#e2e8f0" : "#94a3b8", fontSize: 14,

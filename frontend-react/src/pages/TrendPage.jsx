@@ -92,7 +92,7 @@ function DongDropdown({ dongList, selectedDong, onChange }) {
           position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
           background: "#fff", border: "1px solid #E5E7EB", borderRadius: 8,
           boxShadow: "0 4px 16px rgba(0,0,0,0.1)", maxHeight: 260, overflowY: "auto",
-          minWidth: 160,
+          minWidth: 140,
         }}>
           {dongList.map((dong) => (
             <div
@@ -133,7 +133,7 @@ function GuDropdown({ guList, selectedGu, onChange }) {
         style={{
           padding: "8px 14px", borderRadius: 8, border: "1px solid #D1D5DB",
           fontSize: 14, color: "#374151", background: "#fff", cursor: "pointer",
-          display: "flex", alignItems: "center", gap: 8, minWidth: 120,
+          display: "flex", alignItems: "center", gap: 8, minWidth: 140,
         }}
       >
         {selectedGu}
@@ -235,7 +235,7 @@ function ChangeRate({ value }) {
   if (value === 0) return <span style={{ color: "#888" }}>0%</span>;
   const up = value > 0;
   return (
-    <span style={{ color: up ? "#EF4444" : "#3B82F6", fontWeight: 600 }}>
+    <span style={{ color: up ? "#DC2626" : "#3B82F6", fontWeight: 600 }}>
       {up ? "▲" : "▼"} {Math.abs(value)}%
     </span>
   );
@@ -558,7 +558,7 @@ export default function TrendPage() {
 
           {/* 성장 캐러셀 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#EF4444", whiteSpace: "nowrap" }}>▲ 성장</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#DC2626", whiteSpace: "nowrap" }}>▲ 성장</span>
           </div>
           <div style={{ position: "relative", overflow: "hidden", marginBottom: 16 }}>
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 60, background: "linear-gradient(to right, #F8FAFC, transparent)", zIndex: 2, pointerEvents: "none" }} />
@@ -593,13 +593,11 @@ export default function TrendPage() {
           </div>
         </section>
 
-        {/* 인기 업종 */}
-        <section>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>
-              {regionMode === "구" ? `${regionGu}의 인기 업종` : `${regionDong}의 인기 업종`}
-            </h2>
-            <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 8, padding: 3, gap: 2 }}>
+        {/* 지역 선택기 */}
+        <div style={{ marginBottom: 32, borderTop: "1px solid #E5E7EB", borderBottom: "1px solid #E5E7EB", padding: "24px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>지역 선택</span>
+            <div style={{ display: "inline-flex", background: "#F1F5F9", borderRadius: 8, padding: 3, gap: 2 }}>
               {[{ key: "구", label: "구 단위" }, { key: "동", label: "행정동 단위" }].map(({ key, label }) => (
                 <button
                   key={key}
@@ -617,13 +615,19 @@ export default function TrendPage() {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <GuDropdown guList={guList} selectedGu={regionGu} onChange={setRegionGu} />
             {regionMode === "동" && (
               <DongDropdown dongList={guToDongs[regionGu] || []} selectedDong={regionDong} onChange={setRegionDong} />
             )}
+          </div>
+        </div>
+
+        {/* 인기 업종 */}
+        <section>
+          <div style={{ marginBottom: 12 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>
+              {regionMode === "구" ? `${regionGu}의 인기 업종` : `${regionDong}의 인기 업종`}
+            </h2>
           </div>
 
           <div style={{
@@ -949,10 +953,10 @@ export default function TrendPage() {
                   {weekdayPatternData.map((d) => {
                     const isWeekend = d.day === "토" || d.day === "일";
                     const isPeak = d.ratio === maxRatio;
-                    const barColor = isPeak ? "#2563EB" : isWeekend ? "#7C3AED" : "#93C5FD";
+                    const barColor = isPeak ? "#2563EB" : isWeekend ? "#FD8A8A" : "#93C5FD";
                     return (
                       <div key={d.day} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <span style={{ fontSize: 13, fontWeight: isWeekend ? 600 : 400, color: isWeekend ? "#7C3AED" : "#6B7280", width: 24, flexShrink: 0, textAlign: "center" }}>{d.day}</span>
+                        <span style={{ fontSize: 13, fontWeight: isWeekend ? 600 : 400, color: isWeekend ? "#E05C5C" : "#6B7280", width: 24, flexShrink: 0, textAlign: "center" }}>{d.day}</span>
                         <div style={{ flex: 1, height: 10, background: "#F3F4F6", borderRadius: 5, overflow: "hidden" }}>
                           <div style={{ height: "100%", width: `${(d.ratio / maxRatio) * 100}%`, background: barColor, borderRadius: 5, transition: "width 0.4s ease" }} />
                         </div>
@@ -973,8 +977,8 @@ export default function TrendPage() {
           </h2>
           <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>개업률 - 폐업률 차이가 높은 순으로 정렬됩니다.</p>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#22C55E" }} /><span style={{ fontSize: 13, color: "#374151" }}>개업률</span></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#EF4444" }} /><span style={{ fontSize: 13, color: "#374151" }}>폐업률</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#3B82F6" }} /><span style={{ fontSize: 13, color: "#374151" }}>개업률</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#DC2626" }} /><span style={{ fontSize: 13, color: "#374151" }}>폐업률</span></div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {openCloseLoading ? (
@@ -989,15 +993,15 @@ export default function TrendPage() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 12, color: "#22C55E", fontWeight: 600, width: 32 }}>{row.개업률}%</span>
+                      <span style={{ fontSize: 12, color: "#3B82F6", fontWeight: 600, width: 32 }}>{row.개업률}%</span>
                       <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${(row.개업률 / maxVal) * 100}%`, background: "#22C55E", borderRadius: 3, transition: "width 0.4s ease" }} />
+                        <div style={{ height: "100%", width: `${(row.개업률 / maxVal) * 100}%`, background: "#3B82F6", borderRadius: 3, transition: "width 0.4s ease" }} />
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600, width: 32 }}>{row.폐업률}%</span>
+                      <span style={{ fontSize: 12, color: "#DC2626", fontWeight: 600, width: 32 }}>{row.폐업률}%</span>
                       <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${(row.폐업률 / maxVal) * 100}%`, background: "#EF4444", borderRadius: 3, transition: "width 0.4s ease" }} />
+                        <div style={{ height: "100%", width: `${(row.폐업률 / maxVal) * 100}%`, background: "#DC2626", borderRadius: 3, transition: "width 0.4s ease" }} />
                       </div>
                     </div>
                   </div>
@@ -1061,9 +1065,9 @@ export default function TrendPage() {
         salesPerStore: `${regionLabel}의 업종별 점포당 매출 전체`,
       };
       return (
-        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#F8FAFC", overflowY: "auto", fontFamily: "'Pretendard', sans-serif" }}>
+        <div className="no-scrollbar" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#F8FAFC", overflowY: "auto", fontFamily: "'Pretendard', sans-serif" }}>
           {/* 헤더 */}
-          <div style={{ position: "sticky", top: 0, background: "#fff", borderBottom: "1px solid #E5E7EB", padding: "16px 40px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <div style={{ position: "sticky", top: 0, background: "rgba(248,250,252,0.85)", backdropFilter: "blur(8px)", borderBottom: "1px solid rgba(229,231,235,0.6)", padding: "16px 40px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 10 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0 }}>{titles[fullViewSection]}</h2>
             <button
               onClick={() => setFullViewSection(null)}
@@ -1075,7 +1079,7 @@ export default function TrendPage() {
           </div>
 
           {/* 본문 */}
-          <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 40px" }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 60px" }}>
 
             {/* 인기 업종 */}
             {fullViewSection === "region" && (
@@ -1176,8 +1180,8 @@ export default function TrendPage() {
               return (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#22C55E" }} /><span style={{ fontSize: 13, color: "#374151" }}>개업률</span></div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#EF4444" }} /><span style={{ fontSize: 13, color: "#374151" }}>폐업률</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#3B82F6" }} /><span style={{ fontSize: 13, color: "#374151" }}>개업률</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: "#DC2626" }} /><span style={{ fontSize: 13, color: "#374151" }}>폐업률</span></div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {openCloseData.map((row) => (
@@ -1188,15 +1192,15 @@ export default function TrendPage() {
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 12, color: "#22C55E", fontWeight: 600, width: 32 }}>{row.개업률}%</span>
+                            <span style={{ fontSize: 12, color: "#3B82F6", fontWeight: 600, width: 32 }}>{row.개업률}%</span>
                             <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
-                              <div style={{ height: "100%", width: `${(row.개업률 / maxVal) * 100}%`, background: "#22C55E", borderRadius: 3 }} />
+                              <div style={{ height: "100%", width: `${(row.개업률 / maxVal) * 100}%`, background: "#3B82F6", borderRadius: 3 }} />
                             </div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600, width: 32 }}>{row.폐업률}%</span>
+                            <span style={{ fontSize: 12, color: "#DC2626", fontWeight: 600, width: 32 }}>{row.폐업률}%</span>
                             <div style={{ flex: 1, height: 6, background: "#F3F4F6", borderRadius: 3, overflow: "hidden" }}>
-                              <div style={{ height: "100%", width: `${(row.폐업률 / maxVal) * 100}%`, background: "#EF4444", borderRadius: 3 }} />
+                              <div style={{ height: "100%", width: `${(row.폐업률 / maxVal) * 100}%`, background: "#DC2626", borderRadius: 3 }} />
                             </div>
                           </div>
                         </div>

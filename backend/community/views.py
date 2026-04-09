@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
-from .models import Post, Like, Comment
+from .models import Post, Like, Comment, SavedReport
 
 
 def post_to_dict(post, user=None):
@@ -234,3 +234,65 @@ def my_comments(request):
     )
     posts = Post.objects.filter(id__in=commented_ids)
     return JsonResponse([post_to_dict_preview(p, request.user) for p in posts], safe=False)
+
+
+# POST /api/community/reports/save/
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def save_report(request):
+    data = request.data
+    report = SavedReport.objects.create(
+        user=request.user,
+        title=data.get('title', ''),
+        area_type=data.get('area_type', 'dong'),
+        area_name=data.get('area_name', ''),
+        category=data.get('category', ''),
+        report_data=data.get('report_data', {}),
+    )
+    return JsonResponse({'id': report.id, 'title': report.title, 'created_at': report.created_at.strftime('%Y.%m.%d')}, status=201)
+
+
+# GET /api/community/reports/saved/
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def saved_reports(request):
+    reports = SavedReport.objects.filter(user=request.user)
+    return JsonResponse([{
+        'id': r.id,
+        'title': r.title,
+        'area_type': r.area_type,
+        'area_name': r.area_name,
+        'category': r.category,
+        'created_at': r.created_at.strftime('%Y.%m.%d'),
+    } for r in reports], safe=False)
+
+
+# GET /api/community/reports/saved/<id>/
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def saved_report_detail(request, pk):
+    try:
+        report = SavedReport.objects.get(pk=pk, user=request.user)
+    except SavedReport.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    return JsonResponse({
+        'id': report.id,
+        'title': report.title,
+        'area_type': report.area_type,
+        'area_name': report.area_name,
+        'category': report.category,
+        'report_data': report.report_data,
+        'created_at': report.created_at.strftime('%Y.%m.%d'),
+    })
+
+
+# DELETE /api/community/reports/saved/<id>/
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_saved_report(request, pk):
+    try:
+        report = SavedReport.objects.get(pk=pk, user=request.user)
+    except SavedReport.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    report.delete()
+    return JsonResponse({'ok': True})

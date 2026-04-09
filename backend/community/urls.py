@@ -10,4 +10,8 @@ urlpatterns = [
     path('api/community/my-posts/',    views.my_posts),    # 내가 쓴 글
     path('api/community/my-likes/',    views.my_likes),    # 좋아요한 글
     path('api/community/my-comments/', views.my_comments), # 댓글 단 글
+    path('api/community/reports/save/',          views.save_report),          # 보고서 저장
+    path('api/community/reports/saved/',         views.saved_reports),        # 저장 목록
+    path('api/community/reports/saved/<int:pk>/', views.saved_report_detail), # 상세 조회
+    path('api/community/reports/saved/<int:pk>/delete/', views.delete_saved_report), # 삭제
 ]

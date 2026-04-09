@@ -49,3 +49,19 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"{self.author.nickname or self.author.username}: {self.content[:30]}"
+
+
+class SavedReport(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='saved_reports')
+    title = models.CharField(max_length=100)          # ex. "강남구 역삼1동 - 카페"
+    area_type = models.CharField(max_length=10)       # "dong" | "gu"
+    area_name = models.CharField(max_length=50)       # "역삼1동" | "강남구"
+    category = models.CharField(max_length=50, blank=True, default='')
+    report_data = models.JSONField()                  # 보고서 전체 JSON (AI 텍스트 포함)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.title}"
