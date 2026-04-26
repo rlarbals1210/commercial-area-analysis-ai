@@ -437,6 +437,7 @@ export default function MapPage() {
   const [reportSavedId, setReportSavedId] = useState(null);   // 저장된 보고서 ID
   const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
   const [reportRegion, setReportRegion] = useState(null);     // 보고서 생성 시점의 지역 { name, subName }
+  const [similarDongs, setSimilarDongs] = useState([]);        // 근처 더 좋은 지역 추천
   const reportMapStateRef = useRef(null);                      // 보고서 생성 시점의 지도 상태 { lat, lng, level }
   const restoringReportRef = useRef(false);                    // 이전 분석 복원 중 플래그
   const returnToReportRef = useRef(false);                     // 창업비용/AI모달 닫힐 때 보고서 복원 플래그
@@ -500,6 +501,8 @@ export default function MapPage() {
   const [aiStep, setAiStep] = useState("mode"); // "mode" | "form" | "loading" | "result" | "spot_loading" | "spot"
   const [aiResultCollapsed, setAiResultCollapsed] = useState(false);
   const [aiMode, setAiMode] = useState(null);   // "dong" | "industry" | "score" | "gu" | "compare_region" | "compare_industry"
+  const [aiScoreTab, setAiScoreTab] = useState("종합"); // "종합" | "세부" | "개선"
+  const [aiScoreSuggestions, setAiScoreSuggestions] = useState({ regions: [], industries: [] });
   // 지역 비교 모드 state
   const [cmpRegionType, setCmpRegionType] = useState("dong"); // "dong" | "gu"
   const [cmpRegionAQuery, setCmpRegionAQuery] = useState("");
@@ -659,6 +662,18 @@ export default function MapPage() {
     if (restoringReportRef.current) { restoringReportRef.current = false; return; }
     if (reportOpen) setReportOpen(false);
   }, [selectedDong, selectedGu]);
+
+  // ── 행정동 보고서 열릴 때 근처 더 좋은 지역 fetch ──
+  useEffect(() => {
+    if (!reportData?._dong || !reportData) { setSimilarDongs([]); return; }
+    const dong = reportData._dong;
+    const cat = reportCategory || reportData.category || "";
+    if (!cat) { setSimilarDongs([]); return; }
+    fetch(`${API}/api/recommend/similar/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(cat)}`)
+      .then((r) => r.json())
+      .then((data) => setSimilarDongs(data.results || []))
+      .catch(() => setSimilarDongs([]));
+  }, [reportData, reportCategory]);
 
   // ── 창업비용/AI모달 닫힐 때 보고서 복원 ──
   useEffect(() => {
@@ -1985,6 +2000,7 @@ export default function MapPage() {
     }
 
     if (mode === "score") {
+      setAiScoreSuggestions({ regions: [], industries: [] });
       Promise.all([
         fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
@@ -1993,6 +2009,18 @@ export default function MapPage() {
           if (data.error) { alert(data.error); setAiStep("form"); return; }
           setAiResults(data);
           setAiStep("result");
+          const dong = aiDong.trim();
+          const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
+          const indFetch = fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then((r) => r.json()).catch(() => null);
+          const regFetch = gu
+            ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(gu)}`).then((r) => r.json()).catch(() => null)
+            : Promise.resolve(null);
+          Promise.all([indFetch, regFetch]).then(([indData, regData]) => {
+            setAiScoreSuggestions({
+              industries: indData?.results?.slice(0, 6) ?? [],
+              regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
+            });
+          });
         })
         .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
       return;
@@ -3761,6 +3789,62 @@ export default function MapPage() {
                       style={{ width: "100%", padding: "10px 0", background: "#6B9FE4", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
                     >AI 추천 받기 →</button>
                   </div>
+                  {/* ── 근처 더 좋은 지역 추천 ── */}
+                  {reportData?._dong && similarDongs.length > 0 && (() => {
+                    const gradeColor = { A: "#10B981", B: "#3B82F6", C: "#F59E0B", D: "#EF4444" };
+                    const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
+                    return (
+                      <>
+                        <Divider />
+                        <div style={{ padding: "0 28px 20px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                            <span style={{ fontSize: 14 }}>📍</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>근처에 점수가 더 높은 지역이 있어요</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {similarDongs.map((item) => (
+                              <div
+                                key={item.dong}
+                                onClick={() => {
+                                  setSavedGuReportData(reportData);
+                                  setSavedGuReportCategory(reportCategory);
+                                  setSavedGuReportRegion(reportRegion);
+                                  setReportLoading(true);
+                                  const url = `${API}/api/report/?dong=${encodeURIComponent(item.dong)}${(reportCategory || reportData.category) ? `&category=${encodeURIComponent(reportCategory || reportData.category)}` : ""}`;
+                                  const tryFetch = (left) => {
+                                    fetch(url).then((r) => r.json()).then((data) => {
+                                      const ai = data.ai_descriptions || {};
+                                      if (catKeys.every((k) => ai[k])) {
+                                        setReportData({ ...data, _dong: item.dong });
+                                        setReportRegion({ name: item.dong, subName: reportRegion?.subName || "" });
+                                        setReportLoading(false);
+                                      } else if (ai.rate_limited || ai.error || left === 0) {
+                                        setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: item.dong });
+                                        setReportRegion({ name: item.dong, subName: reportRegion?.subName || "" });
+                                        setReportLoading(false);
+                                      } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                                    }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                                  };
+                                  tryFetch(2);
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.borderColor = "#93C5FD"; e.currentTarget.style.cursor = "pointer"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
+                                style={{ flex: 1, padding: "10px 10px 8px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", borderRadius: 10, transition: "background 0.15s, border-color 0.15s" }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 700, color: "#111827", marginBottom: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.dong}</div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: gradeColor[item.grade] ?? "#9CA3AF", color: "#fff" }}>{item.grade}</span>
+                                  <span style={{ fontSize: 11, color: "#374151", fontWeight: 600 }}>{item.score}점</span>
+                                </div>
+                                <div style={{ fontSize: 10, color: "#9CA3AF" }}>{item.distance_km}km</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+
                   <div style={{ height: 40 }} />
                 </div>
               );
@@ -4617,8 +4701,10 @@ export default function MapPage() {
                           onClick={() => {
                             setAiIndustry(cat);
                             setAiMode("score");
+                            setAiScoreTab("종합");
                             setShowIndustryPicker(false);
                             setPickerDrillGroup(null);
+                            setAiScoreSuggestions({ regions: [], industries: [] });
                             setAiStep("loading");
                             Promise.all([
                               fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
@@ -4628,6 +4714,12 @@ export default function MapPage() {
                                 if (data.error) { alert(data.error); setAiStep("form"); return; }
                                 setAiResults(data);
                                 setAiStep("result");
+                                // 하단 추천 스트립용 데이터 비동기 fetch
+                                Promise.all([
+                                  fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then(r => r.json()).catch(() => null),
+                                ]).then(([indData]) => {
+                                  setAiScoreSuggestions({ industries: indData?.results?.slice(0, 6) ?? [] });
+                                });
                               })
                               .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
                           }}
@@ -5060,48 +5152,244 @@ export default function MapPage() {
               {/* 모드 "score" — 적합도 상세 */}
               {aiMode === "score" && (() => {
                 const r = aiResults;
+                const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[r.grade] ?? "#6B9FE4";
                 return (
                   <div>
-                    {/* 종합 점수 */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 16, background: "#EFF6FF", borderRadius: 14, padding: "16px 20px", marginBottom: 16, border: "1.5px solid #BFDBFE" }}>
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: 46, fontWeight: 800, color: "#2563EB", lineHeight: 1 }}>{r.score}</div>
-                        <div style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>종합 점수</div>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 4 }}>등급 {r.grade}</div>
-                        <div style={{ fontSize: 14, color: "#374151", lineHeight: 1.6 }}>{r.summary}</div>
-                      </div>
+                    {/* 탭 스트립 */}
+                    <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", marginBottom: 20 }}>
+                      {[["종합", "종합 점수"], ["세부", "세부 지표"], ["개선", "개선·주의사항"]].map(([key, label]) => (
+                        <button key={key} onClick={() => setAiScoreTab(key)}
+                          style={{ flex: 1, padding: "10px 0", fontSize: 12.5, fontWeight: aiScoreTab === key ? 700 : 400,
+                            border: "none", background: "none", cursor: "pointer", transition: "all 0.15s",
+                            color: aiScoreTab === key ? "#2563EB" : "#94a3b8",
+                            borderBottom: aiScoreTab === key ? "2px solid #2563EB" : "2px solid transparent",
+                            marginBottom: -1 }}>
+                          {label}
+                        </button>
+                      ))}
                     </div>
 
-                    {/* 항목별 점수 */}
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 10 }}>항목별 평가</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {r.breakdown.map((b) => (
-                          <div key={b.label}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                              <span style={{ fontSize: 14, color: "#374151" }}>{b.label}</span>
-                              <span style={{ fontSize: 14, color: "#6B7280", fontWeight: 600 }}>{b.score} / {b.max}</span>
-                            </div>
-                            <div style={{ background: "#E5E7EB", borderRadius: 4, height: 6, overflow: "hidden" }}>
-                              <div style={{ width: `${(b.score / b.max) * 100}%`, height: "100%", background: b.score >= 80 ? "linear-gradient(90deg,#10B981,#34D399)" : b.score >= 60 ? "linear-gradient(90deg,#3B82F6,#60A5FA)" : "linear-gradient(90deg,#F59E0B,#FBBF24)", borderRadius: 4 }} />
-                            </div>
+                    {/* ── 종합 점수 탭 ── */}
+                    {aiScoreTab === "종합" && (
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 20 }}>
+                          {(() => {
+                            const cr = 52, cx = 68, cy = 68, circ = 2 * Math.PI * cr;
+                            const dash = (r.score / 100) * circ;
+                            return (
+                              <svg width={136} height={136} style={{ flexShrink: 0 }}>
+                                <circle cx={cx} cy={cy} r={cr} fill="none" stroke="#f0f2f5" strokeWidth={10}/>
+                                <circle cx={cx} cy={cy} r={cr} fill="none" stroke={gc}
+                                  strokeWidth={10} strokeLinecap="round"
+                                  strokeDasharray={`${dash} ${circ - dash}`}
+                                  transform={`rotate(-90 ${cx} ${cy})`}
+                                  style={{ transition: "stroke-dasharray 1s ease" }}/>
+                                <text x={cx} y={cy - 6} textAnchor="middle" fontSize={28} fontWeight={700} fill="#0f172a">{r.score}</text>
+                                <text x={cx} y={cy + 16} textAnchor="middle" fontSize={11} fill="#94a3b8">종합 점수</text>
+                              </svg>
+                            );
+                          })()}
+                          <div>
+                            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>AI 등급</div>
+                            <div style={{ fontSize: 42, fontWeight: 800, color: gc, lineHeight: 1 }}>{r.grade}</div>
+                            <div style={{ marginTop: 8, fontSize: 12.5, color: "#64748b", lineHeight: 1.6, maxWidth: 140 }}>{r.summary}</div>
                           </div>
-                        ))}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          {r.breakdown.map((b) => {
+                            const pct = (b.score / b.max) * 100;
+                            const c = pct >= 70 ? "#2563EB" : pct >= 40 ? "#f59e0b" : "#ef4444";
+                            return (
+                              <div key={b.label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 10, padding: "12px 14px" }}>
+                                <div style={{ fontSize: 10.5, color: "#94a3b8", marginBottom: 4 }}>{b.label}</div>
+                                <div style={{ fontSize: 22, fontWeight: 800, color: c, lineHeight: 1 }}>{b.score}</div>
+                                <div style={{ fontSize: 10, color: "#cbd5e1", marginTop: 3 }}>/ {b.max}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {/* 장단점 */}
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <div style={{ flex: 1, background: "rgba(16,185,129,0.06)", borderRadius: 10, padding: "12px", border: "1px solid rgba(16,185,129,0.2)" }}>
-                        <div style={{ fontSize: 13, color: "#059669", fontWeight: 700, marginBottom: 8 }}>강점</div>
-                        {r.pros.map((p) => <div key={p} style={{ fontSize: 14, color: "#374151", marginBottom: 4 }}>✓ {p}</div>)}
+                    {/* ── 세부 지표 탭 ── */}
+                    {aiScoreTab === "세부" && (
+                      <div>
+                        {(() => {
+                          const DESC = {
+                            "성장 추세": "AI가 예측한 다음 분기 매출 성장 가능성입니다.",
+                            "매출 잠재력": "해당 행정동 업종의 월평균 매출 수준입니다.",
+                            "유동인구": "상권 내 유동인구 밀도 및 규모입니다.",
+                            "경쟁 우위": "주변 경쟁 점포 대비 유리한 환경인지 나타냅니다.",
+                            "소득 수준": "상권 내 직장인·주거 인구의 소득 수준입니다.",
+                          };
+                          return r.breakdown.map((b) => {
+                            const pct = (b.score / b.max) * 100;
+                            const barColor = pct >= 70 ? "#2563EB" : pct >= 40 ? "#f59e0b" : "#ef4444";
+                            const badge = pct >= 70
+                              ? { label: "양호", bg: "#f0fdf4", color: "#16a34a" }
+                              : pct >= 40 ? { label: "보통", bg: "#fffbeb", color: "#d97706" }
+                              : { label: "미흡", bg: "#fef2f2", color: "#dc2626" };
+                            return (
+                              <div key={b.label} style={{ marginBottom: 14, border: "1px solid #f1f5f9", borderRadius: 12, padding: "14px 16px" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{b.label}</div>
+                                  <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                                    <span style={{ fontSize: 22, fontWeight: 800, color: barColor, lineHeight: 1 }}>{b.score}</span>
+                                    <span style={{ fontSize: 10, color: "#cbd5e1" }}>/ {b.max}</span>
+                                  </div>
+                                </div>
+                                <div style={{ background: "#f1f5f9", borderRadius: 99, height: 7, overflow: "hidden", marginBottom: 10 }}>
+                                  <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 99, transition: "width 0.9s cubic-bezier(.4,0,.2,1)" }}/>
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <span style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.5, flex: 1, paddingRight: 8 }}>{DESC[b.label] ?? ""}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: badge.color, background: badge.bg, borderRadius: 99, padding: "2px 9px", flexShrink: 0 }}>{badge.label}</span>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
-                      <div style={{ flex: 1, background: "rgba(239,68,68,0.06)", borderRadius: 10, padding: "12px", border: "1px solid rgba(239,68,68,0.2)" }}>
-                        <div style={{ fontSize: 13, color: "#DC2626", fontWeight: 700, marginBottom: 8 }}>유의점</div>
-                        {r.cons.map((c) => <div key={c} style={{ fontSize: 14, color: "#374151", marginBottom: 4 }}>! {c}</div>)}
+                    )}
+
+                    {/* ── 개선·주의사항 탭 ── */}
+                    {aiScoreTab === "개선" && (
+                      <div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 16 }}>
+                          {r.pros.map((p) => (
+                            <div key={p} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 12px", borderRadius: 8,
+                              background: "oklch(0.97 0.02 145)", border: "1px solid oklch(0.85 0.05 145)" }}>
+                              <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>✓</span>
+                              <span style={{ fontSize: 12.5, color: "oklch(0.35 0.1 145)", lineHeight: 1.55 }}>{p}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                          {r.cons.map((c) => (
+                            <div key={c} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 12px", borderRadius: 8,
+                              background: "oklch(0.97 0.02 20)", border: "1px solid oklch(0.88 0.05 20)" }}>
+                              <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>!</span>
+                              <span style={{ fontSize: 12.5, color: "oklch(0.4 0.1 25)", lineHeight: 1.55 }}>{c}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                    )}
+
+                    {/* ── 하단 추천 스트립: 이런 지역은 어때요? ── */}
+                    {aiScoreSuggestions.regions?.length > 0 && (
+                      <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 14, marginTop: 20 }}>
+                        <div style={{ marginBottom: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 지역은 어때요?</span>
+                          <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiIndustry} 기준</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
+                          {aiScoreSuggestions.regions.map((reg) => {
+                            const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[reg.등급] ?? "#6B9FE4";
+                            return (
+                              <button key={reg.dongName}
+                                onClick={() => {
+                                  setAiDong(reg.dongName);
+                                  setAiScoreTab("종합");
+                                  setAiScoreSuggestions({ regions: [], industries: [] });
+                                  setAiStep("loading");
+                                  const dong = reg.dongName;
+                                  Promise.all([
+                                    fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(aiIndustry)}`).then(r => r.json()),
+                                    new Promise(res => setTimeout(res, 1200)),
+                                  ]).then(([data]) => {
+                                    if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                    setAiResults(data);
+                                    setAiStep("result");
+                                    const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
+                                    const indF = fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then(r => r.json()).catch(() => null);
+                                    const regF = gu ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(gu)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
+                                    Promise.all([indF, regF]).then(([indData, regData]) => {
+                                      setAiScoreSuggestions({
+                                        industries: indData?.results?.slice(0, 6) ?? [],
+                                        regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
+                                      });
+                                    });
+                                  }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                                }}
+                                style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
+                                  border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
+                                  cursor: "pointer", transition: "all 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{reg.등급}</div>
+                                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{reg.score}</div>
+                                </div>
+                                <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{reg.dongName}</div>
+                                <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {reg.성장확률}%</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── 하단 추천 스트립: 이런 업종은 어때요? ── */}
+                    {aiScoreSuggestions.industries?.length > 0 && (
+                      <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 14, marginTop: 20 }}>
+                        <div style={{ marginBottom: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 업종은 어때요?</span>
+                          <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiDong} 기준</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
+                          {aiScoreSuggestions.industries.map((ind) => {
+                            const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[ind.등급] ?? "#6B9FE4";
+                            return (
+                              <button key={ind.category}
+                                onClick={() => {
+                                  setAiIndustry(ind.category);
+                                  setAiMode("score");
+                                  setAiScoreTab("종합");
+                                  setAiScoreSuggestions({ regions: [], industries: [] });
+                                  setAiStep("loading");
+                                  Promise.all([
+                                    fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(ind.category)}`).then(r => r.json()),
+                                    new Promise(res => setTimeout(res, 1200)),
+                                  ]).then(([data]) => {
+                                    if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                    setAiResults(data);
+                                    setAiStep("result");
+                                    const dong = aiDong.trim();
+                                    const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
+                                    const indF = fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then(r => r.json()).catch(() => null);
+                                    const regF = gu ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(ind.category)}&gu=${encodeURIComponent(gu)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
+                                    Promise.all([indF, regF]).then(([indData, regData]) => {
+                                      setAiScoreSuggestions({
+                                        industries: indData?.results?.slice(0, 6) ?? [],
+                                        regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
+                                      });
+                                    });
+                                  }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                                }}
+                                style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
+                                  border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
+                                  cursor: "pointer", transition: "all 0.15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{ind.등급}</div>
+                                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{ind.score}</div>
+                                </div>
+                                <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ind.category}</div>
+                                <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {ind.avg_성장확률}%</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 면책 문구 */}
+                    <div style={{ fontSize: 11, color: "#b0bec5", lineHeight: 1.6, borderTop: "1px solid #f1f5f9", paddingTop: 10, marginTop: 12 }}>
+                      ⚠ 본 추천 결과는 AI 보조 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
                     </div>
                   </div>
                 );
@@ -5186,8 +5474,10 @@ export default function MapPage() {
                             onClick={() => {
                               setAiIndustry(cat);
                               setAiMode("score");
+                              setAiScoreTab("종합");
                               setShowIndustryPicker(false);
                               setPickerDrillGroup(null);
+                              setAiScoreSuggestions({ regions: [], industries: [] });
                               setAiStep("loading");
                               Promise.all([
                                 fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(cat)}`).then((r) => r.json()),
@@ -5197,6 +5487,11 @@ export default function MapPage() {
                                   if (data.error) { alert(data.error); setAiStep("form"); return; }
                                   setAiResults(data);
                                   setAiStep("result");
+                                  Promise.all([
+                                    fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then(r => r.json()).catch(() => null),
+                                  ]).then(([indData]) => {
+                                    setAiScoreSuggestions({ industries: indData?.results?.slice(0, 6) ?? [] });
+                                  });
                                 })
                                 .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
                             }}
@@ -6531,13 +6826,14 @@ export default function MapPage() {
                           </div>
 
                           {/* 탭 스트립 */}
-                          <div style={{ display: "flex", gap: 4, background: "#F3F4F6", borderRadius: 10, padding: 4 }}>
-                            {[["기본", "기본 분석"], ["수익", "수익 예측"], ["트렌드", "트렌드"]].map(([key, label]) => (
+                          <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0" }}>
+                            {[["기본", "종합 점수"], ["수익", "수익 예측"], ["트렌드", "트렌드"]].map(([key, label]) => (
                               <button key={key} onClick={() => setPremiumLeftTab(key)}
-                                style={{ flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 700, border: "none", borderRadius: 7, cursor: "pointer", transition: "all 0.15s",
-                                  background: premiumLeftTab === key ? "#fff" : "transparent",
-                                  color: premiumLeftTab === key ? "#2563EB" : "#6B7280",
-                                  boxShadow: premiumLeftTab === key ? "0 1px 4px rgba(0,0,0,0.10)" : "none" }}>
+                                style={{ flex: 1, padding: "10px 0", fontSize: 12.5, fontWeight: premiumLeftTab === key ? 700 : 400,
+                                  border: "none", background: "none", cursor: "pointer", transition: "all 0.15s",
+                                  color: premiumLeftTab === key ? "#2563EB" : "#94a3b8",
+                                  borderBottom: premiumLeftTab === key ? "2px solid #2563EB" : "2px solid transparent",
+                                  marginBottom: -1 }}>
                                 {label}
                               </button>
                             ))}
@@ -6546,26 +6842,28 @@ export default function MapPage() {
                           {/* ── 기본 분석 탭 ── */}
                           {premiumLeftTab === "기본" && (<>
                             {/* 종합 AI 점수 원형 게이지 */}
-                            <div style={{ padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF" }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 10, letterSpacing: "0.04em" }}>TOP 1위 종합 점수</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                                <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
-                                  <svg width="68" height="68" viewBox="0 0 68 68">
-                                    <circle cx="34" cy="34" r="29" fill="none" stroke="#E5E7EB" strokeWidth="6" />
-                                    <circle cx="34" cy="34" r="29" fill="none" stroke={gradeColor[topGrade] ?? "#6B9FE4"} strokeWidth="6"
-                                      strokeDasharray={`${(topScore / 100) * 182.2} 182.2`}
-                                      strokeLinecap="round" transform="rotate(-90 34 34)" />
+                            <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "8px 0" }}>
+                              {(() => {
+                                const r = 52, cx = 68, cy = 68, circ = 2 * Math.PI * r;
+                                const dash = (topScore / 100) * circ;
+                                return (
+                                  <svg width={136} height={136} style={{ flexShrink: 0 }}>
+                                    <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f0f2f5" strokeWidth={10}/>
+                                    <circle cx={cx} cy={cy} r={r} fill="none" stroke={gradeColor[topGrade] ?? "#6B9FE4"}
+                                      strokeWidth={10} strokeLinecap="round"
+                                      strokeDasharray={`${dash} ${circ - dash}`}
+                                      transform={`rotate(-90 ${cx} ${cy})`}
+                                      style={{ transition: "stroke-dasharray 1s ease" }}/>
+                                    <text x={cx} y={cy - 6} textAnchor="middle" fontSize={28} fontWeight={700} fill="#0f172a">{topScore}</text>
+                                    <text x={cx} y={cy + 16} textAnchor="middle" fontSize={11} fill="#94a3b8">종합 점수</text>
                                   </svg>
-                                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                                    <span style={{ fontSize: 17, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{topScore}</span>
-                                    <span style={{ fontSize: 9, color: "#9CA3AF" }}>/ 100</span>
-                                  </div>
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[topGrade] ?? "#6B9FE4", lineHeight: 1 }}>{topGrade}등급</div>
-                                  <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>{topResult?.dongName}</div>
-                                  <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>성장확률 {topResult?.성장확률}%</div>
-                                </div>
+                                );
+                              })()}
+                              <div>
+                                <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>AI 등급</div>
+                                <div style={{ fontSize: 42, fontWeight: 800, color: gradeColor[topGrade] ?? "#6B9FE4", lineHeight: 1 }}>{topGrade}</div>
+                                <div style={{ marginTop: 8, fontSize: 12, color: "#6B7280", lineHeight: 1.5 }}>{topResult?.dongName}</div>
+                                <div style={{ fontSize: 11, color: "#9CA3AF" }}>성장확률 {topResult?.성장확률}%</div>
                               </div>
                             </div>
 
@@ -6756,6 +7054,43 @@ export default function MapPage() {
                               );
                             })() : <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0", textAlign: "center" }}>트렌드 데이터를 불러오는 중입니다...</div>}
                           </>)}
+
+                          {/* ── 하단: 이런 지역은 어때요? ── */}
+                          {results.length > 0 && (
+                            <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 14, marginTop: 4 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                                <div>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 지역은 어때요?</span>
+                                  <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{category} 기준</span>
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
+                                {results.slice(0, 6).map((r) => {
+                                  const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[r.등급] ?? "#6B9FE4";
+                                  return (
+                                    <button key={r.dongName}
+                                      onClick={() => navigatePremiumDong(r.dongName, gu)}
+                                      style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
+                                        border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
+                                        cursor: "pointer", transition: "all 0.15s" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
+                                    >
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{r.등급}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{r.score}</div>
+                                      </div>
+                                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.dongName}</div>
+                                      <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {r.성장확률}%</div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: 11, color: "#b0bec5", lineHeight: 1.6, borderTop: "1px solid #f1f5f9", paddingTop: 10, marginTop: 2 }}>
+                                ⚠ 본 추천 결과는 AI 보조 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* ── 오른쪽: 행정동 추천 리스트 ── */}
@@ -6766,7 +7101,10 @@ export default function MapPage() {
                           </div>
 
                           {results.length === 0
-                            ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
+                            ? <div style={{ padding: "20px 16px", background: "#F9FAFB", borderRadius: 10, border: "1px dashed #E5E7EB" }}>
+                                <div style={{ fontSize: 14, color: "#374151", fontWeight: 600, marginBottom: 4 }}>추천 결과가 없습니다</div>
+                                <div style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 1.6 }}>선택한 구+업종 조합의 데이터가 부족합니다.<br/>다른 구나 업종을 선택해보세요.</div>
+                              </div>
                             : results.map((item, i) => {
                               const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
                               const trend = premiumTrendData?.[item.dongName];
@@ -6856,7 +7194,10 @@ export default function MapPage() {
                           <div style={{ fontSize: 13, color: "#6B7280" }}>AI 성장확률·매출·경쟁강도를 종합한 창업 유망 업종입니다</div>
                         </div>
                         {results.length === 0
-                          ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
+                          ? <div style={{ padding: "20px 16px", background: "#F9FAFB", borderRadius: 10, border: "1px dashed #E5E7EB" }}>
+                              <div style={{ fontSize: 14, color: "#374151", fontWeight: 600, marginBottom: 4 }}>추천 결과가 없습니다</div>
+                              <div style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 1.6 }}>선택한 지역의 업종 데이터가 부족합니다.<br/>다른 구를 선택해보세요.</div>
+                            </div>
                           : results.map((item, i) => {
                             const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
                             const est = premiumBudget ? calcStartupCost(item.통합카테고리) : null;
@@ -6905,7 +7246,10 @@ export default function MapPage() {
                           <div style={{ fontSize: 13, color: "#6B7280" }}>{gu} · AI 성장확률·매출·경쟁강도를 종합한 창업 유망 업종입니다</div>
                         </div>
                         {results.length === 0
-                          ? <div style={{ padding: "20px 0", color: "#9CA3AF", fontSize: 14 }}>추천 결과가 없습니다.</div>
+                          ? <div style={{ padding: "20px 16px", background: "#F9FAFB", borderRadius: 10, border: "1px dashed #E5E7EB" }}>
+                              <div style={{ fontSize: 14, color: "#374151", fontWeight: 600, marginBottom: 4 }}>추천 결과가 없습니다</div>
+                              <div style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 1.6 }}>선택한 행정동의 업종 데이터가 부족합니다.<br/>다른 행정동을 선택해보세요.</div>
+                            </div>
                           : results.map((item, i) => {
                             const rankColors = ["#F59E0B", "#9CA3AF", "#CD7F32"];
                             const est = premiumBudget ? calcStartupCost(item.category) : null;
@@ -7022,13 +7366,14 @@ export default function MapPage() {
                           </div>
 
                           {/* 탭 스트립 */}
-                          <div style={{ display: "flex", gap: 4, background: "#F3F4F6", borderRadius: 10, padding: 4 }}>
-                            {[["기본", "기본 분석"], ["수익", "수익 예측"], ["트렌드", "트렌드"]].map(([key, label]) => (
+                          <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0" }}>
+                            {[["기본", "종합 점수"], ["수익", "수익 예측"], ["트렌드", "트렌드"]].map(([key, label]) => (
                               <button key={key} onClick={() => setPremiumLeftTab(key)}
-                                style={{ flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 700, border: "none", borderRadius: 7, cursor: "pointer", transition: "all 0.15s",
-                                  background: premiumLeftTab === key ? "#fff" : "transparent",
-                                  color: premiumLeftTab === key ? "#2563EB" : "#6B7280",
-                                  boxShadow: premiumLeftTab === key ? "0 1px 4px rgba(0,0,0,0.10)" : "none" }}>
+                                style={{ flex: 1, padding: "10px 0", fontSize: 12.5, fontWeight: premiumLeftTab === key ? 700 : 400,
+                                  border: "none", background: "none", cursor: "pointer", transition: "all 0.15s",
+                                  color: premiumLeftTab === key ? "#2563EB" : "#94a3b8",
+                                  borderBottom: premiumLeftTab === key ? "2px solid #2563EB" : "2px solid transparent",
+                                  marginBottom: -1 }}>
                                 {label}
                               </button>
                             ))}
@@ -7037,28 +7382,30 @@ export default function MapPage() {
                           {/* ── 기본 분석 탭 ── */}
                           {premiumLeftTab === "기본" && (<>
                             {/* 종합 점수 원형 게이지 */}
-                            <div style={{ padding: "16px", background: "#F8FAFF", borderRadius: 14, border: "1px solid #E0EAFF" }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", marginBottom: 10, letterSpacing: "0.04em" }}>종합 AI 점수</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                                <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
-                                  <svg width="68" height="68" viewBox="0 0 68 68">
-                                    <circle cx="34" cy="34" r="29" fill="none" stroke="#E5E7EB" strokeWidth="6" />
-                                    <circle cx="34" cy="34" r="29" fill="none" stroke={gradeColor[grade] ?? "#6B9FE4"} strokeWidth="6"
-                                      strokeDasharray={`${(composite / 100) * 182.2} 182.2`}
-                                      strokeLinecap="round" transform="rotate(-90 34 34)" />
+                            <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "8px 0" }}>
+                              {(() => {
+                                const r = 52, cx = 68, cy = 68, circ = 2 * Math.PI * r;
+                                const dash = (composite / 100) * circ;
+                                return (
+                                  <svg width={136} height={136} style={{ flexShrink: 0 }}>
+                                    <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f0f2f5" strokeWidth={10}/>
+                                    <circle cx={cx} cy={cy} r={r} fill="none" stroke={gradeColor[grade] ?? "#6B9FE4"}
+                                      strokeWidth={10} strokeLinecap="round"
+                                      strokeDasharray={`${dash} ${circ - dash}`}
+                                      transform={`rotate(-90 ${cx} ${cy})`}
+                                      style={{ transition: "stroke-dasharray 1s ease" }}/>
+                                    <text x={cx} y={cy - 6} textAnchor="middle" fontSize={28} fontWeight={700} fill="#0f172a">{composite}</text>
+                                    <text x={cx} y={cy + 16} textAnchor="middle" fontSize={11} fill="#94a3b8">종합 점수</text>
                                   </svg>
-                                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                                    <span style={{ fontSize: 17, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{composite}</span>
-                                    <span style={{ fontSize: 9, color: "#9CA3AF" }}>/ 100</span>
-                                  </div>
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: 22, fontWeight: 900, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}등급</div>
-                                  <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4, lineHeight: 1.5 }}>{score?.summary ?? ""}</div>
-                                  {score?.is_fallback && (
-                                    <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>※ 업종 평균 기반 추정값</div>
-                                  )}
-                                </div>
+                                );
+                              })()}
+                              <div>
+                                <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>AI 등급</div>
+                                <div style={{ fontSize: 42, fontWeight: 800, color: gradeColor[grade] ?? "#6B9FE4", lineHeight: 1 }}>{grade}</div>
+                                <div style={{ marginTop: 8, fontSize: 12.5, color: "#64748b", lineHeight: 1.6, maxWidth: 140 }}>{score?.summary ?? ""}</div>
+                                {score?.is_fallback && (
+                                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>※ 업종 평균 기반 추정값</div>
+                                )}
                               </div>
                             </div>
 
@@ -7239,6 +7586,43 @@ export default function MapPage() {
                               );
                             })() : <div style={{ fontSize: 13, color: "#9CA3AF", padding: "16px 0", textAlign: "center" }}>트렌드 데이터를 불러오는 중입니다...</div>}
                           </>)}
+
+                          {/* ── 하단: 이런 상권은 어때요? ── */}
+                          {streetResults.length > 0 && (
+                            <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 14, marginTop: 4 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                                <div>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 상권은 어때요?</span>
+                                  <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{gu} 기준</span>
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
+                                {streetResults.slice(0, 6).map((s) => {
+                                  const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[s.등급] ?? "#6B9FE4";
+                                  return (
+                                    <button key={s.상권코드}
+                                      onClick={() => navigatePremiumStreet(s, gu)}
+                                      style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
+                                        border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
+                                        cursor: "pointer", transition: "all 0.15s" }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
+                                    >
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{s.등급}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{s.score}</div>
+                                      </div>
+                                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.상권명}</div>
+                                      <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {s.성장확률}%</div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: 11, color: "#b0bec5", lineHeight: 1.6, borderTop: "1px solid #f1f5f9", paddingTop: 10, marginTop: 2 }}>
+                                ⚠ 본 추천 결과는 AI 보조 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* ── 오른쪽: 길단위 상권 추천 리스트 ── */}

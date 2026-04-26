@@ -3457,3 +3457,57 @@ def recommend_top_industries(request):
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return JsonResponse({"results": results[:10], "quarter": latest_q})
+
+
+def _haversine_km(lat1, lng1, lat2, lng2):
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def recommend_similar(request):
+    """현재 행정동보다 AI 점수가 높은 반경 3km 이내 행정동 Top 3 반환
+    GET /api/recommend/similar/?dong=강남1동&category=카페
+    """
+    dong = normalize_dong(request.GET.get("dong", ""))
+    category = request.GET.get("category", "").strip()
+    if not dong or not category:
+        return JsonResponse({"error": "dong, category 파라미터가 필요합니다."}, status=400)
+
+    base = ScoreData.objects.filter(행정동명=dong, 통합카테고리=category).first()
+    if not base:
+        return JsonResponse({"results": []})
+
+    base_score = base.성장확률
+    centroids = _get_dong_centroids()
+    base_centroid = centroids.get(dong)
+    if not base_centroid:
+        return JsonResponse({"results": []})
+
+    base_lat, base_lng = base_centroid["lat"], base_centroid["lng"]
+
+    candidates = (
+        ScoreData.objects
+        .filter(통합카테고리=category, 성장확률__gt=base_score)
+        .exclude(행정동명=dong)
+        .values("행정동명", "성장확률", "등급")
+    )
+
+    results = []
+    for row in candidates:
+        c = centroids.get(row["행정동명"])
+        if not c:
+            continue
+        dist = _haversine_km(base_lat, base_lng, c["lat"], c["lng"])
+        if dist <= 3.0:
+            results.append({
+                "dong": row["행정동명"],
+                "grade": row["등급"],
+                "score": round(row["성장확률"], 1),
+                "distance_km": round(dist, 1),
+            })
+
+    results.sort(key=lambda x: (-x["score"], x["distance_km"]))
+    return JsonResponse({"results": results[:3]})

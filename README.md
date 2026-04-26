@@ -8,8 +8,12 @@
 
 공공데이터(서울시 추정 매출, 유동인구, 상가 정보)를 기반으로 **다음 분기 매출 성장 가능성**을 예측합니다.
 
-- **업종 선택 → 행정동 추천**: 특정 업종 창업에 적합한 행정동 TOP N
-- **행정동 선택 → 업종 추천**: 해당 행정동에서 다음 분기 성장 가능성이 높은 업종 TOP 5
+- **업종 선택 → 행정동 추천**: 특정 업종 창업에 적합한 행정동 TOP 10 (상권 선호도 기반 재점수 지원)
+- **행정동 선택 → 업종 추천**: 해당 행정동에서 성장 가능성 높은 업종 TOP 5
+- **행정동×업종 적합도 분석**: 3탭 상세 점수 카드 (종합 점수 / 세부 지표 / 개선·주의사항)
+- **AI 보고서**: Gemini 2.5 Flash 기반 상권 분석 보고서 자동 생성
+- **프리미엄 AI 위저드**: 예산·지역·업종·선호도 4단계 질문 → 맞춤 창업 입지 추천
+- **커뮤니티**: 창업 정보 공유 게시판 (자유/정보/공지, 이미지 첨부)
 
 ---
 
@@ -17,10 +21,12 @@
 
 | 분류 | 기술 |
 |---|---|
-| AI/ML | scikit-learn (RandomForestClassifier), pandas, numpy |
-| 백엔드 | Django 5, Django REST Framework |
-| 프론트엔드 | React 19, Vite |
-| 데이터 | 서울 공공데이터포털, 소상공인시장진흥공단 |
+| AI/ML | LightGBM (성장확률 예측), Gemini 2.5 Flash (AI 보고서 텍스트 생성) |
+| 데이터 처리 | pandas, numpy, scikit-learn, Shapely |
+| 백엔드 | Django 5, Django REST Framework, djangorestframework-simplejwt |
+| 프론트엔드 | React 19, Vite, React Router 7, Kakao Maps JS SDK |
+| DB | PostgreSQL |
+| 데이터 | 서울 공공데이터포털, 소상공인시장진흥공단, 네이버 데이터랩 |
 
 ---
 
@@ -333,9 +339,11 @@ npm run dev
 ## AI 모델
 
 - **문제 유형**: Binary Classification (다음 분기 매출 성장 여부 예측)
-- **모델**: RandomForestClassifier (`n_estimators=300`, `class_weight="balanced"`)
-- **학습 기간**: 2020Q1 ~ 2025Q1 (23개 분기, 약 17만 건)
+- **모델**: LightGBM (`n_estimators=500`, `class_weight="balanced"`)
+- **학습 기간**: 2020Q1 ~ 2025Q1 (23개 분기, ~170K 샘플)
+- **피처 수**: 41개 (유동인구 변화율, 나이별 매출, 시간대별 비율, 개업률 등)
 - **AUC-ROC**: 0.657
+- **AI 보고서**: Gemini 2.5 Flash — HTTP REST 전용 (gRPC SDK hang 이슈 회피)
 
 자세한 내용은 [data/README_DATASET.md](data/README_DATASET.md)를 참고하세요.
 
