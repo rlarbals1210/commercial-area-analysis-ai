@@ -539,7 +539,7 @@ export default function CommunityPage() {
         </svg>
 
         {/* 로고 SVG — 사이드바 너비(200px)에서 헤더 padding(32px)을 뺀 168px 고정 */}
-        <div onClick={() => navigate("/")} style={{ width: 168, flexShrink: 0, position: "relative", zIndex: 1, cursor: "pointer" }}>
+        <div onClick={() => navigate("/map")} style={{ width: 168, flexShrink: 0, position: "relative", zIndex: 1, cursor: "pointer" }}>
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.10 31.50" width="140" height="44" overflow="visible">
             <text x="0" y="23.50" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="20" letterSpacing="1.20" fill="#cde0f0">NODAJI</text>
             <g transform="translate(91.60,3.00) rotate(35)">

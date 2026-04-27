@@ -624,6 +624,12 @@ export default function MapPage() {
   const drawingClickListenerRef = useRef(null);
   const drawingMousemoveListenerRef = useRef(null);
 
+  // ── 실시간 트렌딩 ──
+  const [trendingDong, setTrendingDong] = useState([]); // Top 3 동 [{ rank, dong, gu, count }]
+  const [trendingGu, setTrendingGu] = useState([]);     // Top 3 구 [{ rank, gu, count }]
+  const [polysReady, setPolysReady] = useState(false);  // 폴리곤 그리기 완료 후 true
+  const flameMarkersRef = useRef([]);
+
   // 사이드바 안 검색 input에 포커스를 주기 위한 ref
 
   // ── 앱 마운트 시 토큰 유효성 검증 ──
@@ -642,11 +648,55 @@ export default function MapPage() {
     }).catch(() => {});
   }, []);
 
+  // ── 실시간 트렌딩 fetch (5분마다 갱신, 보고서 생성 시 즉시 호출 가능) ──
+  const fetchTrending = useCallback(() => {
+    fetch(`${API}/api/community/reports/trending/`)
+      .then(r => r.ok ? r.json() : {})
+      .then(data => {
+        setTrendingDong(Array.isArray(data.dong) ? data.dong : []);
+        setTrendingGu(Array.isArray(data.gu) ? data.gu : []);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchTrending();
+    const iv = setInterval(fetchTrending, 5 * 60 * 1000);
+    return () => clearInterval(iv);
+  }, [fetchTrending]);
+
   // ── 행정동/구 선택 시 사이드바 자동 열기 ──
   useEffect(() => {
     if (selectedDong || selectedGu) setSidebarCollapsed(false);
     if (!selectedDong) clearStreetPolygons();
   }, [selectedDong, selectedGu]);
+
+  // ── 트렌딩 데이터 → 지도 위 불꽃 마커 (줌 레벨에 따라 동/구 전환) ──
+  useEffect(() => {
+    flameMarkersRef.current.forEach(m => m.setMap(null));
+    flameMarkersRef.current = [];
+    if (!mapInstanceRef.current || !window.kakao?.maps || !polysReady) return;
+
+    const rankColors = ["#EF4444", "#F97316", "#F59E0B"];
+    const isGuMode = zoomLevel >= GU_MODE_LEVEL;
+    const items = (isGuMode ? trendingGu : trendingDong).slice(0, 3);
+
+    items.forEach((item) => {
+      const group = isGuMode
+        ? guPolygonGroupsRef.current.find(g => g.guName === item.gu)
+        : polygonGroupsRef.current.find(g => g.dongName === item.dong);
+      if (!group?.centroid) return;
+      const pos = new window.kakao.maps.LatLng(group.centroid.lat, group.centroid.lng);
+      const color = rankColors[item.rank - 1];
+      const el = document.createElement('div');
+      el.style.cssText = `color:${color};font-size:10px;font-weight:800;white-space:nowrap;pointer-events:none;font-family:'Pretendard',system-ui,sans-serif;-webkit-text-stroke:1.5px white;paint-order:stroke fill;text-align:center;`;
+      el.textContent = `관심 상승 #${item.rank}`;
+      // xAnchor:0.5 중앙, yAnchor:1 → 요소 하단이 centroid에 맞음 → 지역명 아래에 위치
+      const overlay = new window.kakao.maps.CustomOverlay({ position: pos, content: el, xAnchor: 0.5, yAnchor: -0.6, zIndex: 12 });
+      overlay.setMap(mapInstanceRef.current);
+      flameMarkersRef.current.push(overlay);
+    });
+  }, [trendingDong, trendingGu, polysReady, zoomLevel]);
 
   // ── 보고서 로딩 중 단계별 문구 전환 ──
   useEffect(() => {
@@ -803,6 +853,7 @@ export default function MapPage() {
       drawDongPolygons(map, dongGeoJson, kakao);
       drawGuPolygons(map, guGeoJson, kakao);
       applyMode(map, map.getLevel());
+      setPolysReady(true);
       // 폴리곤 완성 후 즉시 구별 매출 순위 fetch
       fetch(`${API}/api/gu-all-ranking/`, {
         method: "POST",
@@ -2384,6 +2435,18 @@ export default function MapPage() {
                   <div style={{ fontSize: 20, fontWeight: 800, color: "#111827", lineHeight: 1.2 }}>
                     {selectedDong?.dongName || selectedGu}
                   </div>
+                  {(() => {
+                    const hit = selectedDong
+                      ? trendingDong.find(t => t.dong === selectedDong.dongName)
+                      : trendingGu.find(t => t.gu === selectedGu);
+                    if (!hit) return null;
+                    const colors = ["#EF4444", "#F97316", "#F59E0B"];
+                    return (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: colors[hit.rank - 1], marginTop: 4 }}>
+                        🔥 실시간 관심 상승 #{hit.rank}
+                      </div>
+                    );
+                  })()}
                   <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>전체 상권 분석</div>
                 </div>
                 {(() => {
@@ -2548,7 +2611,7 @@ export default function MapPage() {
                     fetch(url).then((r) => r.json()).then((d) => {
                       const ai = d.ai_descriptions || {};
                       if (reqKeys.every((k) => ai[k])) {
-                        setReportData({ ...d, _dong: dong }); setReportLoading(false);
+                        setReportData({ ...d, _dong: dong }); setReportLoading(false); fetchTrending();
                       } else if (ai.rate_limited || ai.error || left === 0) {
                         const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
                         setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportLoading(false);
@@ -2566,7 +2629,7 @@ export default function MapPage() {
                     }).then((r) => r.json()).then((d) => {
                       const ai = d.ai_descriptions || {};
                       if (reqKeys.every((k) => ai[k])) {
-                        setReportData({ ...d, _gu: selectedGu }); setReportLoading(false);
+                        setReportData({ ...d, _gu: selectedGu }); setReportLoading(false); fetchTrending();
                       } else if (ai.rate_limited || ai.error || left === 0) {
                         const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
                         setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _gu: selectedGu }); setReportLoading(false);
@@ -4280,11 +4343,12 @@ export default function MapPage() {
       {aiModalOpen && !["result", "spot_loading", "spot"].includes(aiStep) && (
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
-          onClick={() => { setAiModalOpen(false); clearSpotMarkers(); setShowIndustryPicker(false); }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) { setAiModalOpen(false); clearSpotMarkers(); setShowIndustryPicker(false); } }}
         >
         <div
           className="anim-pop-in"
           style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: 600, maxHeight: "88vh", overflowY: "auto", padding: "28px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
             {/* 기존 헤더 */}
@@ -5973,11 +6037,12 @@ export default function MapPage() {
       {premiumModalOpen && !premiumModalMinimized && (
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
-          onClick={() => setPremiumModalOpen(false)}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setPremiumModalOpen(false); }}
         >
           <div
             className={premiumFlyingIn ? "anim-fly-to-corner" : "anim-pop-in"}
             style={{ background: "#fff", borderRadius: 20, boxShadow: "0 20px 70px rgba(0,0,0,0.18)", border: "1px solid #E5E7EB", width: "78vw", maxWidth: 1100, minWidth: 480, height: "78vh", maxHeight: 860, padding: "32px", boxSizing: "border-box", display: "flex", flexDirection: "column", overflowY: "auto", transformOrigin: "bottom left" }}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 헤더 */}

@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.db.models import Avg, Count, Max, Sum
 from django.views.decorators.csrf import csrf_exempt
 from .models import CommercialData, StoreInfo, ScoreData, StreetScoreData, StreetCommercialData
+from community.models import ReportLog
 from shapely.geometry import Point, shape as shapely_shape
 
 # location_scores.csv 메모리 캐시
@@ -2879,6 +2880,11 @@ def report(request):
     except Exception as e:
         ai_descriptions = {"error": str(e)}
 
+    try:
+        ReportLog.objects.create(dong=dong, gu='', category=category)
+    except Exception:
+        pass
+
     return JsonResponse({
         "data": data,
         "ai_descriptions": ai_descriptions,
@@ -3111,6 +3117,11 @@ def gu_report(request):
                     break
     except Exception as e:
         ai_descriptions = {"error": str(e)}
+
+    try:
+        ReportLog.objects.create(dong='', gu=gu, category=category)
+    except Exception:
+        pass
 
     return JsonResponse({
         "data": data,

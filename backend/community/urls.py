@@ -14,4 +14,5 @@ urlpatterns = [
     path('api/community/reports/saved/',         views.saved_reports),        # 저장 목록
     path('api/community/reports/saved/<int:pk>/', views.saved_report_detail), # 상세 조회
     path('api/community/reports/saved/<int:pk>/delete/', views.delete_saved_report), # 삭제
+    path('api/community/reports/trending/', views.report_trending),                  # 트렌딩 Top 3
 ]

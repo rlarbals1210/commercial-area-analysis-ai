@@ -207,7 +207,7 @@ export default function ProfilePage() {
     }
     await authFetch(`${API}/api/accounts/delete/`, { method: "DELETE" });
     localStorage.clear();
-    navigate("/");
+    navigate("/map");
   };
 
   if (!user) return (
@@ -222,7 +222,7 @@ export default function ProfilePage() {
       {/* ── 사이드바 ── */}
       <aside style={s.sidebar}>
         {/* 로고 */}
-        <div style={s.logoWrap} onClick={() => navigate("/")} title="메인으로">
+        <div style={s.logoWrap} onClick={() => navigate("/map")} title="메인으로">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 197.20 56.00" width="120" height="34" overflow="visible">
             <text x="0" y="43.00" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="40" letterSpacing="2.40" fill="#cde0f0">NODAJI</text>
             <g transform="translate(183.20,3.00) rotate(35)">
@@ -307,7 +307,7 @@ export default function ProfilePage() {
         </nav>
 
         {/* 하단 메인 버튼 */}
-        <button style={s.backBtn} onClick={() => navigate("/")}>← 지도로 돌아가기</button>
+        <button style={s.backBtn} onClick={() => navigate("/map")}>← 지도로 돌아가기</button>
       </aside>
 
       {/* ── 콘텐츠 영역 ── */}

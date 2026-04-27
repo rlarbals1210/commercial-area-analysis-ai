@@ -3,7 +3,10 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
-from .models import Post, Like, Comment, SavedReport
+from django.db.models import Count
+from django.utils import timezone
+
+from .models import Post, Like, Comment, SavedReport, ReportLog
 
 
 def post_to_dict(post, user=None):
@@ -283,6 +286,30 @@ def saved_report_detail(request, pk):
         'category': report.category,
         'report_data': report.report_data,
         'created_at': report.created_at.strftime('%Y.%m.%d'),
+    })
+
+
+# GET /api/community/reports/trending/
+def report_trending(request):
+    """최근 24시간 보고서 생성 횟수 기준 Top 3 (동/구 분리)"""
+    since = timezone.now() - timezone.timedelta(hours=24)
+    top_dong = (
+        ReportLog.objects
+        .filter(created_at__gte=since, dong__gt='')
+        .values('dong', 'gu')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:5]
+    )
+    top_gu = (
+        ReportLog.objects
+        .filter(created_at__gte=since, gu__gt='', dong='')
+        .values('gu')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:5]
+    )
+    return JsonResponse({
+        'dong': [{'rank': i + 1, 'dong': r['dong'], 'gu': r['gu'], 'count': r['count']} for i, r in enumerate(top_dong)],
+        'gu':   [{'rank': i + 1, 'gu': r['gu'], 'count': r['count']} for i, r in enumerate(top_gu)],
     })
 
 

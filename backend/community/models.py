@@ -51,6 +51,17 @@ class Comment(models.Model):
         return f"{self.author.nickname or self.author.username}: {self.content[:30]}"
 
 
+class ReportLog(models.Model):
+    """보고서 생성 로그 — 로그인 없이도 기록 (trending 집계용)"""
+    dong = models.CharField(max_length=50, blank=True, default='')
+    gu   = models.CharField(max_length=50, blank=True, default='')
+    category = models.CharField(max_length=50, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
 class SavedReport(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='saved_reports')
     title = models.CharField(max_length=100)          # ex. "강남구 역삼1동 - 카페"

@@ -245,6 +245,8 @@ export default function TrendPage() {
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [latestQuarter, setLatestQuarter] = useState("");
+  const [trendingDong, setTrendingDong] = useState([]);
+  const [trendingGu, setTrendingGu] = useState([]);
 
   const [guList, setGuList] = useState([]);
   const [guToDongs, setGuToDongs] = useState({});
@@ -316,6 +318,17 @@ export default function TrendPage() {
         setCategories(data.results || []);
         setLatestQuarter(data.latest_quarter);
       });
+  }, []);
+
+  // 실시간 트렌딩 로드
+  useEffect(() => {
+    fetch(`${API}/api/community/reports/trending/`)
+      .then((r) => r.ok ? r.json() : {})
+      .then((data) => {
+        setTrendingDong(Array.isArray(data.dong) ? data.dong : []);
+        setTrendingGu(Array.isArray(data.gu) ? data.gu : []);
+      })
+      .catch(() => {});
   }, []);
 
   // GeoJSON에서 구→동 매핑 로드
@@ -519,7 +532,7 @@ export default function TrendPage() {
         </svg>
 
         {/* 로고 */}
-        <div onClick={() => navigate("/")} style={{ flexShrink: 0, position: "relative", zIndex: 1, cursor: "pointer" }}>
+        <div onClick={() => navigate("/map")} style={{ flexShrink: 0, position: "relative", zIndex: 1, cursor: "pointer" }}>
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.10 31.50" width="140" height="44" overflow="visible">
             <text x="0" y="23.50" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="20" letterSpacing="1.20" fill="#cde0f0">NODAJI</text>
             <g transform="translate(91.60,3.00) rotate(35)">
@@ -591,6 +604,52 @@ export default function TrendPage() {
               ))}
             </div>
           </div>
+        </section>
+
+        {/* 실시간 관심 상승 */}
+        <section style={{ marginBottom: 48 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 4 }}>실시간 관심 상승</h2>
+          <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 20 }}>최근 24시간 보고서 생성 기준</p>
+          {(() => {
+            const rankMeta = [
+              { color: "#1D4ED8", bg: "#EFF6FF", border: "#BFDBFE", glow: "0 4px 14px rgba(29,78,216,0.15)" },
+              { color: "#3B82F6", bg: "#F0F9FF", border: "#BAE6FD", glow: "0 4px 14px rgba(59,130,246,0.10)" },
+              { color: "#93C5FD", bg: "#F8FAFF", border: "#E0EAFF", glow: "none" },
+            ];
+            const Badge = ({ item, rank, type }) => {
+              const m = rankMeta[rank];
+              const name = item ? (item.dong || item.gu) : null;
+              const sub = item?.dong ? item.gu : null;
+              return (
+                <div style={{ flex: 1, background: m.bg, border: `1.5px solid ${m.border}`, borderRadius: 14, padding: "16px 18px", boxShadow: m.glow }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: sub || item ? 6 : 0 }}>
+                    <span style={{ fontSize: 22, fontWeight: 900, color: m.color, letterSpacing: "-0.04em", lineHeight: 1 }}>{rank + 1}</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: name ? "#111827" : "#D1D5DB", letterSpacing: "-0.02em", lineHeight: 1 }}>
+                      {name ?? "—"}
+                    </span>
+                  </div>
+                  {sub && <div style={{ fontSize: 12, color: "#6B7280" }}>{sub}</div>}
+                  {item && <div style={{ fontSize: 11, color: m.color, fontWeight: 600, marginTop: 4 }}>보고서 {item.count}회 생성</div>}
+                </div>
+              );
+            };
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 10 }}>구</div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    {Array.from({ length: 3 }, (_, i) => <Badge key={i} item={trendingGu[i]} rank={i} type="구" />)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 10 }}>행정동</div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    {Array.from({ length: 3 }, (_, i) => <Badge key={i} item={trendingDong[i]} rank={i} type="행정동" />)}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </section>
 
         {/* 지역 선택기 */}
