@@ -203,13 +203,13 @@ const CSS = `
   .lp-howitworks-inner{max-width:1280px;margin:0 auto;}
   .lp-howitworks-header{text-align:center;margin-bottom:80px;}
   .lp-howitworks-header .lp-section-desc{margin:0 auto;text-align:center;}
-  .lp-steps-row{display:grid;grid-template-columns:1fr 48px 1fr 48px 1fr;align-items:flex-start;}
-  .lp-step{background:#0d2040;border:1px solid rgba(56,189,248,0.1);border-radius:16px;padding:36px 32px;position:relative;}
-  .lp-step-num{font-family:'Space Grotesk',sans-serif;font-size:48px;font-weight:700;color:rgba(56,189,248,0.12);line-height:1;margin-bottom:20px;}
-  .lp-step-icon{width:48px;height:48px;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
-  .lp-step-title{font-size:18px;font-weight:700;color:#fff;margin-bottom:10px;word-break:keep-all;}
+  .lp-steps-row{display:grid;grid-template-columns:1fr 48px 1fr 48px 1fr;align-items:stretch;}
+  .lp-step{background:#0d2040;border:1px solid rgba(56,189,248,0.1);border-radius:16px;padding:36px 32px;position:relative;display:flex;flex-direction:column;}
+  .lp-step-num{font-family:'Space Grotesk',sans-serif;font-size:clamp(18px,2vw,28px);font-weight:700;color:rgba(56,189,248,0.25);line-height:1;flex-shrink:0;}
+  .lp-step-header{display:flex;align-items:baseline;gap:10px;margin-bottom:20px;white-space:nowrap;overflow:hidden;}
+  .lp-step-title{font-size:clamp(18px,2vw,28px);font-weight:700;color:#fff;margin-bottom:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .lp-step-desc{font-size:14px;color:#94a3b8;line-height:1.7;word-break:keep-all;}
-  .lp-step-arrow{display:flex;align-items:center;justify-content:center;height:100%;padding-top:80px;color:#0284c7;font-size:24px;}
+  .lp-step-arrow{display:flex;align-items:center;justify-content:center;color:#0284c7;font-size:24px;}
 
   .lp-model-section{background:linear-gradient(135deg,#0d2040 0%,#0a1628 100%);border-top:1px solid rgba(56,189,248,0.08);border-bottom:1px solid rgba(56,189,248,0.08);padding:80px;}
   .lp-model-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:60px;}
@@ -430,25 +430,33 @@ export default function LandingPage() {
                   <line x1="68" y1="140" x2="210" y2="145"/><line x1="210" y1="145" x2="335" y2="138"/><line x1="78" y1="162" x2="215" y2="168"/>
                   <line x1="215" y1="168" x2="330" y2="162"/><line x1="88" y1="182" x2="230" y2="188"/><line x1="230" y1="188" x2="322" y2="182"/><line x1="108" y1="200" x2="256" y2="208"/>
                 </g>
-                <path d="M76,188 C124,196 172,202 222,204 C268,205 305,202 335,196" fill="none" stroke="rgba(56,189,248,0.5)" strokeWidth="7" strokeLinecap="round"/>
-                <path d="M76,188 C124,196 172,202 222,204 C268,205 305,202 335,196" fill="none" stroke="rgba(56,189,248,0.14)" strokeWidth="13" strokeLinecap="round"/>
+                <path d="M105,186 C150,196 195,202 232,202 C268,202 295,198 318,192" fill="none" stroke="rgba(56,189,248,0.5)" strokeWidth="6" strokeLinecap="round"/>
+                <path d="M105,186 C150,196 195,202 232,202 C268,202 295,198 318,192" fill="none" stroke="rgba(56,189,248,0.14)" strokeWidth="11" strokeLinecap="round"/>
                 <text x="206" y="202" textAnchor="middle" fontSize="6" fill="rgba(56,189,248,0.55)" fontFamily="Space Grotesk,sans-serif" letterSpacing="3">HAN RIVER</text>
                 <path d="M148,98 L180,90 L206,98 L200,124 L184,134 L160,134 L148,120 Z" fill="rgba(45,212,191,0.22)" stroke="rgba(45,212,191,0.75)" strokeWidth="1.2" filter="url(#lp-pglow)"/>
-                <path d="M95,138 L128,128 L148,138 L144,162 L128,172 L104,168 L92,155 Z" fill="rgba(251,191,36,0.18)" stroke="rgba(251,191,36,0.68)" strokeWidth="1.2" filter="url(#lp-pglow)"/>
-                <path d="M202,208 L248,202 L268,218 L260,242 L234,250 L208,242 L198,226 Z" fill="rgba(251,191,36,0.16)" stroke="rgba(251,191,36,0.62)" strokeWidth="1.2" filter="url(#lp-pglow)"/>
+                <path d="M102,138 L130,128 L150,138 L146,160 L130,170 L110,168 L100,154 Z" fill="rgba(251,191,36,0.18)" stroke="rgba(251,191,36,0.68)" strokeWidth="1.2" filter="url(#lp-pglow)"/>
+                <path d="M204,206 L246,200 L262,212 L256,228 L232,234 L210,228 L200,218 Z" fill="rgba(251,191,36,0.16)" stroke="rgba(251,191,36,0.62)" strokeWidth="1.2" filter="url(#lp-pglow)"/>
                 <circle cx="178" cy="113" r="5" fill="#2dd4bf" filter="url(#lp-pglow2)"><animate attributeName="r" values="5;8;5" dur="2.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.4;1" dur="2.8s" repeatCount="indefinite"/></circle>
                 <circle cx="178" cy="113" r="3.5" fill="#2dd4bf"/>
-                <circle cx="115" cy="150" r="4.5" fill="#fbbf24" filter="url(#lp-pglow2)"><animate attributeName="r" values="4.5;7;4.5" dur="3.1s" repeatCount="indefinite" begin="1s"/><animate attributeName="opacity" values="1;0.4;1" dur="3.1s" repeatCount="indefinite" begin="1s"/></circle>
-                <circle cx="115" cy="150" r="3" fill="#fbbf24"/>
-                <circle cx="233" cy="225" r="4.5" fill="#fbbf24" filter="url(#lp-pglow2)"><animate attributeName="r" values="4.5;7;4.5" dur="3.4s" repeatCount="indefinite" begin="0.5s"/><animate attributeName="opacity" values="1;0.4;1" dur="3.4s" repeatCount="indefinite" begin="0.5s"/></circle>
-                <circle cx="233" cy="225" r="3" fill="#fbbf24"/>
+                <circle cx="124" cy="150" r="4.5" fill="#fbbf24" filter="url(#lp-pglow2)"><animate attributeName="r" values="4.5;7;4.5" dur="3.1s" repeatCount="indefinite" begin="1s"/><animate attributeName="opacity" values="1;0.4;1" dur="3.1s" repeatCount="indefinite" begin="1s"/></circle>
+                <circle cx="124" cy="150" r="3" fill="#fbbf24"/>
+                <circle cx="231" cy="217" r="4.5" fill="#fbbf24" filter="url(#lp-pglow2)"><animate attributeName="r" values="4.5;7;4.5" dur="3.4s" repeatCount="indefinite" begin="0.5s"/><animate attributeName="opacity" values="1;0.4;1" dur="3.4s" repeatCount="indefinite" begin="0.5s"/></circle>
+                <circle cx="231" cy="217" r="3" fill="#fbbf24"/>
+                <circle cx="220" cy="48" r="2" fill="rgba(56,189,248,0.4)"/>
+                <circle cx="162" cy="52" r="2" fill="rgba(56,189,248,0.35)"/>
+                <circle cx="290" cy="68" r="2" fill="rgba(56,189,248,0.35)"/>
+                <circle cx="320" cy="110" r="2" fill="rgba(56,189,248,0.35)"/>
+                <circle cx="305" cy="158" r="2" fill="rgba(56,189,248,0.35)"/>
+                <circle cx="290" cy="210" r="2" fill="rgba(56,189,248,0.35)"/>
+                <circle cx="108" cy="184" r="2" fill="rgba(56,189,248,0.35)"/>
+                <circle cx="130" cy="218" r="2" fill="rgba(56,189,248,0.3)"/>
                 <text x="178" y="108" textAnchor="middle" fontSize="7.5" fill="rgba(45,212,191,0.92)" fontFamily="Noto Sans KR,sans-serif" fontWeight="700">종로구</text>
-                <text x="115" y="145" textAnchor="middle" fontSize="7.5" fill="rgba(251,191,36,0.92)" fontFamily="Noto Sans KR,sans-serif" fontWeight="700">마포구</text>
-                <text x="233" y="219" textAnchor="middle" fontSize="7.5" fill="rgba(251,191,36,0.92)" fontFamily="Noto Sans KR,sans-serif" fontWeight="700">강남구</text>
-                <text x="224" y="30" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">노원구</text>
-                <text x="316" y="155" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">강동구</text>
-                <text x="300" y="208" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">송파구</text>
-                <text x="94" y="200" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">강서구</text>
+                <text x="124" y="145" textAnchor="middle" fontSize="7.5" fill="rgba(251,191,36,0.92)" fontFamily="Noto Sans KR,sans-serif" fontWeight="700">마포구</text>
+                <text x="231" y="211" textAnchor="middle" fontSize="7.5" fill="rgba(251,191,36,0.92)" fontFamily="Noto Sans KR,sans-serif" fontWeight="700">강남구</text>
+                <text x="220" y="42" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">노원구</text>
+                <text x="305" y="152" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">강동구</text>
+                <text x="290" y="206" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">송파구</text>
+                <text x="105" y="180" textAnchor="middle" fontSize="6.5" fill="rgba(56,189,248,0.5)" fontFamily="Noto Sans KR,sans-serif">강서구</text>
               </svg>
             </div>
             <div className="lp-panel-scores">
@@ -600,24 +608,27 @@ export default function LandingPage() {
           </div>
           <div className="lp-steps-row">
             <div className="lp-step lp-reveal">
-              <div className="lp-step-num">01</div>
-              <div className="lp-step-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
-              <h3 className="lp-step-title">지역 & 업종 선택</h3>
+              <div className="lp-step-header">
+                <div className="lp-step-num">01</div>
+                <h3 className="lp-step-title">지역 & 업종 선택</h3>
+              </div>
               <p className="lp-step-desc">서울 지도에서 원하는 구와 행정동을 클릭하거나, 검색창에서 직접 입력하세요. 분석할 업종을 51개 카테고리에서 선택합니다.</p>
             </div>
             <div className="lp-step-arrow lp-reveal lp-reveal-delay-1">→</div>
             <div className="lp-step lp-reveal lp-reveal-delay-2">
-              <div className="lp-step-num">02</div>
-              <div className="lp-step-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M12 11V7"/><circle cx="12" cy="5" r="2"/></svg></div>
-              <h3 className="lp-step-title">AI 분석 실행</h3>
-              <p className="lp-step-desc">LightGBM 모델이 선택 지역의 성장확률을 0~100 점수로 산출합니다. A~D 등급과 함께 Top 10 추천 입지를 즉시 표시합니다.</p>
+              <div className="lp-step-header">
+                <div className="lp-step-num">02</div>
+                <h3 className="lp-step-title">보고서 생성 & 저장</h3>
+              </div>
+              <p className="lp-step-desc">Gemini AI가 상권 데이터를 종합 분석해 심층 보고서를 자동 생성합니다. 창업비용 계산기로 예산까지 한눈에 확인하세요.</p>
             </div>
             <div className="lp-step-arrow lp-reveal lp-reveal-delay-3">→</div>
             <div className="lp-step lp-reveal lp-reveal-delay-4">
-              <div className="lp-step-num">03</div>
-              <div className="lp-step-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/><line x1="2" y1="22" x2="22" y2="22"/></svg></div>
-              <h3 className="lp-step-title">보고서 생성 & 저장</h3>
-              <p className="lp-step-desc">Gemini AI가 상권 데이터를 종합 분석해 심층 보고서를 자동 생성합니다. 창업비용 계산기까지 활용해 최종 의사결정을 내리세요.</p>
+              <div className="lp-step-header">
+                <div className="lp-step-num">03</div>
+                <h3 className="lp-step-title">AI 분석 실행</h3>
+              </div>
+              <p className="lp-step-desc">보고서 내 AI 분석 버튼으로 LightGBM 모델이 성장확률을 0~100 점수로 산출합니다. A~D 등급과 함께 Top 10 추천 입지를 확인하세요.</p>
             </div>
           </div>
         </div>
