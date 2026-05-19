@@ -2688,6 +2688,7 @@ def trend_naver(request):
 def report(request):
     dong = normalize_dong(request.GET.get("dong", ""))
     category = request.GET.get("category", "")
+    data_only = request.GET.get("data_only") == "1"
 
     if not dong:
         return JsonResponse({"error": "dong 파라미터가 필요합니다."}, status=400)
@@ -2827,6 +2828,13 @@ def report(request):
                 },
             }
 
+    if data_only:
+        try:
+            ReportLog.objects.create(dong=dong, gu='', category=category)
+        except Exception:
+            pass
+        return JsonResponse({"data": data, "ai_descriptions": {}, "quarter": target, "category": category})
+
     ai_descriptions = {}
     try:
         import requests as http_requests
@@ -2905,6 +2913,7 @@ def gu_report(request):
     gu = body.get("gu", "")
     dongs = [normalize_dong(d) for d in body.get("dongs", [])]
     category = body.get("category", "")
+    data_only = body.get("data_only", False)
     if not gu or not dongs:
         return JsonResponse({"error": "gu, dongs 필요"}, status=400)
 
@@ -3064,6 +3073,9 @@ def gu_report(request):
                 "일": int(cat_agg["요일_일"] or 0),
             },
         }
+
+    if data_only:
+        return JsonResponse({"data": data, "ai_descriptions": {}, "quarter": target, "gu": gu, "category": category})
 
     ai_descriptions = {}
     try:

@@ -435,6 +435,8 @@ export default function MapPage() {
   const [reportSaved, setReportSaved] = useState(false);      // 저장 완료 여부
   const [reportSaving, setReportSaving] = useState(false);    // 저장 중
   const [reportSavedId, setReportSavedId] = useState(null);   // 저장된 보고서 ID
+  const [reportAiLoading, setReportAiLoading] = useState(false); // AI 설명 로딩 중
+  const [aiTyped, setAiTyped] = useState({});                   // 타이핑 효과 진행 중 텍스트
   const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
   const [reportRegion, setReportRegion] = useState(null);     // 보고서 생성 시점의 지역 { name, subName }
   const [similarDongs, setSimilarDongs] = useState([]);        // 근처 더 좋은 지역 추천
@@ -700,12 +702,32 @@ export default function MapPage() {
 
   // ── 보고서 로딩 중 단계별 문구 전환 ──
   useEffect(() => {
-    const isLoading = reportLoading || reportCategoryLoading;
+    const isLoading = reportLoading || reportCategoryLoading || reportAiLoading;
     if (!isLoading) { setReportLoadingStep(0); return; }
     setReportLoadingStep(0);
     const id = setInterval(() => setReportLoadingStep((s) => Math.min(s + 1, 4)), 5000);
     return () => clearInterval(id);
-  }, [reportLoading, reportCategoryLoading]);
+  }, [reportLoading, reportCategoryLoading, reportAiLoading]);
+
+  // ── AI 텍스트 도착 시 타이핑 효과 시작 ──
+  useEffect(() => {
+    if (reportAiLoading) { setAiTyped({}); return; }
+    const ai = reportData?.ai_descriptions || {};
+    if (!ai || ai.error || Object.keys(ai).length === 0) return;
+    const keys = Object.keys(ai).filter(k => ai[k] && typeof ai[k] === "string");
+    const intervals = keys.map(key => {
+      const text = ai[key];
+      let i = 0;
+      const speed = Math.max(8, Math.floor(2500 / text.length));
+      const id = setInterval(() => {
+        i++;
+        setAiTyped(prev => ({ ...prev, [key]: text.slice(0, i) }));
+        if (i >= text.length) clearInterval(id);
+      }, speed);
+      return id;
+    });
+    return () => intervals.forEach(clearInterval);
+  }, [reportAiLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 구/동 변경 시 보고서 패널 닫기 (복원 중엔 스킵) ──
   useEffect(() => {
@@ -2584,6 +2606,7 @@ export default function MapPage() {
                 setReportLoading(true);
                 setReportSaved(false);
                 setReportSavedId(null);
+                setAiTyped({});
                 if (selectedDong) {
                   setReportRegion({ name: selectedDong.dongName, subName: `서울특별시 ${selectedDong.guName}` });
                 } else if (selectedGu) {
@@ -2605,38 +2628,72 @@ export default function MapPage() {
                 if (selectedDong) {
                   const dong = normalizeDongName(selectedDong.dongName);
                   const categoryParam = reportCategory ? `&category=${encodeURIComponent(reportCategory)}` : "";
-                  const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}${categoryParam}`;
                   const reqKeys = reportCategory ? catKeys : baseKeys;
-                  const tryFetch = (left) => {
-                    fetch(url).then((r) => r.json()).then((d) => {
-                      const ai = d.ai_descriptions || {};
-                      if (reqKeys.every((k) => ai[k])) {
-                        setReportData({ ...d, _dong: dong }); setReportLoading(false); fetchTrending();
-                      } else if (ai.rate_limited || ai.error || left === 0) {
-                        const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                        setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportLoading(false);
-                      } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                    }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
-                  };
-                  tryFetch(2);
+                  // Phase 1: DB 데이터만 즉시 로드
+                  fetch(`${API}/api/report/?dong=${encodeURIComponent(dong)}${categoryParam}&data_only=1`)
+                    .then((r) => r.json())
+                    .then((d) => {
+                      setReportData({ ...d, _dong: dong });
+                      setReportLoading(false);
+                      setReportAiLoading(true);
+                      fetchTrending();
+                      // Phase 2: AI 설명 로드
+                      const tryFetch = (left) => {
+                        fetch(`${API}/api/report/?dong=${encodeURIComponent(dong)}${categoryParam}`)
+                          .then((r) => r.json())
+                          .then((d2) => {
+                            const ai = d2.ai_descriptions || {};
+                            if (reqKeys.every((k) => ai[k])) {
+                              setReportData((prev) => ({ ...prev, ai_descriptions: ai }));
+                              setReportAiLoading(false);
+                            } else if (ai.rate_limited || ai.error || left === 0) {
+                              const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                              setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } }));
+                              setReportAiLoading(false);
+                            } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                          })
+                          .catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportAiLoading(false); });
+                      };
+                      tryFetch(2);
+                    })
+                    .catch(() => setReportLoading(false));
                 } else if (selectedGu) {
                   const dongs = guToDongsRef.current[selectedGu] || [];
                   const reqKeys = reportCategory ? catKeys : baseKeys;
-                  const tryFetch = (left) => {
-                    fetch(`${API}/api/gu-report/`, {
-                      method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
-                    }).then((r) => r.json()).then((d) => {
-                      const ai = d.ai_descriptions || {};
-                      if (reqKeys.every((k) => ai[k])) {
-                        setReportData({ ...d, _gu: selectedGu }); setReportLoading(false); fetchTrending();
-                      } else if (ai.rate_limited || ai.error || left === 0) {
-                        const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                        setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _gu: selectedGu }); setReportLoading(false);
-                      } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                    }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
-                  };
-                  tryFetch(2);
+                  // Phase 1: DB 데이터만 즉시 로드
+                  fetch(`${API}/api/gu-report/`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory, data_only: true }),
+                  })
+                    .then((r) => r.json())
+                    .then((d) => {
+                      setReportData({ ...d, _gu: selectedGu });
+                      setReportLoading(false);
+                      setReportAiLoading(true);
+                      fetchTrending();
+                      // Phase 2: AI 설명 로드
+                      const tryFetch = (left) => {
+                        fetch(`${API}/api/gu-report/`, {
+                          method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ gu: selectedGu, dongs, category: reportCategory }),
+                        })
+                          .then((r) => r.json())
+                          .then((d2) => {
+                            const ai = d2.ai_descriptions || {};
+                            if (reqKeys.every((k) => ai[k])) {
+                              setReportData((prev) => ({ ...prev, ai_descriptions: ai }));
+                              setReportAiLoading(false);
+                            } else if (ai.rate_limited || ai.error || left === 0) {
+                              const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                              setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } }));
+                              setReportAiLoading(false);
+                            } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                          })
+                          .catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportAiLoading(false); });
+                      };
+                      tryFetch(2);
+                    })
+                    .catch(() => setReportLoading(false));
                 }
               }}
               style={{
@@ -3275,14 +3332,8 @@ export default function MapPage() {
                   borderTop: "3px solid #111827",
                   animation: "spin 0.8s linear infinite",
                 }} />
-                <div style={{ fontSize: 14, color: "#6B7280" }}>{[
-                  "AI가 보고서를 작성하는 중입니다...",
-                  "AI가 상권을 분석 중입니다...",
-                  "AI가 데이터를 꼼꼼히 분석하고 있어요...",
-                  "AI가 보고서를 정리 중입니다...",
-                  "곧 완성됩니다...",
-                ][reportLoadingStep]}</div>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                <div style={{ fontSize: 14, color: "#6B7280" }}>상권 데이터를 불러오는 중입니다...</div>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } } @keyframes cursorBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
               </div>
             ) : reportData ? (() => {
               const ai = reportData.ai_descriptions?.error ? {} : (reportData.ai_descriptions || {});
@@ -3347,8 +3398,9 @@ export default function MapPage() {
                     tryFetch(2);
                   }
                 } else {
-                  // 기본 보고서 전체 재시도
-                  setReportLoading(true);
+                  // 기본 보고서 AI 재시도 (패널 유지, AI 섹션만 스켈레톤)
+                  setReportAiLoading(true);
+                  setReportData((prev) => ({ ...prev, ai_descriptions: {} }));
                   if (reportData._dong) {
                     const dong = reportData._dong;
                     const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}`;
@@ -3356,12 +3408,12 @@ export default function MapPage() {
                       fetch(url).then((r) => r.json()).then((d) => {
                         const ai = d.ai_descriptions || {};
                         if (baseKeys.every((k) => ai[k])) {
-                          setReportData({ ...d, _dong: dong }); setReportLoading(false);
+                          setReportData((prev) => ({ ...prev, ai_descriptions: ai })); setReportAiLoading(false);
                         } else if (ai.rate_limited || ai.error || left === 0) {
                           const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                          setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportLoading(false);
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } })); setReportAiLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportAiLoading(false); });
                     };
                     tryFetch(2);
                   } else if (reportData._gu) {
@@ -3374,44 +3426,61 @@ export default function MapPage() {
                       }).then((r) => r.json()).then((d) => {
                         const ai = d.ai_descriptions || {};
                         if (baseKeys.every((k) => ai[k])) {
-                          setReportData({ ...d, _gu: gu }); setReportLoading(false);
+                          setReportData((prev) => ({ ...prev, ai_descriptions: ai })); setReportAiLoading(false);
                         } else if (ai.rate_limited || ai.error || left === 0) {
                           const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                          setReportData({ ...d, ai_descriptions: { ...ai, error: errMsg }, _gu: gu }); setReportLoading(false);
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } })); setReportAiLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportAiLoading(false); });
                     };
                     tryFetch(2);
                   }
                 }
               };
 
-              const AiText = ({ text }) => text ? (
-                <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 20px 36px", wordBreak: "keep-all" }}>
-                  {text}
-                </p>
-              ) : aiError ? (
-                <div style={{ margin: "0 0 20px 36px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <p style={{ fontSize: 13, color: "#9CA3AF", margin: "0 0 12px 0", textAlign: "center" }}>
-                    AI 설명을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+              const AiText = ({ text, aiKey }) => {
+                const typed = aiKey ? aiTyped[aiKey] : undefined;
+                const isTyping = typed !== undefined && text && typed.length < text.length;
+                const displayText = typed !== undefined ? typed : text;
+
+                if (displayText) return (
+                  <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 20px 36px", wordBreak: "keep-all" }}>
+                    {displayText}
+                    {isTyping && (
+                      <span style={{ display: "inline-block", width: 1.5, height: "1.1em", background: "#374151", marginLeft: 1, verticalAlign: "text-bottom", animation: "cursorBlink 0.7s step-end infinite" }} />
+                    )}
                   </p>
-                  {(reportCategoryLoading || reportLoading) ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, color: "#9CA3AF", fontSize: 13 }}>
-                      <div style={{ width: 15, height: 15, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                      재시도 중...
-                    </div>
-                  ) : (
-                    <button
-                      onClick={retryReport}
-                      style={{ fontSize: 13, fontWeight: 600, color: "#374151", background: "#F3F4F6", border: "none", borderRadius: 8, padding: "8px 20px", cursor: "pointer" }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
-                      onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
-                    >
-                      다시 시도
-                    </button>
-                  )}
-                </div>
-              ) : null;
+                );
+                if (reportAiLoading) return (
+                  <div style={{ margin: "0 0 20px 36px" }}>
+                    <div style={{ height: 13, borderRadius: 4, marginBottom: 8, background: "linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.5s ease-in-out infinite" }} />
+                    <div style={{ height: 13, borderRadius: 4, width: "80%", background: "linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.5s ease-in-out infinite 0.3s" }} />
+                  </div>
+                );
+                if (aiError) return (
+                  <div style={{ margin: "0 0 20px 36px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <p style={{ fontSize: 13, color: "#9CA3AF", margin: "0 0 12px 0", textAlign: "center" }}>
+                      AI 설명을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+                    </p>
+                    {(reportCategoryLoading || reportAiLoading) ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, color: "#9CA3AF", fontSize: 13 }}>
+                        <div style={{ width: 15, height: 15, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                        재시도 중...
+                      </div>
+                    ) : (
+                      <button
+                        onClick={retryReport}
+                        style={{ fontSize: 13, fontWeight: 600, color: "#374151", background: "#F3F4F6", border: "none", borderRadius: 8, padding: "8px 20px", cursor: "pointer" }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#E5E7EB"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "#F3F4F6"}
+                      >
+                        다시 시도
+                      </button>
+                    )}
+                  </div>
+                );
+                return null;
+              };
 
               const KeyFigure = ({ label, value, sub, accent, exact }) => (
                 <div style={{ marginBottom: 0, minWidth: 0 }} title={exact ? `${label}: ${exact}` : undefined}>
@@ -3437,9 +3506,16 @@ export default function MapPage() {
 
               return (
                 <div>
+                  {/* AI 분석 중 배너 */}
+                  {reportAiLoading && (
+                    <div style={{ margin: "0 0 24px 0", padding: "10px 16px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 15, height: 15, flexShrink: 0, border: "2px solid #93C5FD", borderTop: "2px solid #2563EB", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                      <span style={{ fontSize: 13, color: "#1D4ED8", fontWeight: 600 }}>AI가 상권을 분석하고 있습니다...</span>
+                    </div>
+                  )}
                   {/* 섹션 01: 상권 개요 */}
                   <SectionLabel num="01" title="상권 개요 및 입지 특성" />
-                  <AiText text={ai["상권_개요"]} />
+                  <AiText text={ai["상권_개요"]} aiKey="상권_개요" />
 
                   {/* 핵심 지표 그리드 */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 24px", marginLeft: 24, marginBottom: 20, padding: "20px 20px", background: "#fff", borderRadius: 10, border: "1px solid #E5E7EB" }}>
@@ -3453,7 +3529,7 @@ export default function MapPage() {
 
                   {/* 섹션 02: 인기 업종 */}
                   <SectionLabel num="02" title="인기 업종 현황" />
-                  <AiText text={ai["인기_업종"]} />
+                  <AiText text={ai["인기_업종"]} aiKey="인기_업종" />
                   <div style={{ marginLeft: 24, marginBottom: 20 }}>
                     {(d.top_업종 || []).map((item, i) => (
                       <div key={i} style={{
@@ -3483,7 +3559,7 @@ export default function MapPage() {
 
                   {/* 섹션 03: 유동인구·소비 분석 */}
                   <SectionLabel num="03" title="유동인구 · 소비 분석" />
-                  <AiText text={ai["유동인구_분석"]} />
+                  <AiText text={ai["유동인구_분석"]} aiKey="유동인구_분석" />
                   <div style={{ marginLeft: 24, marginBottom: 20 }}>
                     <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, marginBottom: 10 }}>결제 고객 성별</div>
                     <InlineBar label="남성" ratio={d.성별?.남성비율 || 0} color="#3B82F6" valueLabel={`${d.성별?.남성비율 || 0}%`} />
@@ -3597,7 +3673,7 @@ export default function MapPage() {
                           setReportData((prev) => { const { category_data, ...restData } = prev.data || {}; return { ...prev, data: restData }; });
                         }} style={{ fontSize: 11, color: "#9CA3AF", background: "none", border: "none", cursor: "pointer", marginBottom: 14, flexShrink: 0 }}>업종 초기화</button>
                       </div>
-                      <AiText text={ai["소비_패턴"]} />
+                      <AiText text={ai["소비_패턴"]} aiKey="소비_패턴" />
 
                       {/* 시간대 바 차트 */}
                       {(() => {
@@ -3773,22 +3849,32 @@ export default function MapPage() {
                                         setSavedGuReportCategory(reportCategory);
                                         setSavedGuReportRegion(reportRegion);
                                         setReportLoading(true);
+                                        setAiTyped({});
                                         setGuDongRecommends(null);
                                         setGuDongRecommendOpen(false);
                                         const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
-                                        const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
-                                        const tryFetch = (left) => {
-                                          fetch(url).then((r) => r.json()).then((data) => {
-                                            const ai = data.ai_descriptions || {};
-                                            if (catKeys.every((k) => ai[k])) {
-                                              setReportData({ ...data, _dong: dong }); setReportLoading(false);
-                                            } else if (ai.rate_limited || ai.error || left === 0) {
-                                              const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                                              setReportData({ ...data, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportLoading(false);
-                                            } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                                          }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
-                                        };
-                                        tryFetch(2);
+                                        const catParam = reportCategory ? `&category=${encodeURIComponent(reportCategory)}` : "";
+                                        fetch(`${API}/api/report/?dong=${encodeURIComponent(dong)}${catParam}&data_only=1`)
+                                          .then((r) => r.json())
+                                          .then((d1) => {
+                                            setReportData({ ...d1, _dong: dong });
+                                            setReportLoading(false);
+                                            setReportAiLoading(true);
+                                            const tryFetch = (left) => {
+                                              fetch(`${API}/api/report/?dong=${encodeURIComponent(dong)}${catParam}`)
+                                                .then((r) => r.json()).then((data) => {
+                                                  const ai = data.ai_descriptions || {};
+                                                  if (catKeys.every((k) => ai[k])) {
+                                                    setReportData((prev) => ({ ...prev, ai_descriptions: ai })); setReportAiLoading(false);
+                                                  } else if (ai.rate_limited || ai.error || left === 0) {
+                                                    const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
+                                                    setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } })); setReportAiLoading(false);
+                                                  } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                                                }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportAiLoading(false); });
+                                            };
+                                            tryFetch(2);
+                                          })
+                                          .catch(() => setReportLoading(false));
                                       }}
                                       style={{ width: "100%", padding: "8px 0", background: "#2563EB", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
                                       onMouseEnter={(e) => e.currentTarget.style.background = "#1D4ED8"}
@@ -3873,22 +3959,29 @@ export default function MapPage() {
                                   setSavedGuReportCategory(reportCategory);
                                   setSavedGuReportRegion(reportRegion);
                                   setReportLoading(true);
-                                  const url = `${API}/api/report/?dong=${encodeURIComponent(item.dong)}${(reportCategory || reportData.category) ? `&category=${encodeURIComponent(reportCategory || reportData.category)}` : ""}`;
-                                  const tryFetch = (left) => {
-                                    fetch(url).then((r) => r.json()).then((data) => {
-                                      const ai = data.ai_descriptions || {};
-                                      if (catKeys.every((k) => ai[k])) {
-                                        setReportData({ ...data, _dong: item.dong });
-                                        setReportRegion({ name: item.dong, subName: reportRegion?.subName || "" });
-                                        setReportLoading(false);
-                                      } else if (ai.rate_limited || ai.error || left === 0) {
-                                        setReportData({ ...data, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." }, _dong: item.dong });
-                                        setReportRegion({ name: item.dong, subName: reportRegion?.subName || "" });
-                                        setReportLoading(false);
-                                      } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                                    }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportLoading(false); });
-                                  };
-                                  tryFetch(2);
+                                  setAiTyped({});
+                                  const catParamSim = (reportCategory || reportData.category) ? `&category=${encodeURIComponent(reportCategory || reportData.category)}` : "";
+                                  fetch(`${API}/api/report/?dong=${encodeURIComponent(item.dong)}${catParamSim}&data_only=1`)
+                                    .then((r) => r.json())
+                                    .then((d1) => {
+                                      setReportData({ ...d1, _dong: item.dong });
+                                      setReportRegion({ name: item.dong, subName: reportRegion?.subName || "" });
+                                      setReportLoading(false);
+                                      setReportAiLoading(true);
+                                      const tryFetch = (left) => {
+                                        fetch(`${API}/api/report/?dong=${encodeURIComponent(item.dong)}${catParamSim}`)
+                                          .then((r) => r.json()).then((data) => {
+                                            const ai = data.ai_descriptions || {};
+                                            if (catKeys.every((k) => ai[k])) {
+                                              setReportData((prev) => ({ ...prev, ai_descriptions: ai })); setReportAiLoading(false);
+                                            } else if (ai.rate_limited || ai.error || left === 0) {
+                                              setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: "AI 설명 생성에 실패했습니다." } })); setReportAiLoading(false);
+                                            } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                                          }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportAiLoading(false); });
+                                      };
+                                      tryFetch(2);
+                                    })
+                                    .catch(() => setReportLoading(false));
                                 }}
                                 onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.borderColor = "#93C5FD"; e.currentTarget.style.cursor = "pointer"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.borderColor = "#E5E7EB"; }}
@@ -4953,7 +5046,7 @@ export default function MapPage() {
 
           {/* result 단계: 기존 콘텐츠 */}
           {!aiResultCollapsed && aiStep === "result" && (
-            <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "16px", position: "relative" }}>
+            <div className="no-scrollbar" style={{ flex: 1, display: "flex", flexDirection: "column", ...(aiMode === "score" ? { overflow: "hidden" } : { overflowY: "auto", padding: "16px" }), position: "relative" }}>
 
               {/* spot_loading */}
               {aiStep === "spot_loading" && (
@@ -4965,8 +5058,8 @@ export default function MapPage() {
 
               {/* 결과 단계 */}
               {aiStep === "result" && (aiResults || aiDongSubMode === "gu_rank") && (
-                <>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={aiMode === "score" ? { display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" } : {}}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", ...(aiMode === "score" ? { padding: "16px 16px 0", flexShrink: 0 } : { marginBottom: 16 }) }}>
                     <span style={{ fontSize: 15, color: "#6B7280" }}>
                       {aiMode === "dong" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiSubIndustry}</span>{aiRegion && <> · {aiRegion}</>} 추천 상권</>}
                       {aiMode === "industry" && <><span style={{ color: "#93B8EE", fontWeight: 600 }}>{aiDong}</span> 추천 업종</>}
@@ -5217,11 +5310,26 @@ export default function MapPage() {
               {aiMode === "score" && (() => {
                 const r = aiResults;
                 const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[r.grade] ?? "#6B9FE4";
+                const GRADE_LABEL = { A: "매우 우수", B: "전반적으로 양호", C: "보통 이하", D: "개선 필요" };
+                const WEIGHT_MAP = { "성장 추세": "25%", "매출 잠재력": "30%", "유동인구": "20%", "경쟁 우위": "25%" };
+                const hasSuggestions = aiScoreSuggestions.regions?.length > 0 || aiScoreSuggestions.industries?.length > 0;
                 return (
-                  <div>
-                    {/* 탭 스트립 */}
-                    <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", marginBottom: 20 }}>
-                      {[["종합", "종합 점수"], ["세부", "세부 지표"], ["개선", "개선·주의사항"]].map(([key, label]) => (
+                  <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+
+                    {/* Fix 7: 업종·지역 서브헤더 */}
+                    <div style={{ padding: "10px 16px 0", flexShrink: 0 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", marginBottom: 2 }}>{aiIndustry}</div>
+                      <div style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ background: "#2563EB12", color: "#2563EB", borderRadius: 99, padding: "1px 8px", fontSize: 11, fontWeight: 600 }}>
+                          {polygonGroupsRef.current.find(g => g.dongName === aiDong)?.guName ?? aiDong}
+                        </span>
+                        전체 상권 기준
+                      </div>
+                    </div>
+
+                    {/* Fix 6: 탭 스트립 ("강점·유의점" 으로 변경) */}
+                    <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", marginTop: 14, flexShrink: 0 }}>
+                      {[["종합", "종합 점수"], ["세부", "세부 지표"], ["개선", "강점·유의점"]].map(([key, label]) => (
                         <button key={key} onClick={() => setAiScoreTab(key)}
                           style={{ flex: 1, padding: "10px 0", fontSize: 12.5, fontWeight: aiScoreTab === key ? 700 : 400,
                             border: "none", background: "none", cursor: "pointer", transition: "all 0.15s",
@@ -5233,228 +5341,261 @@ export default function MapPage() {
                       ))}
                     </div>
 
-                    {/* ── 종합 점수 탭 ── */}
-                    {aiScoreTab === "종합" && (
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 20 }}>
-                          {(() => {
-                            const cr = 52, cx = 68, cy = 68, circ = 2 * Math.PI * cr;
-                            const dash = (r.score / 100) * circ;
-                            return (
-                              <svg width={136} height={136} style={{ flexShrink: 0 }}>
-                                <circle cx={cx} cy={cy} r={cr} fill="none" stroke="#f0f2f5" strokeWidth={10}/>
-                                <circle cx={cx} cy={cy} r={cr} fill="none" stroke={gc}
-                                  strokeWidth={10} strokeLinecap="round"
-                                  strokeDasharray={`${dash} ${circ - dash}`}
-                                  transform={`rotate(-90 ${cx} ${cy})`}
-                                  style={{ transition: "stroke-dasharray 1s ease" }}/>
-                                <text x={cx} y={cy - 6} textAnchor="middle" fontSize={28} fontWeight={700} fill="#0f172a">{r.score}</text>
-                                <text x={cx} y={cy + 16} textAnchor="middle" fontSize={11} fill="#94a3b8">종합 점수</text>
-                              </svg>
-                            );
-                          })()}
-                          <div>
-                            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>AI 등급</div>
-                            <div style={{ fontSize: 42, fontWeight: 800, color: gc, lineHeight: 1 }}>{r.grade}</div>
-                            <div style={{ marginTop: 8, fontSize: 12.5, color: "#64748b", lineHeight: 1.6, maxWidth: 140 }}>{r.summary}</div>
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                          {r.breakdown.map((b) => {
-                            const pct = (b.score / b.max) * 100;
-                            const c = pct >= 70 ? "#2563EB" : pct >= 40 ? "#f59e0b" : "#ef4444";
-                            return (
-                              <div key={b.label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 10, padding: "12px 14px" }}>
-                                <div style={{ fontSize: 10.5, color: "#94a3b8", marginBottom: 4 }}>{b.label}</div>
-                                <div style={{ fontSize: 22, fontWeight: 800, color: c, lineHeight: 1 }}>{b.score}</div>
-                                <div style={{ fontSize: 10, color: "#cbd5e1", marginTop: 3 }}>/ {b.max}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {/* Fix 8: 탭 콘텐츠 스크롤 영역 */}
+                    <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
 
-                    {/* ── 세부 지표 탭 ── */}
-                    {aiScoreTab === "세부" && (
-                      <div>
-                        {(() => {
-                          const DESC = {
-                            "성장 추세": "AI가 예측한 다음 분기 매출 성장 가능성입니다.",
-                            "매출 잠재력": "해당 행정동 업종의 월평균 매출 수준입니다.",
-                            "유동인구": "상권 내 유동인구 밀도 및 규모입니다.",
-                            "경쟁 우위": "주변 경쟁 점포 대비 유리한 환경인지 나타냅니다.",
-                            "소득 수준": "상권 내 직장인·주거 인구의 소득 수준입니다.",
-                          };
-                          return r.breakdown.map((b) => {
-                            const pct = (b.score / b.max) * 100;
-                            const barColor = pct >= 70 ? "#2563EB" : pct >= 40 ? "#f59e0b" : "#ef4444";
-                            const badge = pct >= 70
-                              ? { label: "양호", bg: "#f0fdf4", color: "#16a34a" }
-                              : pct >= 40 ? { label: "보통", bg: "#fffbeb", color: "#d97706" }
-                              : { label: "미흡", bg: "#fef2f2", color: "#dc2626" };
-                            return (
-                              <div key={b.label} style={{ marginBottom: 14, border: "1px solid #f1f5f9", borderRadius: 12, padding: "14px 16px" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{b.label}</div>
-                                  <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                                    <span style={{ fontSize: 22, fontWeight: 800, color: barColor, lineHeight: 1 }}>{b.score}</span>
-                                    <span style={{ fontSize: 10, color: "#cbd5e1" }}>/ {b.max}</span>
+                      {/* ── 종합 점수 탭 ── */}
+                      {aiScoreTab === "종합" && (
+                        <div>
+                          {/* 링 + 등급 */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+                            {(() => {
+                              const cr = 52, cx = 68, cy = 68, circ = 2 * Math.PI * cr;
+                              const dash = (r.score / 100) * circ;
+                              return (
+                                <svg width={136} height={136} style={{ flexShrink: 0 }}>
+                                  <circle cx={cx} cy={cy} r={cr} fill="none" stroke="#f0f2f5" strokeWidth={10}/>
+                                  <circle cx={cx} cy={cy} r={cr} fill="none" stroke={gc}
+                                    strokeWidth={10} strokeLinecap="round"
+                                    strokeDasharray={`${dash} ${circ - dash}`}
+                                    transform={`rotate(-90 ${cx} ${cy})`}
+                                    style={{ transition: "stroke-dasharray 1s ease" }}/>
+                                  <text x={cx} y={cy - 6} textAnchor="middle" fontSize={28} fontWeight={700} fill="#0f172a">{r.score}</text>
+                                  <text x={cx} y={cy + 16} textAnchor="middle" fontSize={11} fill="#94a3b8">종합 점수</text>
+                                </svg>
+                              );
+                            })()}
+                            <div>
+                              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>AI 등급</div>
+                              <div style={{ fontSize: 42, fontWeight: 800, color: gc, lineHeight: 1 }}>{r.grade}</div>
+                            </div>
+                          </div>
+
+                          {/* Fix 1: 등급 설명 카드 */}
+                          <div style={{ margin: "16px 0 14px", background: gc + "10", border: `1px solid ${gc}30`, borderRadius: 12, padding: "14px 16px" }}>
+                            <div style={{ fontSize: 11, color: gc, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
+                              등급 {r.grade} — {GRADE_LABEL[r.grade]}
+                            </div>
+                            <div style={{ fontSize: 12.5, color: "#475569", lineHeight: 1.7 }}>{r.summary}</div>
+                          </div>
+
+                          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>점수 구성</div>
+
+                          {/* Fix 2: 2×2 그리드 + 가중치 뱃지 */}
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            {r.breakdown.map((b) => {
+                              const pct = (b.score / b.max) * 100;
+                              const c = pct >= 70 ? "#2563EB" : pct >= 40 ? "#f59e0b" : "#ef4444";
+                              return (
+                                <div key={b.label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 10, padding: "12px 14px" }}>
+                                  <div style={{ fontSize: 10.5, color: "#94a3b8", marginBottom: 4 }}>{b.label}</div>
+                                  <div style={{ fontSize: 22, fontWeight: 800, color: c, lineHeight: 1 }}>{b.score}</div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                                    <div style={{ fontSize: 10, color: "#cbd5e1" }}>/ {b.max}</div>
+                                    <div style={{ fontSize: 10, color: c, fontWeight: 600, background: c + "12", borderRadius: 99, padding: "1px 6px" }}>가중 {WEIGHT_MAP[b.label] ?? "-"}</div>
                                   </div>
                                 </div>
-                                <div style={{ background: "#f1f5f9", borderRadius: 99, height: 7, overflow: "hidden", marginBottom: 10 }}>
-                                  <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 99, transition: "width 0.9s cubic-bezier(.4,0,.2,1)" }}/>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── 세부 지표 탭 ── */}
+                      {aiScoreTab === "세부" && (
+                        <div>
+                          {(() => {
+                            const DESC = {
+                              "성장 추세": "AI가 예측한 다음 분기 매출 성장 가능성입니다.",
+                              "매출 잠재력": "해당 행정동 업종의 월평균 매출 수준입니다.",
+                              "유동인구": "상권 내 유동인구 밀도 및 규모입니다.",
+                              "경쟁 우위": "주변 경쟁 점포 대비 유리한 환경인지 나타냅니다.",
+                              "소득 수준": "상권 내 직장인·주거 인구의 소득 수준입니다.",
+                            };
+                            return r.breakdown.map((b) => {
+                              const pct = (b.score / b.max) * 100;
+                              const barColor = pct >= 70 ? "#2563EB" : pct >= 40 ? "#f59e0b" : "#ef4444";
+                              const badge = pct >= 70
+                                ? { label: "양호", bg: "#f0fdf4", color: "#16a34a" }
+                                : pct >= 40 ? { label: "보통", bg: "#fffbeb", color: "#d97706" }
+                                : { label: "미흡", bg: "#fef2f2", color: "#dc2626" };
+                              return (
+                                <div key={b.label} style={{ marginBottom: 14, border: "1px solid #f1f5f9", borderRadius: 12, padding: "14px 16px" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{b.label}</div>
+                                    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                                      <span style={{ fontSize: 22, fontWeight: 800, color: barColor, lineHeight: 1 }}>{b.score}</span>
+                                      <span style={{ fontSize: 10, color: "#cbd5e1" }}>/ {b.max}</span>
+                                    </div>
+                                  </div>
+                                  <div style={{ background: "#f1f5f9", borderRadius: 99, height: 7, overflow: "hidden", marginBottom: 10 }}>
+                                    <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 99, transition: "width 0.9s cubic-bezier(.4,0,.2,1)" }}/>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <span style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.5, flex: 1, paddingRight: 8 }}>{DESC[b.label] ?? ""}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 600, color: badge.color, background: badge.bg, borderRadius: 99, padding: "2px 9px", flexShrink: 0 }}>{badge.label}</span>
+                                  </div>
                                 </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                  <span style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.5, flex: 1, paddingRight: 8 }}>{DESC[b.label] ?? ""}</span>
-                                  <span style={{ fontSize: 11, fontWeight: 600, color: badge.color, background: badge.bg, borderRadius: 99, padding: "2px 9px", flexShrink: 0 }}>{badge.label}</span>
-                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+
+                      {/* ── 강점·유의점 탭 (Fix 6: 섹션 헤더 추가) ── */}
+                      {aiScoreTab === "개선" && (
+                        <div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>강점</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 18 }}>
+                            {r.pros.map((p) => (
+                              <div key={p} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 12px", borderRadius: 8,
+                                background: "oklch(0.97 0.02 145)", border: "1px solid oklch(0.85 0.05 145)" }}>
+                                <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>✓</span>
+                                <span style={{ fontSize: 12.5, color: "oklch(0.35 0.1 145)", lineHeight: 1.55 }}>{p}</span>
                               </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    )}
-
-                    {/* ── 개선·주의사항 탭 ── */}
-                    {aiScoreTab === "개선" && (
-                      <div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 16 }}>
-                          {r.pros.map((p) => (
-                            <div key={p} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 12px", borderRadius: 8,
-                              background: "oklch(0.97 0.02 145)", border: "1px solid oklch(0.85 0.05 145)" }}>
-                              <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>✓</span>
-                              <span style={{ fontSize: 12.5, color: "oklch(0.35 0.1 145)", lineHeight: 1.55 }}>{p}</span>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>유의점</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                            {r.cons.map((c) => (
+                              <div key={c} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 12px", borderRadius: 8,
+                                background: "oklch(0.97 0.02 20)", border: "1px solid oklch(0.88 0.05 20)" }}>
+                                <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>!</span>
+                                <span style={{ fontSize: 12.5, color: "oklch(0.4 0.1 25)", lineHeight: 1.55 }}>{c}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                          {r.cons.map((c) => (
-                            <div key={c} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 12px", borderRadius: 8,
-                              background: "oklch(0.97 0.02 20)", border: "1px solid oklch(0.88 0.05 20)" }}>
-                              <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>!</span>
-                              <span style={{ fontSize: 12.5, color: "oklch(0.4 0.1 25)", lineHeight: 1.55 }}>{c}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── 하단 추천 스트립: 이런 지역은 어때요? ── */}
-                    {aiScoreSuggestions.regions?.length > 0 && (
-                      <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 14, marginTop: 20 }}>
-                        <div style={{ marginBottom: 10 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 지역은 어때요?</span>
-                          <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiIndustry} 기준</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
-                          {aiScoreSuggestions.regions.map((reg) => {
-                            const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[reg.등급] ?? "#6B9FE4";
-                            return (
-                              <button key={reg.dongName}
-                                onClick={() => {
-                                  setAiDong(reg.dongName);
-                                  setAiScoreTab("종합");
-                                  setAiScoreSuggestions({ regions: [], industries: [] });
-                                  setAiStep("loading");
-                                  const dong = reg.dongName;
-                                  Promise.all([
-                                    fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(aiIndustry)}`).then(r => r.json()),
-                                    new Promise(res => setTimeout(res, 1200)),
-                                  ]).then(([data]) => {
-                                    if (data.error) { alert(data.error); setAiStep("form"); return; }
-                                    setAiResults(data);
-                                    setAiStep("result");
-                                    const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
-                                    const indF = fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then(r => r.json()).catch(() => null);
-                                    const regF = gu ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(gu)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
-                                    Promise.all([indF, regF]).then(([indData, regData]) => {
-                                      setAiScoreSuggestions({
-                                        industries: indData?.results?.slice(0, 6) ?? [],
-                                        regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
-                                      });
-                                    });
-                                  }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
-                                }}
-                                style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
-                                  border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
-                                  cursor: "pointer", transition: "all 0.15s" }}
-                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{reg.등급}</div>
-                                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{reg.score}</div>
-                                </div>
-                                <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{reg.dongName}</div>
-                                <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {reg.성장확률}%</div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── 하단 추천 스트립: 이런 업종은 어때요? ── */}
-                    {aiScoreSuggestions.industries?.length > 0 && (
-                      <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 14, marginTop: 20 }}>
-                        <div style={{ marginBottom: 10 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 업종은 어때요?</span>
-                          <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiDong} 기준</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
-                          {aiScoreSuggestions.industries.map((ind) => {
-                            const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[ind.등급] ?? "#6B9FE4";
-                            return (
-                              <button key={ind.category}
-                                onClick={() => {
-                                  setAiIndustry(ind.category);
-                                  setAiMode("score");
-                                  setAiScoreTab("종합");
-                                  setAiScoreSuggestions({ regions: [], industries: [] });
-                                  setAiStep("loading");
-                                  Promise.all([
-                                    fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(ind.category)}`).then(r => r.json()),
-                                    new Promise(res => setTimeout(res, 1200)),
-                                  ]).then(([data]) => {
-                                    if (data.error) { alert(data.error); setAiStep("form"); return; }
-                                    setAiResults(data);
-                                    setAiStep("result");
-                                    const dong = aiDong.trim();
-                                    const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
-                                    const indF = fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then(r => r.json()).catch(() => null);
-                                    const regF = gu ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(ind.category)}&gu=${encodeURIComponent(gu)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
-                                    Promise.all([indF, regF]).then(([indData, regData]) => {
-                                      setAiScoreSuggestions({
-                                        industries: indData?.results?.slice(0, 6) ?? [],
-                                        regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
-                                      });
-                                    });
-                                  }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
-                                }}
-                                style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
-                                  border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
-                                  cursor: "pointer", transition: "all 0.15s" }}
-                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{ind.등급}</div>
-                                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{ind.score}</div>
-                                </div>
-                                <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ind.category}</div>
-                                <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {ind.avg_성장확률}%</div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 면책 문구 */}
-                    <div style={{ fontSize: 11, color: "#b0bec5", lineHeight: 1.6, borderTop: "1px solid #f1f5f9", paddingTop: 10, marginTop: 12 }}>
-                      ⚠ 본 추천 결과는 AI 보조 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
+                      )}
                     </div>
+
+                    {/* Fix 8 + Fix 5: 하단 고정 — 추천 스트립 + 면책 문구 */}
+                    {hasSuggestions && (
+                      <div style={{ borderTop: "1px solid #f1f5f9", background: "#fff", flexShrink: 0 }}>
+
+                        {/* 이런 지역은 어때요? */}
+                        {aiScoreSuggestions.regions?.length > 0 && (
+                          <div style={{ padding: "14px 16px 0" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                              <div>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 지역은 어때요?</span>
+                                <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiIndustry} 기준</span>
+                              </div>
+                            </div>
+                            <div className="no-scrollbar" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
+                              {aiScoreSuggestions.regions.map((reg) => {
+                                const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[reg.등급] ?? "#6B9FE4";
+                                return (
+                                  <button key={reg.dongName}
+                                    onClick={() => {
+                                      setAiDong(reg.dongName);
+                                      setAiScoreTab("종합");
+                                      setAiScoreSuggestions({ regions: [], industries: [] });
+                                      setAiStep("loading");
+                                      const dong = reg.dongName;
+                                      Promise.all([
+                                        fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(aiIndustry)}`).then(r => r.json()),
+                                        new Promise(res => setTimeout(res, 1200)),
+                                      ]).then(([data]) => {
+                                        if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                        setAiResults(data);
+                                        setAiStep("result");
+                                        const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
+                                        const indF = fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then(r => r.json()).catch(() => null);
+                                        const regF = gu ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(aiIndustry)}&gu=${encodeURIComponent(gu)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
+                                        Promise.all([indF, regF]).then(([indData, regData]) => {
+                                          setAiScoreSuggestions({
+                                            industries: indData?.results?.slice(0, 6) ?? [],
+                                            regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
+                                          });
+                                        });
+                                      }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                                    }}
+                                    style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
+                                      border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
+                                      cursor: "pointer", transition: "all 0.15s" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{reg.등급}</div>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{reg.score}</div>
+                                    </div>
+                                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{reg.dongName}</div>
+                                    <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {reg.성장확률}%</div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 이런 업종은 어때요? */}
+                        {aiScoreSuggestions.industries?.length > 0 && (
+                          <div style={{ padding: "0 16px 0", borderTop: aiScoreSuggestions.regions?.length > 0 ? "1px solid #f8fafc" : "none" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, marginBottom: 10 }}>
+                              <div>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 업종은 어때요?</span>
+                                <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiDong} 기준</span>
+                              </div>
+                            </div>
+                            <div className="no-scrollbar" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 14, scrollbarWidth: "none" }}>
+                              {aiScoreSuggestions.industries.map((ind) => {
+                                const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[ind.등급] ?? "#6B9FE4";
+                                return (
+                                  <button key={ind.category}
+                                    onClick={() => {
+                                      setAiIndustry(ind.category);
+                                      setAiMode("score");
+                                      setAiScoreTab("종합");
+                                      setAiScoreSuggestions({ regions: [], industries: [] });
+                                      setAiStep("loading");
+                                      Promise.all([
+                                        fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(ind.category)}`).then(r => r.json()),
+                                        new Promise(res => setTimeout(res, 1200)),
+                                      ]).then(([data]) => {
+                                        if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                        setAiResults(data);
+                                        setAiStep("result");
+                                        const dong = aiDong.trim();
+                                        const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
+                                        const indF = fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then(r => r.json()).catch(() => null);
+                                        const regF = gu ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(ind.category)}&gu=${encodeURIComponent(gu)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
+                                        Promise.all([indF, regF]).then(([indData, regData]) => {
+                                          setAiScoreSuggestions({
+                                            industries: indData?.results?.slice(0, 6) ?? [],
+                                            regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
+                                          });
+                                        });
+                                      }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                                    }}
+                                    style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
+                                      border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
+                                      cursor: "pointer", transition: "all 0.15s" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2563EB60"; e.currentTarget.style.background = "#eff6ff"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{ind.등급}</div>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{ind.score}</div>
+                                    </div>
+                                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ind.category}</div>
+                                    <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {ind.avg_성장확률}%</div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fix 5: 면책 문구 (하단 고정, 중복 제거) */}
+                        <div style={{ padding: "10px 16px 12px", borderTop: "1px solid #f1f5f9", background: "#fafafa" }}>
+                          <div style={{ fontSize: 11, color: "#b0bec5", lineHeight: 1.6 }}>
+                            ⚠ 본 추천 결과는 AI 보조 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -5504,12 +5645,14 @@ export default function MapPage() {
                 );
               })()}
 
-              <div style={{ marginTop: 14, padding: "10px 14px", background: "#FFF7ED", borderRadius: 10, border: "1px solid #FED7AA" }}>
-                <div style={{ fontSize: 13, color: "#92400E" }}>
-                  ⚠️ 본 추천 결과는 AI 분석 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
+              {aiMode !== "score" && (
+                <div style={{ marginTop: 14, padding: "10px 14px", background: "#FFF7ED", borderRadius: 10, border: "1px solid #FED7AA" }}>
+                  <div style={{ fontSize: 13, color: "#92400E" }}>
+                    ⚠️ 본 추천 결과는 AI 분석 기반이며, 실제 창업 시 현장 조사를 병행하시기 바랍니다.
+                  </div>
                 </div>
-              </div>
-            </>
+              )}
+            </div>
               )}
 
               {/* 업종 선택 인라인 레이어 */}
@@ -5551,10 +5694,16 @@ export default function MapPage() {
                                   if (data.error) { alert(data.error); setAiStep("form"); return; }
                                   setAiResults(data);
                                   setAiStep("result");
+                                  const dong = aiDong.trim();
+                                  const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
                                   Promise.all([
-                                    fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then(r => r.json()).catch(() => null),
-                                  ]).then(([indData]) => {
-                                    setAiScoreSuggestions({ industries: indData?.results?.slice(0, 6) ?? [] });
+                                    fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(dong)}`).then(r => r.json()).catch(() => null),
+                                    gu ? fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(cat)}&gu=${encodeURIComponent(gu)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+                                  ]).then(([indData, regData]) => {
+                                    setAiScoreSuggestions({
+                                      industries: indData?.results?.slice(0, 6) ?? [],
+                                      regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
+                                    });
                                   });
                                 })
                                 .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
