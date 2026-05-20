@@ -436,6 +436,7 @@ export default function MapPage() {
   const [reportSaving, setReportSaving] = useState(false);    // 저장 중
   const [reportSavedId, setReportSavedId] = useState(null);   // 저장된 보고서 ID
   const [reportAiLoading, setReportAiLoading] = useState(false); // AI 설명 로딩 중
+  const [reportCatAiLoading, setReportCatAiLoading] = useState(false); // 업종 심화 AI 로딩 중
   const [aiTyped, setAiTyped] = useState({});                   // 타이핑 효과 진행 중 텍스트
   const [reportCategory, setReportCategory] = useState("");   // 선택된 업종
   const [reportRegion, setReportRegion] = useState(null);     // 보고서 생성 시점의 지역 { name, subName }
@@ -702,12 +703,12 @@ export default function MapPage() {
 
   // ── 보고서 로딩 중 단계별 문구 전환 ──
   useEffect(() => {
-    const isLoading = reportLoading || reportCategoryLoading || reportAiLoading;
+    const isLoading = reportLoading || reportCategoryLoading || reportAiLoading || reportCatAiLoading;
     if (!isLoading) { setReportLoadingStep(0); return; }
     setReportLoadingStep(0);
     const id = setInterval(() => setReportLoadingStep((s) => Math.min(s + 1, 4)), 5000);
     return () => clearInterval(id);
-  }, [reportLoading, reportCategoryLoading, reportAiLoading]);
+  }, [reportLoading, reportCategoryLoading, reportAiLoading, reportCatAiLoading]);
 
   // ── AI 텍스트 도착 시 타이핑 효과 시작 ──
   useEffect(() => {
@@ -728,6 +729,33 @@ export default function MapPage() {
     });
     return () => intervals.forEach(clearInterval);
   }, [reportAiLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 업종 AI 텍스트 도착 시 타이핑 효과 (카테고리 키만) ──
+  useEffect(() => {
+    if (reportCatAiLoading) {
+      setAiTyped(prev => {
+        const next = { ...prev };
+        ["소비_패턴", "비용_수익", "기타_통계"].forEach(k => delete next[k]);
+        return next;
+      });
+      return;
+    }
+    const ai = reportData?.ai_descriptions || {};
+    if (!ai || ai.error) return;
+    const catKeys = ["소비_패턴", "비용_수익", "기타_통계"].filter(k => ai[k] && typeof ai[k] === "string");
+    const intervals = catKeys.map(key => {
+      const text = ai[key];
+      let i = 0;
+      const speed = Math.max(8, Math.floor(2500 / text.length));
+      const id = setInterval(() => {
+        i++;
+        setAiTyped(prev => ({ ...prev, [key]: text.slice(0, i) }));
+        if (i >= text.length) clearInterval(id);
+      }, speed);
+      return id;
+    });
+    return () => intervals.forEach(clearInterval);
+  }, [reportCatAiLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 구/동 변경 시 보고서 패널 닫기 (복원 중엔 스킵) ──
   useEffect(() => {
@@ -3357,23 +3385,24 @@ export default function MapPage() {
                 const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
 
                 if (reportCategory) {
-                  // 업종분석만 재시도 — 기본 보고서 데이터는 유지
-                  setReportCategoryLoading(true);
+                  // 업종분석만 재시도 — 기본 보고서 데이터는 유지, shimmer만 재시작
+                  setReportCatAiLoading(true);
+                  const aiCatKeys2 = ["소비_패턴", "비용_수익", "기타_통계"];
                   if (reportData._dong) {
                     const dong = reportData._dong;
                     const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(reportCategory)}`;
                     const tryFetch = (left) => {
                       fetch(url).then((r) => r.json()).then((d) => {
                         const ai = d.ai_descriptions || {};
-                        if (catKeys.every((k) => ai[k])) {
-                          setReportData((prev) => ({ ...prev, ai_descriptions: ai, data: { ...prev.data, category_data: d.data?.category_data } }));
-                          setReportCategoryLoading(false);
+                        if (aiCatKeys2.every((k) => ai[k])) {
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), ...ai }, data: { ...prev.data, category_data: d.data?.category_data } }));
+                          setReportCatAiLoading(false);
                         } else if (ai.rate_limited || ai.error || left === 0) {
                           const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } }));
-                          setReportCategoryLoading(false);
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), error: errMsg } }));
+                          setReportCatAiLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCatAiLoading(false); });
                     };
                     tryFetch(2);
                   } else if (reportData._gu) {
@@ -3385,15 +3414,15 @@ export default function MapPage() {
                         body: JSON.stringify({ gu, dongs, category: reportCategory }),
                       }).then((r) => r.json()).then((d) => {
                         const ai = d.ai_descriptions || {};
-                        if (catKeys.every((k) => ai[k])) {
-                          setReportData((prev) => ({ ...prev, ai_descriptions: ai, data: { ...prev.data, category_data: d.data?.category_data } }));
-                          setReportCategoryLoading(false);
+                        if (aiCatKeys2.every((k) => ai[k])) {
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), ...ai }, data: { ...prev.data, category_data: d.data?.category_data } }));
+                          setReportCatAiLoading(false);
                         } else if (ai.rate_limited || ai.error || left === 0) {
                           const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...ai, error: errMsg } }));
-                          setReportCategoryLoading(false);
+                          setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), error: errMsg } }));
+                          setReportCatAiLoading(false);
                         } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
+                      }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCatAiLoading(false); });
                     };
                     tryFetch(2);
                   }
@@ -3438,10 +3467,12 @@ export default function MapPage() {
                 }
               };
 
+              const catAiKeys = ["소비_패턴", "비용_수익", "기타_통계"];
               const AiText = ({ text, aiKey }) => {
                 const typed = aiKey ? aiTyped[aiKey] : undefined;
                 const isTyping = typed !== undefined && text && typed.length < text.length;
                 const displayText = typed !== undefined ? typed : text;
+                const loadingNow = catAiKeys.includes(aiKey) ? reportCatAiLoading : reportAiLoading;
 
                 if (displayText) return (
                   <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.85, margin: "0 0 20px 36px", wordBreak: "keep-all" }}>
@@ -3451,7 +3482,7 @@ export default function MapPage() {
                     )}
                   </p>
                 );
-                if (reportAiLoading) return (
+                if (loadingNow) return (
                   <div style={{ margin: "0 0 20px 36px" }}>
                     <div style={{ height: 13, borderRadius: 4, marginBottom: 8, background: "linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.5s ease-in-out infinite" }} />
                     <div style={{ height: 13, borderRadius: 4, width: "80%", background: "linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.5s ease-in-out infinite 0.3s" }} />
@@ -3462,7 +3493,7 @@ export default function MapPage() {
                     <p style={{ fontSize: 13, color: "#9CA3AF", margin: "0 0 12px 0", textAlign: "center" }}>
                       AI 설명을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
                     </p>
-                    {(reportCategoryLoading || reportAiLoading) ? (
+                    {(reportCategoryLoading || reportAiLoading || reportCatAiLoading) ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 7, color: "#9CA3AF", fontSize: 13 }}>
                         <div style={{ width: 15, height: 15, border: "2px solid #E5E7EB", borderTop: "2px solid #6B7280", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                         재시도 중...
@@ -3507,7 +3538,7 @@ export default function MapPage() {
               return (
                 <div>
                   {/* AI 분석 중 배너 */}
-                  {reportAiLoading && (
+                  {(reportAiLoading || reportCatAiLoading) && (
                     <div style={{ margin: "0 0 24px 0", padding: "10px 16px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 15, height: 15, flexShrink: 0, border: "2px solid #93C5FD", borderTop: "2px solid #2563EB", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
                       <span style={{ fontSize: 13, color: "#1D4ED8", fontWeight: 600 }}>AI가 상권을 분석하고 있습니다...</span>
@@ -3621,39 +3652,60 @@ export default function MapPage() {
                           setReportCategoryLoading(true);
                           setGuDongRecommends(null);
                           setGuDongRecommendOpen(false);
-                          const catKeys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"];
+                          const aiCatKeys = ["소비_패턴", "비용_수익", "기타_통계"];
+                          const errMsg2 = (ai) => ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
                           if (selectedDong) {
                             const dong = normalizeDongName(selectedDong.dongName);
-                            const url = `${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(cat)}`;
-                            const tryFetch = (left) => {
-                              fetch(url).then((r) => r.json()).then((data) => {
-                                const ai = data.ai_descriptions || {};
-                                if (catKeys.every((k) => ai[k])) {
-                                  setReportData({ ...data, _dong: dong }); setReportCategoryLoading(false);
-                                } else if (ai.rate_limited || ai.error || left === 0) {
-                                  const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                                  setReportData({ ...data, ai_descriptions: { ...ai, error: errMsg }, _dong: dong }); setReportCategoryLoading(false);
-                                } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                              }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
-                            };
-                            tryFetch(2);
+                            // Phase 1: DB 데이터만 즉시
+                            fetch(`${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(cat)}&data_only=1`)
+                              .then((r) => r.json()).then((d1) => {
+                                setReportData((prev) => ({ ...prev, ...d1, _dong: dong, ai_descriptions: { ...(prev.ai_descriptions || {}), 소비_패턴: undefined, 비용_수익: undefined, 기타_통계: undefined } }));
+                                setReportCategoryLoading(false);
+                                setReportCatAiLoading(true);
+                                // Phase 2: AI 텍스트
+                                const tryFetch = (left) => {
+                                  fetch(`${API}/api/report/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(cat)}`)
+                                    .then((r) => r.json()).then((d2) => {
+                                      const ai = d2.ai_descriptions || {};
+                                      if (aiCatKeys.every((k) => ai[k])) {
+                                        setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), ...ai } }));
+                                        setReportCatAiLoading(false);
+                                      } else if (ai.rate_limited || ai.error || left === 0) {
+                                        setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), error: errMsg2(ai) } }));
+                                        setReportCatAiLoading(false);
+                                      } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                                    }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCatAiLoading(false); });
+                                };
+                                tryFetch(2);
+                              }).catch(() => setReportCategoryLoading(false));
                           } else if (selectedGu) {
                             const dongs = guToDongsRef.current[selectedGu] || [];
-                            const tryFetch = (left) => {
-                              fetch(`${API}/api/gu-report/`, {
-                                method: "POST", headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
-                              }).then((r) => r.json()).then((data) => {
-                                const ai = data.ai_descriptions || {};
-                                if (catKeys.every((k) => ai[k])) {
-                                  setReportData({ ...data, _gu: selectedGu }); setReportCategoryLoading(false);
-                                } else if (ai.rate_limited || ai.error || left === 0) {
-                                  const errMsg = ai.rate_limited ? "AI 사용량이 초과됐습니다. 잠시 후 다시 시도해주세요." : "AI 설명 생성에 실패했습니다.";
-                                  setReportData({ ...data, ai_descriptions: { ...ai, error: errMsg }, _gu: selectedGu }); setReportCategoryLoading(false);
-                                } else { setTimeout(() => tryFetch(left - 1), 3000); }
-                              }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCategoryLoading(false); });
-                            };
-                            tryFetch(2);
+                            // Phase 1: DB 데이터만 즉시
+                            fetch(`${API}/api/gu-report/`, {
+                              method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ gu: selectedGu, dongs, category: cat, data_only: true }),
+                            }).then((r) => r.json()).then((d1) => {
+                              setReportData((prev) => ({ ...prev, ...d1, _gu: selectedGu, ai_descriptions: { ...(prev.ai_descriptions || {}), 소비_패턴: undefined, 비용_수익: undefined, 기타_통계: undefined } }));
+                              setReportCategoryLoading(false);
+                              setReportCatAiLoading(true);
+                              // Phase 2: AI 텍스트
+                              const tryFetch = (left) => {
+                                fetch(`${API}/api/gu-report/`, {
+                                  method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ gu: selectedGu, dongs, category: cat }),
+                                }).then((r) => r.json()).then((d2) => {
+                                  const ai = d2.ai_descriptions || {};
+                                  if (aiCatKeys.every((k) => ai[k])) {
+                                    setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), ...ai } }));
+                                    setReportCatAiLoading(false);
+                                  } else if (ai.rate_limited || ai.error || left === 0) {
+                                    setReportData((prev) => ({ ...prev, ai_descriptions: { ...(prev.ai_descriptions || {}), error: errMsg2(ai) } }));
+                                    setReportCatAiLoading(false);
+                                  } else { setTimeout(() => tryFetch(left - 1), 3000); }
+                                }).catch(() => { if (left > 0) setTimeout(() => tryFetch(left - 1), 3000); else setReportCatAiLoading(false); });
+                              };
+                              tryFetch(2);
+                            }).catch(() => setReportCategoryLoading(false));
                           }
                         }}
                       />
