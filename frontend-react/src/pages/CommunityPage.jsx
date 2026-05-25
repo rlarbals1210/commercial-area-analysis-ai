@@ -102,7 +102,7 @@ function PostList({ board, user, onWrite, onPostClick }) {
         </div>
         {canWrite && (
           <button style={writeBtnStyle} onClick={onWrite}>
-            ✏️ 글쓰기
+            글쓰기
           </button>
         )}
       </div>
@@ -169,13 +169,13 @@ function PostList({ board, user, onWrite, onPostClick }) {
       )}
 
       {/* 검색 바 */}
-      <form onSubmit={handleSearch} style={{ display: "flex", gap: 0, marginTop: 20, borderRadius: 10, overflow: "hidden", border: "1.5px solid #E5E7EB", background: "#fff" }}>
+      <form onSubmit={handleSearch} style={{ display: "flex", gap: 0, marginTop: 20, borderRadius: 10, border: "1.5px solid #E5E7EB", background: "#fff", alignItems: "center" }}>
         <select
           value={searchType}
           onChange={(e) => { setSearchType(e.target.value); setPage(1); setSearchQ(""); setSearchInput(""); }}
-          style={{ padding: "0 12px", border: "none", borderRight: "1.5px solid #E5E7EB", background: "#F9FAFB", fontSize: 13, color: "#374151", fontWeight: 600, cursor: "pointer", outline: "none", height: 42, minWidth: 90 }}
+          style={{ padding: "0 28px 0 12px", border: "none", borderRight: "1.5px solid #E5E7EB", background: "#F9FAFB", fontSize: 13, color: "#374151", fontWeight: 600, cursor: "pointer", outline: "none", height: 42, minWidth: 80, borderRadius: "8px 0 0 8px", appearance: "none", WebkitAppearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
         >
-          <option value="title">제목만</option>
+          <option value="title">제목</option>
           <option value="author">작성자</option>
         </select>
         <input
@@ -184,8 +184,8 @@ function PostList({ board, user, onWrite, onPostClick }) {
           placeholder="검색어를 입력해주세요"
           style={{ flex: 1, padding: "0 14px", border: "none", fontSize: 14, outline: "none", color: "#111827", background: "#fff", height: 42 }}
         />
-        <button type="submit" style={{ width: 46, height: 42, background: "#10B981", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <button type="submit" style={{ width: 52, height: 42, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, borderRadius: "0 8px 8px 0" }}>
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
         </button>
@@ -253,13 +253,19 @@ function PostDetail({ postId, user, onBack, onEdit }) {
       {/* 게시글 헤더 */}
       <div style={{ borderBottom: "2px solid #E5E7EB", paddingBottom: 16, marginBottom: 16 }}>
         <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 700, color: "#111827" }}>{post.title}</h2>
-        <div style={{ display: "flex", gap: 16, fontSize: 13, color: "#6B7280" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: "#6B7280" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
             작성자: <b style={{ color: "#374151" }}>{post.author}</b>
             {post.author_is_staff && <DevBadge />}
           </span>
           <span>{post.created_at}</span>
           <span>조회 {post.view_count}</span>
+          {(isAuthor || isAdmin) && (
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              {isAuthor && <button style={ghostSmBtnStyle} onClick={() => onEdit(post.id)}>수정</button>}
+              <button style={deleteSmBtnStyle} onClick={handleDeletePost}>삭제</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -328,15 +334,6 @@ function PostDetail({ postId, user, onBack, onEdit }) {
         </button>
       </div>
 
-      {/* 수정/삭제 버튼 */}
-      {(isAuthor || isAdmin) && (
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 24 }}>
-          {isAuthor && (
-            <button style={ghostSmBtnStyle} onClick={() => onEdit(post.id)}>수정</button>
-          )}
-          <button style={deleteSmBtnStyle} onClick={handleDeletePost}>삭제</button>
-        </div>
-      )}
 
       {/* 댓글 목록 */}
       <div style={{ borderTop: "2px solid #E5E7EB", paddingTop: 24 }}>
@@ -360,16 +357,19 @@ function PostDetail({ postId, user, onBack, onEdit }) {
         ))}
 
         {/* 댓글 입력 */}
-        <form onSubmit={handleCommentSubmit} style={{ marginTop: 16, display: "flex", gap: 8 }}>
-          <textarea
+        <form onSubmit={handleCommentSubmit} style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "stretch" }}>
+          <input
+            type="text"
             value={commentInput}
             onChange={(e) => setCommentInput(e.target.value)}
             placeholder="댓글을 입력하세요"
             style={commentInputStyle}
-            rows={2}
           />
-          <button type="submit" style={writeBtnStyle} disabled={loading}>
-            {loading ? "..." : "등록"}
+          <button type="submit" disabled={loading} style={{ width: 52, height: 52, background: "#3B82F6", color: "#fff", border: "none", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, alignSelf: "center" }}>
+            {loading
+              ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>
+              : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
+            }
           </button>
         </form>
       </div>
@@ -390,18 +390,21 @@ function PostForm({ board: defaultBoard, editPostId, user, onDone }) {
       .then((d) => setForm({ title: d.title, content: d.content, board: d.board, image: d.image || "" }));
   }, [editPostId]);
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    // 2MB 제한
-    if (file.size > 2 * 1024 * 1024) {
-      setError("이미지는 2MB 이하만 업로드 가능합니다.");
-      e.target.value = "";
-      return;
-    }
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const processImageFile = (file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    if (file.size > 2 * 1024 * 1024) { setError("이미지는 2MB 이하만 업로드 가능합니다."); return; }
     const reader = new FileReader();
     reader.onload = () => setForm((p) => ({ ...p, image: reader.result }));
     reader.readAsDataURL(file);
+  };
+
+  const handleImageChange = (e) => { processImageFile(e.target.files[0]); e.target.value = ""; };
+
+  const handleDrop = (e) => {
+    e.preventDefault(); setIsDragOver(false);
+    processImageFile(e.dataTransfer.files[0]);
   };
 
   const handleSubmit = async (e) => {
@@ -435,10 +438,12 @@ function PostForm({ board: defaultBoard, editPostId, user, onDone }) {
               value={form.board}
               onChange={(e) => setForm((p) => ({ ...p, board: e.target.value }))}
               style={{
-                height: 44, padding: "0 14px", border: "1.5px solid #E5E7EB",
+                height: 44, padding: "0 32px 0 14px", border: "1.5px solid #E5E7EB",
                 borderRadius: 10, fontSize: 14, color: "#111827", background: "#fff",
                 outline: "none", cursor: "pointer", fontFamily: "inherit",
-                appearance: "auto",
+                appearance: "none", WebkitAppearance: "none",
+                backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",
+                backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center",
               }}
             >
               {BOARDS.filter((b) => !b.adminOnly || user?.is_staff).map((b) => (
@@ -452,7 +457,7 @@ function PostForm({ board: defaultBoard, editPostId, user, onDone }) {
           value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
         />
         <textarea
-          style={{ ...inputStyle, height: 300, padding: 14, resize: "vertical" }}
+          style={{ ...inputStyle, height: 300, padding: 14, resize: "none" }}
           placeholder="내용을 입력하세요" required rows={12}
           value={form.content} onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))}
         />
@@ -462,22 +467,34 @@ function PostForm({ board: defaultBoard, editPostId, user, onDone }) {
           <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
             이미지 첨부 <span style={{ fontWeight: 400, color: "#9CA3AF" }}>(선택, 2MB 이하)</span>
           </label>
-          <label style={{
-            display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
-            border: "1.5px dashed #D1D5DB", borderRadius: 8, cursor: "pointer",
-            background: "#F9FAFB", color: "#6B7280", fontSize: 13, fontWeight: 500,
-          }}>
-            📎 파일 선택
-            <input type="file" accept="image/*" onChange={handleImageChange} style={{ display: "none" }} />
-          </label>
-          {form.image && (
-            <div style={{ marginTop: 10, position: "relative", display: "inline-block" }}>
+          {form.image ? (
+            <div style={{ position: "relative", display: "inline-block" }}>
               <img src={form.image} alt="preview" style={{ maxWidth: "100%", maxHeight: 240, borderRadius: 8, border: "1px solid #E5E7EB", display: "block" }} />
-              <button
-                type="button"
-                onClick={() => setForm((p) => ({ ...p, image: "" }))}
-                style={{ position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-              >✕</button>
+              <button type="button" onClick={() => setForm((p) => ({ ...p, image: "" }))}
+                style={{ position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+            </div>
+          ) : (
+            <div
+              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={() => setIsDragOver(false)}
+              style={{
+                border: `2px dashed ${isDragOver ? "#3B82F6" : "#D1D5DB"}`,
+                borderRadius: 10, background: isDragOver ? "#EFF6FF" : "#F9FAFB",
+                padding: "16px 20px", display: "flex", flexDirection: "column",
+                alignItems: "center", gap: 8, transition: "all 0.15s",
+              }}
+            >
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={isDragOver ? "#3B82F6" : "#9CA3AF"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/>
+              </svg>
+              <p style={{ margin: 0, fontSize: 13, color: "#6B7280", textAlign: "center" }}>
+                이미지를 여기에 끌어다 놓거나
+              </p>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 18px", border: "1.5px solid #D1D5DB", borderRadius: 7, cursor: "pointer", background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600 }}>
+                파일 선택
+                <input type="file" accept="image/*" onChange={handleImageChange} style={{ display: "none" }} />
+              </label>
             </div>
           )}
         </div>
@@ -565,7 +582,7 @@ export default function CommunityPage() {
       <div style={pageStyle}>
       {/* 사이드바 */}
       <aside style={sidebarStyle}>
-        <div style={{ padding: "16px 16px 10px", fontWeight: 700, fontSize: 13, color: "#9CA3AF", letterSpacing: "0.06em", borderBottom: "1px solid #E5E7EB" }}>
+        <div style={{ padding: "16px 16px 10px", fontWeight: 700, fontSize: 16, color: "#6B7280", letterSpacing: "0.06em", borderBottom: "1px solid #E5E7EB" }}>
           MENU
         </div>
         <nav style={{ padding: "8px 0" }}>
@@ -667,7 +684,7 @@ const tableHeaderStyle = {
 };
 // 컬럼 고정 너비
 const colNum    = { width: 60,  flexShrink: 0, textAlign: "center", fontSize: 13, color: "#9CA3AF" };
-const colTitle  = { flex: 1,    minWidth: 0,   fontSize: 14, color: "#374151" };
+const colTitle  = { flex: 1,    minWidth: 0,   fontSize: 14, color: "#374151", textAlign: "center", justifyContent: "center" };
 const colAuthor = { width: 120, flexShrink: 0, textAlign: "center", fontSize: 13, color: "#6B7280" };
 const colDate   = { width: 100, flexShrink: 0, textAlign: "center", fontSize: 13, color: "#6B7280" };
 const colStat   = { width: 60,  flexShrink: 0, textAlign: "center", fontSize: 13, color: "#6B7280" };
@@ -693,9 +710,9 @@ const commentRowStyle = {
   padding: "14px 0", borderBottom: "1px solid #F3F4F6",
 };
 const commentInputStyle = {
-  flex: 1, padding: "10px 14px", border: "1.5px solid #E5E7EB",
-  borderRadius: 10, fontSize: 14, outline: "none", resize: "vertical",
-  fontFamily: "inherit",
+  flex: 1, height: 52, padding: "0 14px", border: "1.5px solid #E5E7EB",
+  borderRadius: 10, fontSize: 14, outline: "none", resize: "none",
+  fontFamily: "inherit", background: "#fff", color: "#111827",
 };
 const inputStyle = {
   height: 44, padding: "0 14px", border: "1.5px solid #E5E7EB",
