@@ -141,6 +141,12 @@ const REGIONS = [
   "용산구", "은평구", "종로구", "중구", "중랑구",
 ];
 
+const GU_BLOCKED_CATEGORIES = {
+  "종로구": ["기타 B2B서비스"],
+  "금천구": ["외국어학원", "컴퓨터및주변장치판매"],
+  "강동구": ["가방"],
+};
+
 const STARTUP_COSTS = {
   "한식":          { "인테리어_만원per평": 80,  "설비_집기_만원": 1500, "초기재고_만원": 300,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 30, "원가율_%": 38, "특이사항": "주방 설비 비중 높음" },
   "분식/간식":     { "인테리어_만원per평": 60,  "설비_집기_만원": 800,  "초기재고_만원": 150,  "보증금_임대료배수": 10, "관리비_공과금_만원per월": 20, "원가율_%": 35, "특이사항": "" },
@@ -4706,7 +4712,7 @@ export default function MapPage() {
                       />
                       {/* 자동완성 드롭다운 */}
                       <div style={{ overflow: "hidden", maxHeight: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 260 : 0, opacity: aiIndustrySuggestOpen && aiIndustrySuggestions.length > 0 ? 1 : 0, transition: "max-height 0.22s ease, opacity 0.18s ease", background: "#fff", border: "1.5px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", marginBottom: 8 }}>
-                        {aiIndustrySuggestions.map((s, i) => (
+                        {aiIndustrySuggestions.filter(s => !(aiMode === "gu" && (GU_BLOCKED_CATEGORIES[aiGu] || []).includes(s.통합카테고리))).map((s, i) => (
                           <div key={i} onMouseDown={() => { setAiIndustry(s.통합카테고리); setAiIndustrySearchQuery(""); setAiIndustrySuggestOpen(false); setAiIndustryDrillGroup(null); }}
                             style={{ padding: "7px 12px", cursor: "pointer", fontSize: 13, borderBottom: i < aiIndustrySuggestions.length - 1 ? "1px solid #F3F4F6" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
                             onMouseEnter={(e) => e.currentTarget.style.background = "#EFF6FF"}
@@ -4727,7 +4733,7 @@ export default function MapPage() {
                               ← {aiIndustryDrillGroup}
                             </button>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                              {CATEGORY_GROUPS[aiIndustryDrillGroup].map((cat) => (
+                              {CATEGORY_GROUPS[aiIndustryDrillGroup].filter(cat => !(aiMode === "gu" && (GU_BLOCKED_CATEGORIES[aiGu] || []).includes(cat))).map((cat) => (
                                 <button key={cat}
                                   onClick={() => { const next = aiIndustry === cat ? null : cat; setAiIndustry(next); }}
                                   style={{ padding: "5px 10px", borderRadius: 20, cursor: "pointer", fontSize: 13, border: aiIndustry === cat ? "2px solid #3B82F6" : "1.5px solid #E5E7EB", background: aiIndustry === cat ? "#EFF6FF" : "#F9FAFB", color: aiIndustry === cat ? "#2563EB" : "#374151", fontWeight: aiIndustry === cat ? 700 : 400, display: "flex", alignItems: "center", gap: 4 }}
@@ -4750,7 +4756,7 @@ export default function MapPage() {
                                   onMouseLeave={(e) => { e.currentTarget.style.background = "#F9FAFB"; e.currentTarget.style.color = "#374151"; }}
                                 >
                                   <span style={{ display: "flex", alignItems: "center", gap: 7 }}><GroupIcon size={15} color={Meta.iconColor} strokeWidth={1.8} />{group}</span>
-                                  <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].length}개 →</span>
+                                  <span style={{ color: "#6B7280", fontSize: 12 }}>{CATEGORY_GROUPS[group].filter(cat => !(aiMode === "gu" && (GU_BLOCKED_CATEGORIES[aiGu] || []).includes(cat))).length}개 →</span>
                                 </button>
                               );
                             })}

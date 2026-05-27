@@ -31,10 +31,11 @@ const CSS = `
   .lp-root nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
     padding: 0 60px; height: 80px;
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; justify-content: center;
     background: rgba(6,14,30,0.85); backdrop-filter: blur(16px);
     border-bottom: 1px solid rgba(56,189,248,0.08); transition: background 0.3s;
   }
+  .lp-nav-inner { max-width: 1280px; width: 100%; display: flex; align-items: center; justify-content: space-between; }
   .lp-root nav.scrolled { background: rgba(6,14,30,0.97); }
   .lp-nav-logo img { height: 40px; filter: brightness(1.1); }
   .lp-nav-links { display: flex; align-items: center; gap: 40px; list-style: none; }
@@ -92,7 +93,8 @@ const CSS = `
   .lp-hero-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 36px; font-weight: 700; color: #38bdf8; line-height: 1; margin-bottom: 6px; }
   .lp-hero-stat-label { font-size: 13px; color: #94a3b8; line-height: 1.4; word-break: keep-all; }
 
-  .lp-hero-visual { position: absolute; right: 60px; top: 50%; transform: translateY(-50%); width: 720px; height: 490px; z-index: 2; }
+  .lp-hero-layout { max-width: 1280px; margin: 0 auto; width: 100%; position: relative; min-height: calc(100vh - 200px); display: flex; flex-direction: column; justify-content: center; }
+  .lp-hero-visual { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 720px; height: 490px; z-index: 2; }
   .lp-globe-wrap { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 240px; height: 240px; }
   .lp-globe-ping { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 14px #38bdf8; z-index: 5; }
   .lp-globe-ping::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 1px solid rgba(56,189,248,0.5); animation: lp-pingRing 2s ease-out infinite; }
@@ -357,17 +359,20 @@ export default function LandingPage() {
 
       {/* NAV */}
       <nav ref={navRef}>
-        <a href="#" className="lp-nav-logo"><img src="/nodaji-logo.png" alt="NODAJI" /></a>
-        <ul className="lp-nav-links">
-          <li><a href="#stats">시장 현황</a></li>
-          <li><a href="#features">주요 기능</a></li>
-          <li><a href="#how">사용 방법</a></li>
-        </ul>
-        <button className="lp-nav-cta" onClick={() => navigate("/map")}>무료로 시작하기</button>
+        <div className="lp-nav-inner">
+          <a href="#" className="lp-nav-logo"><img src="/nodaji-logo.png" alt="NODAJI" /></a>
+          <ul className="lp-nav-links">
+            <li><a href="#stats">시장 현황</a></li>
+            <li><a href="#features">주요 기능</a></li>
+            <li><a href="#how">사용 방법</a></li>
+          </ul>
+          <button className="lp-nav-cta" onClick={() => navigate("/map")}>무료로 시작하기</button>
+        </div>
       </nav>
 
       {/* HERO */}
       <section className="lp-hero" id="home">
+        <div className="lp-hero-layout">
         <div className="lp-hero-content">
           <div className="lp-hero-badge"><span className="lp-badge-dot"></span>AI 기반 상권분석 플랫폼</div>
           <h1 className="lp-hero-title">
@@ -465,6 +470,7 @@ export default function LandingPage() {
               <div className="lp-ps-chip amber"><div className="lp-ps-label">강남구 · 한식</div><div className="lp-ps-row"><span className="lp-ps-score amber">41.5</span><span className="lp-ps-badge amber">C등급</span></div></div>
             </div>
           </div>
+        </div>
         </div>
       </section>
 

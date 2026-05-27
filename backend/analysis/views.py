@@ -16,6 +16,9 @@ from shapely.geometry import Point, shape as shapely_shape
 _location_df = None
 _location_lock = threading.Lock()
 
+# Gemini 보고서 응답 캐시 (프로세스 재시작 전까지 유지)
+_REPORT_CACHE = {}
+
 # street_boundaries.geojson 구→상권코드 매핑 캐시
 _gu_street_map = None
 _gu_street_map_lock = threading.Lock()
@@ -2835,11 +2838,12 @@ def report(request):
             pass
         return JsonResponse({"data": data, "ai_descriptions": {}, "quarter": target, "category": category})
 
-    ai_descriptions = {}
+    _rc_key = f"dong:{dong}:{category or ''}"
+    ai_descriptions = _REPORT_CACHE.get(_rc_key, {})
     try:
         import requests as http_requests
         api_key = os.environ.get("GEMINI_API_KEY", "")
-        if api_key:
+        if api_key and not ai_descriptions:
             has_category = bool(category and data.get("category_data"))
             if has_category:
                 required_keys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"]
@@ -2847,6 +2851,13 @@ def report(request):
                     "다음 서울 행정동 상권 데이터를 분석해서 아래 JSON 형식으로만 반환해줘. "
                     "반드시 6개 키를 모두 포함하고, 각 항목마다 2~3문장으로 설명해줘. "
                     "다른 텍스트나 코드 블록 없이 JSON만 반환해.\n\n"
+                    "각 키의 작성 기준:\n"
+                    "- 상권_개요: 행정동 전체 상권 규모와 특성 (총매출, 순위 기준)\n"
+                    "- 인기_업종: top_업종 데이터 기준으로 행정동에서 매출이 높은 업종 분석\n"
+                    "- 유동인구_분석: 총유동인구, 주거인구, 직장인구 데이터 기준\n"
+                    f"- 소비_패턴: category_data의 요일별매출·나이별매출 기준으로 '{category}' 업종 고객의 소비 패턴만 설명 (행정동 전체 요일별/시간대별 데이터는 무시)\n"
+                    f"- 비용_수익: category_data의 점포당매출·개업률·폐업률·경쟁강도 기준으로 '{category}' 창업 수익성 분석\n"
+                    f"- 기타_통계: category_data의 프랜차이즈비율·업종포화도·성장확률·AI등급 기준으로 '{category}' 업종 통계 요약\n\n"
                     f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
                     '형식: {"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
                 )
@@ -2877,6 +2888,7 @@ def report(request):
                     parsed = json.loads(text)
                     if all(k in parsed and parsed[k] for k in required_keys):
                         ai_descriptions = parsed
+                        _REPORT_CACHE[_rc_key] = parsed
                         break
                     elif attempt < 1:
                         time.sleep(3)
@@ -3077,11 +3089,12 @@ def gu_report(request):
     if data_only:
         return JsonResponse({"data": data, "ai_descriptions": {}, "quarter": target, "gu": gu, "category": category})
 
-    ai_descriptions = {}
+    _rc_key = f"gu:{gu}:{category or ''}"
+    ai_descriptions = _REPORT_CACHE.get(_rc_key, {})
     try:
         import requests as http_requests
         api_key = os.environ.get("GEMINI_API_KEY", "")
-        if api_key:
+        if api_key and not ai_descriptions:
             has_category = bool(category and data.get("category_data"))
             if has_category:
                 required_keys = ["상권_개요", "인기_업종", "유동인구_분석", "소비_패턴", "비용_수익", "기타_통계"]
@@ -3089,6 +3102,13 @@ def gu_report(request):
                     "다음 서울 구(區) 단위 상권 데이터를 분석해서 아래 JSON 형식으로만 반환해줘. "
                     "반드시 6개 키를 모두 포함하고, 각 항목마다 2~3문장으로 설명해줘. "
                     "다른 텍스트나 코드 블록 없이 JSON만 반환해.\n\n"
+                    "각 키의 작성 기준:\n"
+                    "- 상권_개요: 구 전체 상권 규모와 특성 (총매출, 행정동수 기준)\n"
+                    "- 인기_업종: top_업종 데이터 기준으로 구에서 매출이 높은 업종 분석\n"
+                    "- 유동인구_분석: 총유동인구, 주거인구, 직장인구 데이터 기준\n"
+                    f"- 소비_패턴: category_data의 요일별매출·나이별매출 기준으로 '{category}' 업종 고객의 소비 패턴만 설명 (구 전체 요일별/시간대별 데이터는 무시)\n"
+                    f"- 비용_수익: category_data의 점포당매출·개업률·폐업률·경쟁강도 기준으로 '{category}' 창업 수익성 분석\n"
+                    f"- 기타_통계: category_data의 프랜차이즈비율·업종포화도·성장확률 기준으로 '{category}' 업종 통계 요약\n\n"
                     f"데이터: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
                     '형식: {"상권_개요":"...","인기_업종":"...","유동인구_분석":"...","소비_패턴":"...","비용_수익":"...","기타_통계":"..."}'
                 )
@@ -3119,6 +3139,7 @@ def gu_report(request):
                     parsed = json.loads(text)
                     if all(k in parsed and parsed[k] for k in required_keys):
                         ai_descriptions = parsed
+                        _REPORT_CACHE[_rc_key] = parsed
                         break
                     elif attempt < 1:
                         time.sleep(3)
