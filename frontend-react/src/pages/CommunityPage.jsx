@@ -588,7 +588,7 @@ export default function CommunityPage() {
         <nav style={{ padding: "8px 0" }}>
           {/* 고정 게시판 (공지) */}
           {PINNED_BOARDS.map((item) => (
-            <BoardNavBtn key={item.value} item={item} active={board === item.value} onClick={() => setSearchParams({ board: item.value })} />
+            <BoardNavBtn key={item.value} item={item} active={board === item.value} onClick={() => setSearchParams({ board: item.value }, { replace: true })} />
           ))}
 
           {/* 구분선 */}
@@ -599,7 +599,7 @@ export default function CommunityPage() {
 
           {/* 일반 게시판 */}
           {REGULAR_BOARDS.map((item) => (
-            <BoardNavBtn key={item.value} item={item} active={board === item.value} onClick={() => setSearchParams({ board: item.value })} />
+            <BoardNavBtn key={item.value} item={item} active={board === item.value} onClick={() => setSearchParams({ board: item.value }, { replace: true })} />
           ))}
         </nav>
       </aside>
@@ -610,30 +610,30 @@ export default function CommunityPage() {
           <PostList
             board={board}
             user={user}
-            onWrite={() => setSearchParams({ board, view: "write" })}
-            onPostClick={(id) => setSearchParams({ board, view: "detail", post: id })}
+            onWrite={() => setSearchParams({ board, view: "write" }, { replace: true })}
+            onPostClick={(id) => setSearchParams({ board, view: "detail", post: id }, { replace: true })}
           />
         )}
         {view === "detail" && postId && (
           <PostDetail
             postId={postId}
             user={user}
-            onBack={() => setSearchParams({ board })}
-            onEdit={(id) => setSearchParams({ board, view: "edit", edit: id })}
+            onBack={() => setSearchParams({ board }, { replace: true })}
+            onEdit={(id) => setSearchParams({ board, view: "edit", edit: id }, { replace: true })}
           />
         )}
         {view === "write" && (
           <PostForm
             board={board}
             user={user}
-            onDone={(id) => id ? setSearchParams({ board, view: "detail", post: id }) : setSearchParams({ board })}
+            onDone={(id) => id ? setSearchParams({ board, view: "detail", post: id }, { replace: true }) : setSearchParams({ board }, { replace: true })}
           />
         )}
         {view === "edit" && editId && (
           <PostForm
             editPostId={editId}
             user={user}
-            onDone={(id) => id ? setSearchParams({ board, view: "detail", post: id }) : setSearchParams({ board })}
+            onDone={(id) => id ? setSearchParams({ board, view: "detail", post: id }, { replace: true }) : setSearchParams({ board }, { replace: true })}
           />
         )}
       </main>

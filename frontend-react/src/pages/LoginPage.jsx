@@ -43,7 +43,7 @@ export default function LoginPage() {
       localStorage.setItem("access", data.access);
       localStorage.setItem("refresh", data.refresh);
       localStorage.setItem("user", JSON.stringify(data.user));
-      navigate("/map");
+      navigate("/map", { replace: true });
     } catch {
       setError("서버에 연결할 수 없습니다.");
     } finally {
@@ -415,7 +415,7 @@ export default function LoginPage() {
             계정이 없으신가요?{" "}
             <a href="/signup" className="lp-footer-link" onClick={goSignup}>회원가입</a>
           </p>
-          <button className="lp-back-link" onClick={() => navigate("/map")}>
+          <button className="lp-back-link" onClick={() => navigate("/map", { replace: true })}>
             ← 지도로 돌아가기
           </button>
         </div>

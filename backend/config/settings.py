@@ -104,6 +104,10 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PW', '5891'),
         'HOST': '127.0.0.1',
         'PORT': '5432',
+        'OPTIONS': {
+            'gssencmode': 'disable',
+            'sslmode': 'disable',
+        },
     }
 }
 
@@ -148,6 +152,32 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.server': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
 
 # 커스텀 User 모델 지정 — 이 설정이 없으면 Django 기본 User를 씀
 AUTH_USER_MODEL = 'accounts.User'

@@ -503,6 +503,7 @@ export default function MapPage() {
   const [premiumNaverTrend, setPremiumNaverTrend] = useState(null); // 네이버 데이터랩 트렌드 { data: [{period, ratio}] }
   const [premiumPreference, setPremiumPreference] = useState(null); // { key, icon, title, desc }
   const [premiumLeftTab, setPremiumLeftTab] = useState("기본"); // "기본" | "수익" | "트렌드"
+  const [toastMsg, setToastMsg] = useState(null);
 
   // ── AI 추천 상태 ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -640,6 +641,11 @@ export default function MapPage() {
   const flameMarkersRef = useRef([]);
 
   // 사이드바 안 검색 input에 포커스를 주기 위한 ref
+
+  const showToast = useCallback((msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3500);
+  }, []);
 
   // ── 앱 마운트 시 토큰 유효성 검증 ──
   useEffect(() => {
@@ -1791,7 +1797,7 @@ export default function MapPage() {
       .then((r) => r.json())
       .then((data) => {
         setCustomLoading(false);
-        if (data.error) { alert(data.error); return; }
+        if (data.error) { showToast(data.error); return; }
         setCustomResults(data.results);
 
         const map = mapInstanceRef.current;
@@ -1811,7 +1817,7 @@ export default function MapPage() {
         data.results.forEach((r) => bounds.extend(new kakao.maps.LatLng(r.lat, r.lng)));
         map.setBounds(bounds, 80);
       })
-      .catch(() => { setCustomLoading(false); alert("요청에 실패했습니다."); });
+      .catch(() => { setCustomLoading(false); showToast("요청에 실패했습니다."); });
   }
 
   // ── 상권 클릭 → 업종 선택 → 입지 추천 요청 ──
@@ -1825,7 +1831,7 @@ export default function MapPage() {
       .then((r) => r.json())
       .then((data) => {
         setStreetSpotLoading(false);
-        if (data.error) { alert(data.error); return; }
+        if (data.error) { showToast(data.error); return; }
         setStreetSpotResults(data.results);
 
         const map = mapInstanceRef.current;
@@ -1864,7 +1870,7 @@ export default function MapPage() {
         positions.forEach((p) => bounds.extend(p));
         map.setBounds(bounds, 80);
       })
-      .catch(() => { setStreetSpotLoading(false); alert("입지 추천 요청에 실패했습니다."); });
+      .catch(() => { setStreetSpotLoading(false); showToast("입지 추천 요청에 실패했습니다."); });
   }
 
   // ── 행정동 클릭 → 위치 추천 요청 (dong 모드 결과에서) ──
@@ -1873,13 +1879,11 @@ export default function MapPage() {
     setSpotDong(dongName);
     setSpotCategory(category);
     setAiStep("spot_loading");
-    console.log("[spot] step → spot_loading");
 
     fetch(`${API}/api/recommend/spot/?dong=${encodeURIComponent(dongName)}&category=${encodeURIComponent(category)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.error) { setAiStep("result"); alert(data.error); return; }
-        console.log("[spot] results received:", data.results?.length, "→ step: spot");
+        if (data.error) { setAiStep("result"); showToast(data.error); return; };
         setSpotResults(data.results);
         setAiStep("spot");
 
@@ -1924,7 +1928,7 @@ export default function MapPage() {
           map.setBounds(bounds, 80);
         }
       })
-      .catch(() => { setAiStep("result"); alert("위치 추천 요청에 실패했습니다."); });
+      .catch(() => { setAiStep("result"); showToast("위치 추천 요청에 실패했습니다."); });
   }
 
   // ── 지역 자동완성 검색 헬퍼 ──
@@ -1981,7 +1985,7 @@ export default function MapPage() {
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
-          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          if (data.error) { showToast(data.error); setAiStep("survey"); return; }
           const enriched = data.results.map((r) => ({
             ...r,
             guName: polygonGroupsRef.current.find((g) => g.dongName === r.dongName)?.guName ?? "",
@@ -1992,29 +1996,29 @@ export default function MapPage() {
           setAiResults(enriched);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("survey"); });
     } else if (mode === "industry") {
       Promise.all([
         fetch(`${API}/api/recommend/industry/?dong=${encodeURIComponent(aiDong.trim())}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
-          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          if (data.error) { showToast(data.error); setAiStep("survey"); return; }
           setAiResults(data.results);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("survey"); });
     } else if (mode === "score") {
       Promise.all([
         fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(aiIndustry)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
-          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          if (data.error) { showToast(data.error); setAiStep("survey"); return; }
           setAiResults(data);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("survey"); });
     } else if (mode === "gu") {
       setAiGuResultTab("dong");
       setAiGuStreetResults(null);
@@ -2025,7 +2029,7 @@ export default function MapPage() {
         delay(MIN_LOADING_MS),
       ])
         .then(([dongData, streetData]) => {
-          if (dongData.error && streetData.error) { alert(dongData.error); setAiStep("survey"); return; }
+          if (dongData.error && streetData.error) { showToast(dongData.error); setAiStep("survey"); return; }
           if (dongData.error) {
             setAiGuDongError(dongData.error);
             setAiResults([]);
@@ -2042,18 +2046,18 @@ export default function MapPage() {
           setAiGuStreetResults(streetData.error ? [] : streetData.results || []);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("survey"); });
     } else if (mode === "gu_overview") {
       Promise.all([
         fetch(`${API}/api/recommend/gu-industry/?gu=${encodeURIComponent(aiGu)}`).then((r) => r.json()),
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
-          if (data.error) { alert(data.error); setAiStep("survey"); return; }
+          if (data.error) { showToast(data.error); setAiStep("survey"); return; }
           setAiResults(data);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("survey"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("survey"); });
     }
   }
 
@@ -2077,7 +2081,7 @@ export default function MapPage() {
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
-          if (data.error) { alert(data.error); setAiStep("form"); return; }
+          if (data.error) { showToast(data.error); setAiStep("form"); return; }
           const enriched = data.results.map((r) => ({
             ...r,
             guName: polygonGroupsRef.current.find((g) => g.dongName === r.dongName)?.guName ?? "",
@@ -2088,7 +2092,7 @@ export default function MapPage() {
           setAiResults(enriched);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
       return;
     }
 
@@ -2098,11 +2102,11 @@ export default function MapPage() {
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
-          if (data.error) { alert(data.error); setAiStep("form"); return; }
+          if (data.error) { showToast(data.error); setAiStep("form"); return; }
           setAiResults(data.results);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
       return;
     }
 
@@ -2113,7 +2117,7 @@ export default function MapPage() {
         delay(MIN_LOADING_MS),
       ])
         .then(([data]) => {
-          if (data.error) { alert(data.error); setAiStep("form"); return; }
+          if (data.error) { showToast(data.error); setAiStep("form"); return; }
           setAiResults(data);
           setAiStep("result");
           const dong = aiDong.trim();
@@ -2129,7 +2133,7 @@ export default function MapPage() {
             });
           });
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
       return;
     }
 
@@ -2144,7 +2148,7 @@ export default function MapPage() {
       ])
         .then(([dongData, streetData]) => {
           if (dongData.error && streetData.error) {
-            alert(dongData.error);
+            showToast(dongData.error);
             setAiStep("form");
             return;
           }
@@ -2162,7 +2166,7 @@ export default function MapPage() {
           setAiGuStreetResults(streetData.results || []);
           setAiStep("result");
         })
-        .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+        .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
       return;
     }
   }
@@ -2421,11 +2425,11 @@ export default function MapPage() {
       new Promise((res) => setTimeout(res, 1200)),
     ])
       .then(([data]) => {
-        if (data.error) { alert(data.error); setAiStep("form"); return; }
+        if (data.error) { showToast(data.error); setAiStep("form"); return; }
         setAiResults(data.results);
         setAiStep("result");
       })
-      .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+      .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
   }
 
 
@@ -3950,10 +3954,10 @@ export default function MapPage() {
                                   fetch(`${API}/api/recommend/location/?업종=${encodeURIComponent(reportCategory)}&gu=${encodeURIComponent(reportData._gu)}`)
                                     .then((r) => r.json())
                                     .then((data) => {
-                                      if (data.error) { alert(data.error); return; }
+                                      if (data.error) { showToast(data.error); return; }
                                       setGuDongRecommends(data.results || []);
                                     })
-                                    .catch(() => alert("추천 데이터를 불러오지 못했습니다."))
+                                    .catch(() => showToast("추천 데이터를 불러오지 못했습니다."))
                                     .finally(() => setGuDongRecommendLoading(false));
                                 }}
                                 style={{ width: "100%", padding: "10px 0", background: "linear-gradient(90deg,#3B82F6,#6366F1)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
@@ -4660,11 +4664,11 @@ export default function MapPage() {
                           fetch(`${API}/api/recommend/gu/?업종=${encodeURIComponent(aiIndustry)}`)
                             .then((r) => r.json())
                             .then((data) => {
-                              if (data.error) { alert(data.error); setAiStep("form"); return; }
+                              if (data.error) { showToast(data.error); setAiStep("form"); return; }
                               setAiGuRankResults(data.results || []);
                               setAiStep("result");
                             })
-                            .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                            .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
                         }}
                         style={{ width: "100%", marginTop: 20, padding: "13px 0", background: aiIndustry ? "linear-gradient(135deg, #2563EB, #3B82F6)" : "#E5E7EB", color: aiIndustry ? "#fff" : "#9CA3AF", border: "none", borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: aiIndustry ? "pointer" : "not-allowed", transition: "all 0.2s" }}
                       >✨ 분석 시작</button>
@@ -4926,7 +4930,7 @@ export default function MapPage() {
                               new Promise((res) => setTimeout(res, 1200)),
                             ])
                               .then(([data]) => {
-                                if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                if (data.error) { showToast(data.error); setAiStep("form"); return; }
                                 setAiResults(data);
                                 setAiStep("result");
                                 // 하단 추천 스트립용 데이터 비동기 fetch
@@ -4936,7 +4940,7 @@ export default function MapPage() {
                                   setAiScoreSuggestions({ industries: indData?.results?.slice(0, 6) ?? [] });
                                 });
                               })
-                              .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                              .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
                           }}
                           style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
@@ -5369,7 +5373,7 @@ export default function MapPage() {
                 const r = aiResults;
                 const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[r.grade] ?? "#6B9FE4";
                 const GRADE_LABEL = { A: "매우 우수", B: "전반적으로 양호", C: "보통 이하", D: "개선 필요" };
-                const WEIGHT_MAP = { "성장 추세": "25%", "매출 잠재력": "30%", "유동인구": "20%", "경쟁 우위": "25%" };
+                const WEIGHT_MAP = { "성장 추세": "40%", "경쟁 우위": "30%", "유동인구": "15%", "포화도": "15%" };
                 const hasSuggestions = aiScoreSuggestions.regions?.length > 0 || aiScoreSuggestions.industries?.length > 0;
                 return (
                   <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
@@ -5465,10 +5469,9 @@ export default function MapPage() {
                           {(() => {
                             const DESC = {
                               "성장 추세": "AI가 예측한 다음 분기 매출 성장 가능성입니다.",
-                              "매출 잠재력": "해당 행정동 업종의 월평균 매출 수준입니다.",
+                              "경쟁 우위": "같은 업종 점포 수가 적을수록 높은 점수입니다.",
                               "유동인구": "상권 내 유동인구 밀도 및 규모입니다.",
-                              "경쟁 우위": "주변 경쟁 점포 대비 유리한 환경인지 나타냅니다.",
-                              "소득 수준": "상권 내 직장인·주거 인구의 소득 수준입니다.",
+                              "포화도": "업종 포화도가 낮을수록 신규 진입에 유리합니다.",
                             };
                             return r.breakdown.map((b) => {
                               const pct = (b.score / b.max) * 100;
@@ -5555,7 +5558,7 @@ export default function MapPage() {
                                         fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(dong)}&category=${encodeURIComponent(aiIndustry)}`).then(r => r.json()),
                                         new Promise(res => setTimeout(res, 1200)),
                                       ]).then(([data]) => {
-                                        if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                        if (data.error) { showToast(data.error); setAiStep("form"); return; }
                                         setAiResults(data);
                                         setAiStep("result");
                                         const gu = polygonGroupsRef.current.find((g) => g.dongName === dong)?.guName ?? "";
@@ -5567,7 +5570,7 @@ export default function MapPage() {
                                             regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
                                           });
                                         });
-                                      }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                                      }).catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
                                     }}
                                     style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
                                       border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
@@ -5576,11 +5579,11 @@ export default function MapPage() {
                                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
                                   >
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                                      <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{reg.등급}</div>
-                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{reg.score}</div>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{reg.score}점</div>
+                                      <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{reg.성장확률}%</div>
                                     </div>
                                     <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{reg.dongName}</div>
-                                    <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {reg.성장확률}%</div>
+                                    <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률</div>
                                   </button>
                                 );
                               })}
@@ -5612,7 +5615,7 @@ export default function MapPage() {
                                         fetch(`${API}/api/recommend/score/?dong=${encodeURIComponent(aiDong.trim())}&category=${encodeURIComponent(ind.category)}`).then(r => r.json()),
                                         new Promise(res => setTimeout(res, 1200)),
                                       ]).then(([data]) => {
-                                        if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                        if (data.error) { showToast(data.error); setAiStep("form"); return; }
                                         setAiResults(data);
                                         setAiStep("result");
                                         const dong = aiDong.trim();
@@ -5625,7 +5628,7 @@ export default function MapPage() {
                                             regions: (regData?.results ?? []).filter((r) => r.dongName !== dong).slice(0, 6),
                                           });
                                         });
-                                      }).catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                                      }).catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
                                     }}
                                     style={{ flexShrink: 0, width: 120, textAlign: "left", padding: "10px 12px",
                                       border: "1.5px solid #f1f5f9", borderRadius: 10, background: "#f8fafc",
@@ -5634,11 +5637,11 @@ export default function MapPage() {
                                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.background = "#f8fafc"; }}
                                   >
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                                      <div style={{ fontSize: 11, fontWeight: 700, color: gc, background: gc + "20", borderRadius: 99, padding: "1px 6px" }}>{ind.등급}</div>
-                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{ind.score}</div>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{ind.score}점</div>
+                                      <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{ind.성장확률}%</div>
                                     </div>
                                     <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ind.category}</div>
-                                    <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률 {ind.avg_성장확률}%</div>
+                                    <div style={{ fontSize: 10.5, color: "#94a3b8" }}>성장확률</div>
                                   </button>
                                 );
                               })}
@@ -5749,7 +5752,7 @@ export default function MapPage() {
                                 new Promise((res) => setTimeout(res, 1200)),
                               ])
                                 .then(([data]) => {
-                                  if (data.error) { alert(data.error); setAiStep("form"); return; }
+                                  if (data.error) { showToast(data.error); setAiStep("form"); return; }
                                   setAiResults(data);
                                   setAiStep("result");
                                   const dong = aiDong.trim();
@@ -5764,7 +5767,7 @@ export default function MapPage() {
                                     });
                                   });
                                 })
-                                .catch(() => { alert("서버 연결에 실패했습니다."); setAiStep("form"); });
+                                .catch(() => { showToast("서버 연결에 실패했습니다."); setAiStep("form"); });
                             }}
                             style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, fontSize: 14, fontWeight: 500, cursor: "pointer", border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; e.currentTarget.style.color = "#2563EB"; e.currentTarget.style.borderColor = "#BFDBFE"; }}
@@ -7989,12 +7992,7 @@ export default function MapPage() {
         {/* 로고 */}
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 101.10 31.50" width="140" height="44" overflow="visible"
           style={{ position: "relative", zIndex: 1, flexShrink: 0, cursor: "pointer" }}
-          onClick={() => {
-            setSelectedDong(null); setSelectedGu(null); setReportOpen(false);
-            setAiModalOpen(false); clearSpotMarkers();
-            const map = mapInstanceRef.current;
-            if (map) smoothZoom(map, 9, () => map.panTo(new window.kakao.maps.LatLng(37.5665, 126.9780)));
-          }}
+          onClick={() => navigate("/")}
         >
           <text x="0" y="23.50" fontFamily="Arial Black, Helvetica Neue, Arial, sans-serif" fontWeight="900" fontSize="20" letterSpacing="1.20" fill="#cde0f0">NODAJI</text>
           <g transform="translate(91.60,3.00) rotate(35)">
@@ -8377,6 +8375,20 @@ export default function MapPage() {
         </div>
       )}
 
+      {toastMsg && (
+        <div style={{
+          position: "fixed", bottom: 32, right: 32, zIndex: 9999,
+          background: "#1e293b", color: "#fff",
+          padding: "13px 20px", borderRadius: 10,
+          fontSize: 14, fontWeight: 500,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.35)",
+          display: "flex", alignItems: "center", gap: 10,
+          maxWidth: 360, wordBreak: "keep-all",
+        }}>
+          <span style={{ color: "#f87171", fontSize: 16, flexShrink: 0 }}>⚠</span>
+          {toastMsg}
+        </div>
+      )}
     </div>
   );
 }

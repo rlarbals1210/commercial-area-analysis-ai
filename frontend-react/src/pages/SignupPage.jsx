@@ -326,7 +326,7 @@ export default function SignupPage() {
                 이미 계정이 있으신가요?{" "}
                 <a href="/login" className="lp-footer-link">로그인</a>
               </p>
-              <button type="button" className="lp-back-link" onClick={() => navigate("/map")}>← 지도로 돌아가기</button>
+              <button type="button" className="lp-back-link" onClick={() => navigate("/map", { replace: true })}>← 지도로 돌아가기</button>
             </div>
           </form>
         )}
@@ -368,7 +368,7 @@ export default function SignupPage() {
             <div
               className="sp-success-icon"
               style={expanding ? { transform: "scale(22)", opacity: 0, transition: "transform 1s cubic-bezier(0.4,0,1,1), opacity 1s" } : {}}
-              onTransitionEnd={() => { if (expanding) navigate("/map"); }}
+              onTransitionEnd={() => { if (expanding) navigate("/map", { replace: true }); }}
             >✓</div>
             <h2 style={{ margin: "0 0 10px", fontSize: 22, fontWeight: 700, color: "#0C1A2E" }}>
               가입이 완료되었습니다!

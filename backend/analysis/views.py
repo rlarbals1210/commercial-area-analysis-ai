@@ -2,15 +2,12 @@ import json
 import math
 import os
 import threading
-import requests as http_requests
-import pandas as pd
 from pathlib import Path
 from django.http import JsonResponse
 from django.db.models import Avg, Count, Max, Sum
 from django.views.decorators.csrf import csrf_exempt
 from .models import CommercialData, StoreInfo, ScoreData, StreetScoreData, StreetCommercialData
 from community.models import ReportLog
-from shapely.geometry import Point, shape as shapely_shape
 
 # location_scores.csv 메모리 캐시
 _location_df = None
@@ -109,6 +106,7 @@ def _get_dong_centroids() -> dict:
     with _dong_centroids_lock:
         if _dong_centroids is not None:
             return _dong_centroids
+        from shapely.geometry import shape as shapely_shape
         result = {}
         try:
             with open(_HANGJEONGDONG_GEOJSON, encoding="utf-8") as f:
@@ -165,16 +163,17 @@ def _grid_cells(bbox, n=3):
 
 def _fetch_cell(url, headers, keyword, lat, lng, radius):
     """단일 셀에서 카카오 키워드 검색 (최대 3페이지 = 45개)"""
+    import urllib.request as _urllib
+    import urllib.parse as _urlparse
     docs = []
     for page in range(1, 4):
         try:
-            resp = http_requests.get(url, headers=headers, params={
-                "query": keyword, "x": lng, "y": lat,
-                "radius": radius, "size": 15, "page": page,
-            }, timeout=10)
-            if resp.status_code != 200:
-                break
-            data = resp.json()
+            params = _urlparse.urlencode({"query": keyword, "x": lng, "y": lat, "radius": radius, "size": 15, "page": page})
+            req = _urllib.Request(f"{url}?{params}", headers=headers)
+            with _urllib.urlopen(req, timeout=10) as r:
+                if r.status != 200:
+                    break
+                data = json.loads(r.read().decode("utf-8"))
             docs.extend(data.get("documents", []))
             if data.get("meta", {}).get("is_end", True):
                 break
@@ -235,6 +234,7 @@ def _get_location_df():
         if _location_df is not None:
             return _location_df
         path = Path(__file__).resolve().parents[2] / "data" / "processed_data" / "location_scores.csv"
+        import pandas as pd
         if path.exists():
             _location_df = pd.read_csv(path, encoding="utf-8-sig")
         else:
@@ -594,6 +594,7 @@ def score_all(request):
 def store_list(request):
     """행정동 + 업종 → 카카오 로컬 API로 개별 상가 목록 반환 (GET, dong·category 필수)"""
     from django.core.cache import cache
+    from shapely.geometry import Point
 
     dong = normalize_dong(request.GET.get("dong"))
     category = request.GET.get("category", "").strip()
@@ -890,6 +891,18 @@ def recommend_location(request):
 
     # 4. 후보 행정동: ScoreData + CommercialData 교집합
     candidate_dongs = set(score_map.keys()) & set(commercial_map.keys())
+    if not candidate_dongs and gu_filter:
+        # 구 내 교집합이 없으면 서울 전체 기준으로 재조회
+        latest_q_all = CommercialData.objects.filter(통합카테고리=commercial_카테고리).aggregate(max=Max("기준_년분기_코드"))["max"]
+        if latest_q_all:
+            commercial_map = {
+                row["행정동명"]: row
+                for row in CommercialData.objects.filter(통합카테고리=commercial_카테고리, 기준_년분기_코드=latest_q_all).values(
+                    "행정동명", "행정동코드", "당월매출합", "총유동인구", "업종_포화도",
+                    "경쟁강도", "점포수", "행정동_전체점포수", "업종_점포당매출",
+                )
+            }
+            candidate_dongs = set(score_map.keys()) & set(commercial_map.keys())
     if not candidate_dongs:
         return JsonResponse({"error": "추천할 수 있는 상권 데이터가 없습니다."}, status=404)
 
@@ -1284,17 +1297,17 @@ def recommend_score(request):
     )
     c = CommercialData.objects.filter(행정동명=dong, 통합카테고리=category, 기준_년분기_코드=latest_q).first()
 
-    # 전국 기준 정규화 최대값
+    # 전국 기준 정규화 최대값 (recommend_location과 동일한 변수 기준)
     all_rows = list(
         CommercialData.objects.filter(통합카테고리=category, 기준_년분기_코드=latest_q)
-        .values("당월매출합", "총유동인구", "경쟁강도")
+        .values("총유동인구", "점포수", "업종_포화도")
     )
     if not all_rows:
         return JsonResponse({"error": "상권 데이터가 없습니다."}, status=404)
 
-    max_매출 = max((r["당월매출합"] or 0) for r in all_rows) or 1
-    max_유동 = max((r["총유동인구"] or 0) for r in all_rows) or 1
-    max_경쟁 = max((r["경쟁강도"] or 0) for r in all_rows) or 1
+    max_유동   = max((r["총유동인구"] or 0) for r in all_rows) or 1
+    max_소분류 = max((r["점포수"] or 0) for r in all_rows) or 1
+    max_포화도 = max((r["업종_포화도"] or 0) for r in all_rows) or 1
 
     is_fallback = (score_obj is None) or (c is None)
 
@@ -1309,34 +1322,36 @@ def recommend_score(request):
         dong_c = CommercialData.objects.filter(행정동명=dong, 기준_년분기_코드=latest_q).first()
         avg_agg = CommercialData.objects.filter(통합카테고리=category, 기준_년분기_코드=latest_q).aggregate(
             avg_매출=Avg("당월매출합"), avg_유동=Avg("총유동인구"),
-            avg_경쟁=Avg("경쟁강도"), avg_포화=Avg("업종_포화도"),
+            avg_점포수=Avg("점포수"), avg_포화=Avg("업종_포화도"),
             avg_폐업=Avg("폐업_률_평균"), avg_개업=Avg("개업_율_평균"),
         )
 
         class _FakeC:
             당월매출합    = avg_agg["avg_매출"] or 0
             총유동인구    = dong_c.총유동인구 if dong_c else (avg_agg["avg_유동"] or 0)
-            경쟁강도      = 0  # 데이터 없음 = 경쟁자 없음
+            점포수        = avg_agg["avg_점포수"] or 0
             업종_포화도   = avg_agg["avg_포화"] or 0.5
             폐업_률_평균  = avg_agg["avg_폐업"]
             개업_율_평균  = avg_agg["avg_개업"]
         c = _FakeC()
-    매출        = c.당월매출합 or 0
-    유동인구    = c.총유동인구 or 0
+    매출             = c.당월매출합 or 0
+    유동인구         = c.총유동인구 or 0
+    소분류_점포수    = getattr(c, "점포수", 0) or 0
+    포화도           = c.업종_포화도 or 0.5
 
-    # breakdown 개별 점수 (UI 표시용)
-    매출_점수     = round((매출 / max_매출) * 100, 1)
-    유동인구_점수 = round((유동인구 / max_유동) * 100, 1)
-    경쟁강도_norm = (c.경쟁강도 or 0) / max_경쟁
-    경쟁강도_점수 = round(max(0.0, 1 - 경쟁강도_norm) * 100, 1)
+    # breakdown 개별 점수 (recommend_location과 동일한 공식)
+    유동인구_점수   = round((유동인구 / max_유동) * 100, 1)
+    소분류경쟁_점수 = round(max(0.0, 1 - 소분류_점포수 / max_소분류) * 100, 1)
+    포화도_점수     = round(max(0.0, 1 - 포화도 / max_포화도) * 100, 1)
+    경쟁강도_norm   = 소분류_점포수 / max_소분류  # pros/cons·summary 호환용
 
     composite = round(
-        성장확률 * 0.40 + 매출_점수 * 0.30 + 유동인구_점수 * 0.15 + 경쟁강도_점수 * 0.15, 1
+        성장확률 * 0.40 + 소분류경쟁_점수 * 0.30 + 유동인구_점수 * 0.15 + 포화도_점수 * 0.15, 1
     )
 
     grade = (
-        "A" if composite >= 75 else
-        "B" if composite >= 55 else
+        "A" if composite >= 65 else
+        "B" if composite >= 50 else
         "C" if composite >= 35 else
         "D"
     )
@@ -1345,7 +1360,7 @@ def recommend_score(request):
         "composite": composite,
         "성장확률": 성장확률,
         "경쟁강도_norm": 경쟁강도_norm,
-        "업종_포화도": c.업종_포화도 or 0.5,
+        "업종_포화도": 포화도,
         "총유동인구": 유동인구,
         "폐업_률_평균": c.폐업_률_평균,
         "개업_율_평균": c.개업_율_평균,
@@ -1358,10 +1373,10 @@ def recommend_score(request):
         "grade": grade,
         "summary": summary,
         "breakdown": [
-            {"label": "성장 추세",  "score": round(성장확률, 1), "max": 100},
-            {"label": "매출 잠재력", "score": 매출_점수,         "max": 100},
-            {"label": "유동인구",   "score": 유동인구_점수,      "max": 100},
-            {"label": "경쟁 우위",   "score": 경쟁강도_점수,     "max": 100},
+            {"label": "성장 추세",  "score": round(성장확률, 1),  "max": 100},
+            {"label": "경쟁 우위",  "score": 소분류경쟁_점수,     "max": 100},
+            {"label": "유동인구",   "score": 유동인구_점수,       "max": 100},
+            {"label": "포화도",     "score": 포화도_점수,         "max": 100},
         ],
         "pros": pros,
         "cons": cons,
@@ -1910,8 +1925,8 @@ def recommend_street_score(request):
     )
 
     grade = (
-        "A" if composite >= 75 else
-        "B" if composite >= 55 else
+        "A" if composite >= 65 else
+        "B" if composite >= 50 else
         "C" if composite >= 35 else
         "D"
     )
@@ -1965,6 +1980,7 @@ def recommend_street_spot(request):
     """상권코드 + 업종 → 상권 경계 내 추천 위치 Top 5 (GET)
     params: 상권코드, category
     """
+    from shapely.geometry import Point, shape as shapely_shape
     상권코드_param = request.GET.get("상권코드", "").strip()
     category = request.GET.get("category", "").strip()
     if not 상권코드_param or not category:
@@ -2085,7 +2101,8 @@ def recommend_custom_spot(request):
 
     # 1) 전송받은 좌표로 폴리곤 생성 (coordinates: [[lat, lng], ...])
     try:
-        from shapely.geometry import Polygon as ShapelyPolygon
+        from shapely.geometry import Point, Polygon as ShapelyPolygon
+        from shapely.prepared import prep
         # shapely는 (lng, lat) 순서
         polygon = ShapelyPolygon([(lng, lat) for lat, lng in coordinates])
     except Exception:
@@ -2110,11 +2127,9 @@ def recommend_custom_spot(request):
     if filtered.empty:
         return JsonResponse({"error": f'"{category}" 위치 데이터가 없습니다.'}, status=404)
 
-    # 4) Point-in-polygon 필터
-    mask = filtered.apply(
-        lambda row: polygon.contains(Point(row["grid_lng"], row["grid_lat"])),
-        axis=1,
-    )
+    # 4) Point-in-polygon 필터 (prepared geometry로 반복 contains 최적화)
+    prepared_poly = prep(polygon)
+    mask = [prepared_poly.contains(Point(lng, lat)) for lng, lat in zip(filtered["grid_lng"], filtered["grid_lat"])]
     inside = filtered[mask]
 
     if inside.empty:
@@ -2641,6 +2656,7 @@ _NAVER_TREND_KEYWORDS = {
 
 def trend_naver(request):
     """네이버 데이터랩 검색어 트렌드 (GET, category 필수) — 최근 12개월"""
+    import urllib.request as _urllib
     category = request.GET.get("category", "").strip()
     if not category:
         return JsonResponse({"error": "category 파라미터가 필요합니다."}, status=400)
@@ -2666,23 +2682,26 @@ def trend_naver(request):
     }
 
     try:
-        resp = http_requests.post(
+        req = _urllib.Request(
             "https://openapi.naver.com/v1/datalab/search",
+            data=json.dumps(payload).encode("utf-8"),
             headers={
                 "X-Naver-Client-Id": client_id,
                 "X-Naver-Client-Secret": client_secret,
                 "Content-Type": "application/json",
             },
-            json=payload,
-            timeout=8,
+            method="POST",
         )
+        with _urllib.urlopen(req, timeout=8) as r:
+            resp_status = r.status
+            resp_body = json.loads(r.read().decode("utf-8"))
     except Exception:
         return JsonResponse({"error": "네이버 API 요청에 실패했습니다."}, status=502)
 
-    if resp.status_code != 200:
-        return JsonResponse({"error": f"네이버 API 오류 ({resp.status_code})"}, status=502)
+    if resp_status != 200:
+        return JsonResponse({"error": f"네이버 API 오류 ({resp_status})"}, status=502)
 
-    results = resp.json().get("results", [{}])
+    results = resp_body.get("results", [{}])
     data = results[0].get("data", []) if results else []
 
     return JsonResponse({"category": category, "data": data})
@@ -2841,7 +2860,7 @@ def report(request):
     _rc_key = f"dong:{dong}:{category or ''}"
     ai_descriptions = _REPORT_CACHE.get(_rc_key, {})
     try:
-        import requests as http_requests
+        import urllib.request as _urllib
         api_key = os.environ.get("GEMINI_API_KEY", "")
         if api_key and not ai_descriptions:
             has_category = bool(category and data.get("category_data"))
@@ -2874,11 +2893,26 @@ def report(request):
             body = {"contents": [{"parts": [{"text": prompt}]}]}
             import time
             for attempt in range(2):
-                resp = http_requests.post(url, json=body, timeout=60)
-                if resp.status_code == 200:
-                    resp_json = json.loads(resp.content.decode("utf-8"))
-                    parts = resp_json["candidates"][0]["content"]["parts"]
+                req = _urllib.Request(url, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+                try:
+                    with _urllib.urlopen(req, timeout=60) as r:
+                        resp_status, resp_content = r.status, r.read()
+                except Exception as http_err:
+                    resp_status = getattr(http_err, "code", 0)
+                    resp_content = getattr(http_err, "read", lambda: b"")()
+                if resp_status == 200:
+                    resp_json = json.loads(resp_content.decode("utf-8"))
+                    cands = resp_json.get("candidates", [])
+                    if not cands or "content" not in cands[0]:
+                        if attempt < 1:
+                            time.sleep(3)
+                        continue
+                    parts = cands[0]["content"].get("parts", [])
                     text = next((p["text"] for p in reversed(parts) if not p.get("thought", False)), "").strip()
+                    if not text:
+                        if attempt < 1:
+                            time.sleep(3)
+                        continue
                     if "```" in text:
                         for part in text.split("```"):
                             part = part.strip().lstrip("json").strip()
@@ -2892,7 +2926,7 @@ def report(request):
                         break
                     elif attempt < 1:
                         time.sleep(3)
-                elif resp.status_code == 429:
+                elif resp_status == 429:
                     ai_descriptions = {"rate_limited": True}
                     break
                 else:
@@ -3092,7 +3126,7 @@ def gu_report(request):
     _rc_key = f"gu:{gu}:{category or ''}"
     ai_descriptions = _REPORT_CACHE.get(_rc_key, {})
     try:
-        import requests as http_requests
+        import urllib.request as _urllib
         api_key = os.environ.get("GEMINI_API_KEY", "")
         if api_key and not ai_descriptions:
             has_category = bool(category and data.get("category_data"))
@@ -3125,11 +3159,26 @@ def gu_report(request):
             body = {"contents": [{"parts": [{"text": prompt}]}]}
             import time
             for attempt in range(2):
-                resp = http_requests.post(url, json=body, timeout=60)
-                if resp.status_code == 200:
-                    resp_json = json.loads(resp.content.decode("utf-8"))
-                    parts = resp_json["candidates"][0]["content"]["parts"]
+                req = _urllib.Request(url, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+                try:
+                    with _urllib.urlopen(req, timeout=60) as r:
+                        resp_status, resp_content = r.status, r.read()
+                except Exception as http_err:
+                    resp_status = getattr(http_err, "code", 0)
+                    resp_content = getattr(http_err, "read", lambda: b"")()
+                if resp_status == 200:
+                    resp_json = json.loads(resp_content.decode("utf-8"))
+                    cands = resp_json.get("candidates", [])
+                    if not cands or "content" not in cands[0]:
+                        if attempt < 1:
+                            time.sleep(3)
+                        continue
+                    parts = cands[0]["content"].get("parts", [])
                     text = next((p["text"] for p in reversed(parts) if not p.get("thought", False)), "").strip()
+                    if not text:
+                        if attempt < 1:
+                            time.sleep(3)
+                        continue
                     if "```" in text:
                         for part in text.split("```"):
                             part = part.strip().lstrip("json").strip()
@@ -3143,7 +3192,7 @@ def gu_report(request):
                         break
                     elif attempt < 1:
                         time.sleep(3)
-                elif resp.status_code == 429:
+                elif resp_status == 429:
                     ai_descriptions = {"rate_limited": True}
                     break
                 else:
