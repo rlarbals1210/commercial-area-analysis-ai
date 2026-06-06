@@ -28,7 +28,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-o420l$yo5cf3^zyw)b7*5hitrvekj=ta)shl2d!eu=zy&ixg&u')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')]
 
@@ -54,6 +54,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -96,20 +97,31 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'commercial_db',
-        'USER': 'commercial_user',
-        'PASSWORD': os.environ.get('DB_PW', '5891'),
-        'HOST': '127.0.0.1',
-        'PORT': '5432',
-        'OPTIONS': {
-            'gssencmode': 'disable',
-            'sslmode': 'disable',
-        },
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'commercial_db',
+            'USER': 'commercial_user',
+            'PASSWORD': os.environ.get('DB_PW', '5891'),
+            'HOST': '127.0.0.1',
+            'PORT': '5432',
+            'OPTIONS': {
+                'gssencmode': 'disable',
+                'sslmode': 'disable',
+            },
+        }
+    }
 
 
 # Password validation
@@ -147,6 +159,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -193,7 +206,7 @@ SIMPLE_JWT = {
 # 카카오 소셜 로그인
 KAKAO_REST_API_KEY = os.environ.get('KAKAO_REST_API_KEY', '')
 KAKAO_CLIENT_SECRET = os.environ.get('KAKAO_CLIENT_SECRET', '')
-KAKAO_REDIRECT_URI = 'http://localhost:8000/api/accounts/kakao/callback/'
+KAKAO_REDIRECT_URI = os.environ.get('KAKAO_REDIRECT_URI', 'http://localhost:8000/api/accounts/kakao/callback/')
 
 # DRF 기본 인증 방식: JWT
 REST_FRAMEWORK = {

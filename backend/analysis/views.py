@@ -205,7 +205,7 @@ def _get_gu_rental():
     with _gu_rental_lock:
         if _gu_rental is not None:
             return _gu_rental
-        path = Path(__file__).resolve().parents[2] / "ai" / "outputs" / "gu_rental.json"
+        path = Path(__file__).resolve().parents[2] / "data" / "processed_data" / "gu_rental.json"
         if path.exists():
             with open(path, encoding="utf-8") as f:
                 _gu_rental = json.load(f)

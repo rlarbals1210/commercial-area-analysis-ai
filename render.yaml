@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: commercial-area-api
+    runtime: python
+    buildCommand: pip install -r requirements-prod.txt && python backend/manage.py collectstatic --noinput && python backend/manage.py migrate
+    startCommand: cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: SECRET_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: RENDER_EXTERNAL_HOSTNAME
+        fromService:
+          type: web
+          name: commercial-area-api
+          property: host
+      - key: VERCEL_URL
+        sync: false
+      - key: KAKAO_REST_API_KEY
+        sync: false
+      - key: KAKAO_CLIENT_SECRET
+        sync: false
+      - key: KAKAO_REDIRECT_URI
+        sync: false
+      - key: NAVER_CLIENT_ID
+        sync: false
+      - key: NAVER_CLIENT_SECRET
+        sync: false
+      - key: DJANGO_DEBUG
+        value: 'False'

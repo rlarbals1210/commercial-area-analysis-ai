@@ -21,6 +21,9 @@ data/**
 !data/**/
 !data/**/.gitkeep
 !data/category_maps/*.csv
+!data/processed_data/location_scores.csv
+!data/processed_data/gu_rental.json
+!data/processed_data/rental_data.json
 
 
 # Env
