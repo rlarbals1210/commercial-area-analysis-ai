@@ -378,6 +378,11 @@ merged = pd.merge(merged, pop_agg, on=["기준_년분기_코드", "행정동코�
 merged = pd.merge(merged, bs_agg, on=["기준_년분기_코드", "행정동코드", "통합_카테고리"], how="left")
 merged = pd.merge(merged, work_agg, on=["기준_년분기_코드", "행정동코드"], how="left")
 merged = pd.merge(merged, dong_name, on="행정동코드", how="left")
+# 상가정보에 점포가 없는 행정동(예: 11680740)은 이름이 비므로 매출 데이터의 행정동명으로 채운다
+_sales_names = (
+    sales_df[["행정동코드", "행정동명"]].dropna().drop_duplicates("행정동코드").set_index("행정동코드")["행정동명"]
+)
+merged["행정동명"] = merged["행정동명"].fillna(merged["행정동코드"].map(_sales_names))
 merged = pd.merge(merged, res_df, on=["기준_년분기_코드", "행정동명"], how="left")
 
 

@@ -90,10 +90,17 @@ commercial-area-analysis-ai/
 ### 백엔드 — `.env` (루트 디렉토리)
 
 ```
+SECRET_KEY=<Django 비밀키 — 배포 시 필수, 로컬은 DJANGO_DEBUG=True면 생략 가능>
+DJANGO_DEBUG=True                      # 로컬 개발 시에만
+DB_PW=<PostgreSQL 비밀번호>
+GEMINI_API_KEY=<Gemini API 키 — AI 보고서>
+KAKAO_REST_API_KEY=<카카오 REST API 키 — 점포 검색>
+KAKAO_CLIENT_SECRET=<카카오 로그인 시크릿>
 NAVER_CLIENT_ID=<네이버 API 클라이언트 ID>
 NAVER_CLIENT_SECRET=<네이버 API 클라이언트 시크릿>
-DB_PW=<PostgreSQL 비밀번호 (SQLite 사용 시 불필요)>
 ```
+
+> 네이버 개발자센터의 애플리케이션에 **데이터랩(검색어 트렌드)** API 사용 권한이 있어야 프리미엄 추천의 검색 추이가 표시됩니다. 권한이 없으면 401(Scope Status Invalid)이 납니다.
 
 ### 프론트엔드 — `frontend-react/.env`
 

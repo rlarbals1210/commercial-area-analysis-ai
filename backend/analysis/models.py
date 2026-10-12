@@ -112,6 +112,8 @@ class CommercialData(models.Model):
             models.Index(fields=["행정동명", "기준_년분기_코드"]),
             models.Index(fields=["기준_년분기_코드"]),
             models.Index(fields=["행정동명", "통합카테고리"]),
+            # 업종×최신 분기 조회(추천·적합도의 정규화 최댓값 계산)용 — 졸업논문 4.3.2절 측정
+            models.Index(fields=["통합카테고리", "기준_년분기_코드"], name="cd_cat_quarter_idx"),
         ]
 
 

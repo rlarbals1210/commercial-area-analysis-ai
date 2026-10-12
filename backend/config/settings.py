@@ -24,11 +24,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-o420l$yo5cf3^zyw)b7*5hitrvekj=ta)shl2d!eu=zy&ixg&u')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# 비밀키는 .env 또는 배포 환경변수(SECRET_KEY)로만 받는다. 소스코드에 실제 키를 두지 않는다.
+SECRET_KEY = os.environ.get('SECRET_KEY', '')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-local-dev-only'  # 로컬 개발 전용 — 배포에서는 쓰이지 않음
+    else:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured("SECRET_KEY 환경변수가 설정되지 않았습니다.")
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')]
 
@@ -113,7 +120,7 @@ else:
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': 'commercial_db',
             'USER': 'commercial_user',
-            'PASSWORD': os.environ.get('DB_PW', '5891'),
+            'PASSWORD': os.environ.get('DB_PW', ''),  # .env의 DB_PW로 설정
             'HOST': '127.0.0.1',
             'PORT': '5432',
             'OPTIONS': {
