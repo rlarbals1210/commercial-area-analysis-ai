@@ -3399,6 +3399,7 @@ def search_regions(request):
             return JsonResponse({"results": []})
         dongs = list(
             CommercialData.objects.filter(행정동코드__startswith=int(gu_code))
+            .exclude(행정동명="")
             .values_list("행정동명", flat=True)
             .distinct()
             .order_by("행정동명")

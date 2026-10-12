@@ -283,18 +283,21 @@ const KEY_MONEY_MONTHS = {
   "자동차수리/미용": 4, "기타 B2B서비스": 2,
 };
 
+// 서울시 상권분석서비스의 매출(당월매출합)은 분기 추정매출이므로 월 단위로 환산할 때 3으로 나눈다
+const MONTHS_PER_QUARTER = 3;
+
 // 권리금 추정: 점포당 월매출 × 업종별 배수 (원 단위 반환)
 function calcRightFee(category, totalSales, storeCount) {
   const months = KEY_MONEY_MONTHS[category];
   if (!months || !storeCount || storeCount === 0 || !totalSales) return null;
-  return Math.round((totalSales / storeCount) * months);
+  return Math.round((totalSales / storeCount / MONTHS_PER_QUARTER) * months);
 }
 
 // ROI 추정: 월순익 + 손익분기 개월 (원가율·임대료10%·최저임금1명·관리비 기준)
 function calcROI(category, totalSales, storeCount) {
   const sc = STARTUP_COSTS[category];
   if (!sc || !storeCount || storeCount === 0 || !totalSales) return null;
-  const perStore = totalSales / storeCount;
+  const perStore = totalSales / storeCount / MONTHS_PER_QUARTER; // 점포당 월매출
   const 원가 = perStore * (sc["원가율_%"] / 100);
   const 임대료 = perStore * 0.10;
   const 인건비 = 2090000; // 2025 최저임금 기준 직원 1명
@@ -4201,7 +4204,7 @@ export default function MapPage() {
                 const { a, b, type, category, quarter } = compareRegionResults;
                 const METRICS = [
                   { key: "점포수", label: "점포수", fmt: v => `${v}개` },
-                  { key: "월매출", label: "월 매출합", fmt: v => v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${(v/1e4).toFixed(0)}만` },
+                  { key: "월매출", label: "분기 매출합", fmt: v => v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${(v/1e4).toFixed(0)}만` },
                   { key: "점포당매출", label: "점포당 매출", fmt: v => v >= 1e8 ? `${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억` : `${Math.round(v/1e4)}만` },
                   { key: "경쟁강도", label: "경쟁강도", fmt: v => `${v}` },
                   { key: "업종_포화도", label: "업종 포화도", fmt: v => `${v}%` },
@@ -4254,7 +4257,7 @@ export default function MapPage() {
                       const fmtM = v => v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억원`:`${Math.round(v/1e4)}만원`;
                       const reasons = [];
                       if (winner.성장확률>loser.성장확률) reasons.push(`AI 성장확률(${winner.성장확률}%)이 ${loser.name}(${loser.성장확률}%)보다 높아 향후 성장 가능성이 큽니다.`);
-                      if (winner.월매출>loser.월매출) { const r=loser.월매출>0?((winner.월매출/loser.월매출-1)*100).toFixed(0):100; reasons.push(`${category} 업종 월매출이 ${loser.name}보다 ${r}% 높은 ${fmtM(winner.월매출)}입니다.`); }
+                      if (winner.월매출>loser.월매출) { const r=loser.월매출>0?((winner.월매출/loser.월매출-1)*100).toFixed(0):100; reasons.push(`${category} 업종 분기 매출이 ${loser.name}보다 ${r}% 높은 ${fmtM(winner.월매출)}입니다.`); }
                       if (winner.점포당매출>loser.점포당매출) reasons.push(`점포당 매출(${fmtM(winner.점포당매출)})이 더 높아 개별 점포의 수익성이 우수합니다.`);
                       if ((winner.경쟁강도??0)<(loser.경쟁강도??0)) reasons.push(`경쟁강도(${winner.경쟁강도})가 낮아 ${category} 창업 시 경쟁 부담이 적습니다.`);
                       if ((winner.폐업률??0)<(loser.폐업률??0)) reasons.push(`폐업률(${winner.폐업률}%)이 낮아 업종 생존율이 높은 안정적인 상권입니다.`);
@@ -4415,7 +4418,7 @@ export default function MapPage() {
                 const { a, b, region, region_type } = compareIndustryResults;
                 const METRICS = [
                   { key:"점포수", label:"점포수", fmt:v=>`${v}개` },
-                  { key:"월매출", label:"월 매출합", fmt:v=>v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억`:`${(v/1e4).toFixed(0)}만` },
+                  { key:"월매출", label:"분기 매출합", fmt:v=>v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억`:`${(v/1e4).toFixed(0)}만` },
                   { key:"점포당매출", label:"점포당 매출", fmt:v=>v>=1e8?`${Number((v/1e8).toFixed(1)).toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1})}억`:`${Math.round(v/1e4)}만` },
                   { key:"경쟁강도", label:"경쟁강도", fmt:v=>`${v}` },
                   { key:"업종_포화도", label:"업종 포화도", fmt:v=>`${v}%` },
@@ -5165,7 +5168,7 @@ export default function MapPage() {
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <div style={aiMiniStatStyle}><div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div><div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.당월매출합)}</div></div>
+                          <div style={aiMiniStatStyle}><div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>분기 매출</div><div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.당월매출합)}</div></div>
                           <div style={aiMiniStatStyle}><div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>점포 수</div><div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{item.점포수}개</div></div>
                           <div style={aiMiniStatStyle}><div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>평균 성장확률</div><div style={{ fontSize: 14, fontWeight: 600, color: (item.성장확률||0) >= 60 ? "#059669" : "#D97706" }}>{item.성장확률}%</div></div>
                         </div>
@@ -5214,7 +5217,7 @@ export default function MapPage() {
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>분기 매출</div>
                               <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.revenue)}</div>
                             </div>
                             <div style={aiMiniStatStyle}>
@@ -5309,7 +5312,7 @@ export default function MapPage() {
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <div style={aiMiniStatStyle}>
-                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>월 매출</div>
+                              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 2 }}>분기 매출</div>
                               <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{fmtRevenue(item.revenue)}</div>
                             </div>
                             <div style={aiMiniStatStyle}>
@@ -5540,7 +5543,7 @@ export default function MapPage() {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                               <div>
                                 <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 지역은 어때요?</span>
-                                <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiIndustry} 기준</span>
+                                <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiIndustry} 기준 · 구 내 추천 점수</span>
                               </div>
                             </div>
                             <div className="no-scrollbar" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
@@ -5597,11 +5600,11 @@ export default function MapPage() {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, marginBottom: 10 }}>
                               <div>
                                 <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>이런 업종은 어때요?</span>
-                                <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiDong} 기준</span>
+                                <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>{aiDong} 기준 · 업종 추천 점수</span>
                               </div>
                             </div>
                             <div className="no-scrollbar" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 14, scrollbarWidth: "none" }}>
-                              {aiScoreSuggestions.industries.map((ind) => {
+                              {aiScoreSuggestions.industries.filter((ind) => ind.category !== aiIndustry).map((ind) => {
                                 const gc = { A: "#22c55e", B: "#3b82f6", C: "#f59e0b", D: "#ef4444" }[ind.등급] ?? "#6B9FE4";
                                 return (
                                   <button key={ind.category}
@@ -5691,7 +5694,7 @@ export default function MapPage() {
                               <div style={{ width: `${barW}%`, height: "100%", background: "linear-gradient(90deg,#93C5FD,#3B82F6)", borderRadius: 3 }} />
                             </div>
                             <div style={{ display: "flex", gap: 8, fontSize: 12 }}>
-                              <span style={{ color: "#6B7280" }}>월매출 <b style={{ color: "#374151" }}>{fmtRev(item.총매출)}원</b></span>
+                              <span style={{ color: "#6B7280" }}>분기 매출 <b style={{ color: "#374151" }}>{fmtRev(item.총매출)}원</b></span>
                               <span style={{ color: "#6B7280" }}>점포 <b style={{ color: "#374151" }}>{item.총점포수?.toLocaleString()}개</b></span>
                               <span style={{ color: compColor, fontWeight: 600 }}>경쟁 {item.경쟁강도}</span>
                             </div>
@@ -6718,7 +6721,7 @@ export default function MapPage() {
                             fetch(`${API}/api/search/regions/?gu=${encodeURIComponent(matchedGu)}`)
                               .then(r => r.json())
                               .then(d => {
-                                let results = d.results || [];
+                                let results = (d.results || []).filter(item => item.type !== "dong" || item.dong);
                                 if (dongQuery) results = results.filter(item => item.dong.includes(dongQuery));
                                 // 구 전체 옵션을 맨 앞에 추가 (행정동 검색어 없을 때만)
                                 if (!dongQuery) results = [{ gu: matchedGu, type: "gu" }, ...results];
@@ -7548,7 +7551,7 @@ export default function MapPage() {
                                 </div>
                                 <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280", flexWrap: "wrap", marginBottom: item.tags?.length > 0 ? 6 : 0 }}>
                                   <span>성장확률 <b style={{ color: "#374151" }}>{item.성장확률}점</b></span>
-                                  {item.revenue > 0 && <span>월매출 <b style={{ color: "#374151" }}>{item.revenue >= 1e8 ? `${(item.revenue / 1e8).toFixed(1)}억` : `${Math.round(item.revenue / 1e4).toLocaleString()}만`}</b></span>}
+                                  {item.revenue > 0 && <span>분기 매출 <b style={{ color: "#374151" }}>{item.revenue >= 1e8 ? `${(item.revenue / 1e8).toFixed(1)}억` : `${Math.round(item.revenue / 1e4).toLocaleString()}만`}</b></span>}
                                   <span>경쟁 <b style={{ color: "#374151" }}>{item.competition}</b></span>
                                 </div>
                                 {item.tags?.length > 0 && (
@@ -7944,7 +7947,7 @@ export default function MapPage() {
                                   </div>
                                   <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6B7280", flexWrap: "wrap" }}>
                                     <span>성장확률 <b style={{ color: "#374151" }}>{s.성장확률}점</b></span>
-                                    {s.revenue > 0 && <span>월매출 <b style={{ color: "#374151" }}>{s.revenue >= 1e8 ? `${(s.revenue / 1e8).toFixed(1)}억` : `${Math.round(s.revenue / 1e4).toLocaleString()}만`}</b></span>}
+                                    {s.revenue > 0 && <span>분기 매출 <b style={{ color: "#374151" }}>{s.revenue >= 1e8 ? `${(s.revenue / 1e8).toFixed(1)}억` : `${Math.round(s.revenue / 1e4).toLocaleString()}만`}</b></span>}
                                     {s.총유동인구 > 0 && <span>유동인구 <b style={{ color: "#374151" }}>{s.총유동인구.toLocaleString()}</b></span>}
                                   </div>
                                   {s.tags?.length > 0 && (
