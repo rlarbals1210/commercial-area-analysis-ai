@@ -356,6 +356,12 @@ npm run dev
 
 ---
 
+## DB 인덱스 측정
+
+`CommercialData`의 (통합카테고리, 기준_년분기_코드) 복합 인덱스(마이그레이션 0010) 효과를 조건별로 측정한 기록은 [docs/index_measurement.md](docs/index_measurement.md)에 있습니다. 측정 스크립트는 `scripts/measure_index.sql`입니다.
+
+---
+
 ## 데이터 출처
 
 | 데이터 | 출처 |

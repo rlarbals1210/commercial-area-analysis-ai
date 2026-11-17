@@ -1,0 +1,160 @@
+Pager usage is off.
+Timing is off.
+===== 1. 환경 =====
+                                                           version                                                            
+------------------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 14.22 (Homebrew) on aarch64-apple-darwin25.2.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit
+(1 row)
+
+          measured_at          
+-------------------------------
+ 2026-11-17 15:03:54.543214+09
+(1 row)
+
+ total_rows | table_size | latest_quarter | categories 
+------------+------------+----------------+------------
+     408576 | 265 MB     |          20253 |         51
+(1 row)
+
+ rows_in_latest_quarter 
+------------------------
+                  15076
+(1 row)
+
+              name               | setting | unit 
+---------------------------------+---------+------
+ effective_cache_size            | 524288  | 8kB
+ jit                             | on      | 
+ max_parallel_workers_per_gather | 2       | 
+ random_page_cost                | 4       | 
+ shared_buffers                  | 16384   | 8kB
+ work_mem                        | 4096    | kB
+(6 rows)
+
+===== 2. 실행 전 인덱스 목록 =====
+              indexname              |                                                           indexdef                                                            
+-------------------------------------+-------------------------------------------------------------------------------------------------------------------------------
+ analysis_co_기준_년분기__ca7168_idx | CREATE INDEX "analysis_co_기준_년분기__ca7168_idx" ON public.analysis_commercialdata USING btree ("기준_년분기_코드")
+ analysis_co_행정동명_b26457_idx     | CREATE INDEX "analysis_co_행정동명_b26457_idx" ON public.analysis_commercialdata USING btree ("행정동명")
+ analysis_co_행정동명_d32cd6_idx     | CREATE INDEX "analysis_co_행정동명_d32cd6_idx" ON public.analysis_commercialdata USING btree ("행정동명", "통합카테고리")
+ analysis_co_행정동명_d97fed_idx     | CREATE INDEX "analysis_co_행정동명_d97fed_idx" ON public.analysis_commercialdata USING btree ("행정동명", "기준_년분기_코드")
+ analysis_commercialdata_pkey        | CREATE UNIQUE INDEX analysis_commercialdata_pkey ON public.analysis_commercialdata USING btree (id)
+(5 rows)
+
+CREATE FUNCTION
+CREATE FUNCTION
+===== 3. 조건별 측정 (전체 업종 × 5회) =====
+--- A. 기존 인덱스만 (복합 인덱스 없음) ---
+BEGIN
+psql:measure_index.sql:96: NOTICE:  index "cd_cat_quarter_idx" does not exist, skipping
+DROP INDEX
+   condition   | runs | avg_ms | median_ms | p95_ms | min_ms | max_ms | plan_nodes |            indexes_used             
+---------------+------+--------+-----------+--------+--------+--------+------------+-------------------------------------
+ A 기존 인덱스 |  255 |  1.055 |     0.962 |  1.558 |  0.877 |  3.775 | Index Scan | analysis_co_기준_년분기__ca7168_idx
+(1 row)
+
+[A 실행계획 예시: 카페]
+                                                                              QUERY PLAN                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using "analysis_co_기준_년분기__ca7168_idx" on analysis_commercialdata  (cost=0.42..3453.39 rows=371 width=20) (actual time=0.005..0.924 rows=421 loops=1)
+   Index Cond: ("기준_년분기_코드" = 20253)
+   Filter: (("통합카테고리")::text = '카페'::text)
+   Rows Removed by Filter: 14655
+   Buffers: shared hit=1268
+ Planning Time: 0.012 ms
+ Execution Time: 0.932 ms
+(7 rows)
+
+ROLLBACK
+--- B. 기존 인덱스 + 복합 인덱스 ---
+BEGIN
+psql:measure_index.sql:106: NOTICE:  index "cd_cat_quarter_idx" does not exist, skipping
+DROP INDEX
+CREATE INDEX
+  condition  | runs | avg_ms | median_ms | p95_ms | min_ms | max_ms |             plan_nodes              |    indexes_used    
+-------------+------+--------+-----------+--------+--------+--------+-------------------------------------+--------------------
+ B 기존+복합 |  255 |  0.084 |     0.094 |  0.123 |  0.025 |  0.139 | Bitmap Heap Scan, Bitmap Index Scan | cd_cat_quarter_idx
+(1 row)
+
+[B 실행계획 예시: 카페]
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on analysis_commercialdata  (cost=8.23..1374.41 rows=371 width=20) (actual time=0.037..0.109 rows=421 loops=1)
+   Recheck Cond: ((("통합카테고리")::text = '카페'::text) AND ("기준_년분기_코드" = 20253))
+   Heap Blocks: exact=421
+   Buffers: shared hit=424
+   ->  Bitmap Index Scan on cd_cat_quarter_idx  (cost=0.00..8.13 rows=371 width=0) (actual time=0.020..0.020 rows=421 loops=1)
+         Index Cond: ((("통합카테고리")::text = '카페'::text) AND ("기준_년분기_코드" = 20253))
+         Buffers: shared hit=3
+ Planning Time: 0.014 ms
+ Execution Time: 0.118 ms
+(9 rows)
+
+ROLLBACK
+--- C. 보조 인덱스 없음 (기본키만) ---
+BEGIN
+ drop_secondary 
+----------------
+ 
+(1 row)
+
+     condition      | runs | avg_ms | median_ms | p95_ms | min_ms | max_ms |    plan_nodes    | indexes_used 
+--------------------+------+--------+-----------+--------+--------+--------+------------------+--------------
+ C 보조 인덱스 없음 |  255 | 24.356 |    24.263 | 24.977 | 23.658 | 29.265 | Gather, Seq Scan | (없음)
+(1 row)
+
+[C 실행계획 예시: 카페]
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..37560.70 rows=371 width=20) (actual time=22.250..24.194 rows=421 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=16218 read=17752
+   ->  Parallel Seq Scan on analysis_commercialdata  (cost=0.00..36523.60 rows=155 width=20) (actual time=20.626..21.415 rows=140 loops=3)
+         Filter: ((("통합카테고리")::text = '카페'::text) AND ("기준_년분기_코드" = 20253))
+         Rows Removed by Filter: 136052
+         Buffers: shared hit=16218 read=17752
+ Planning Time: 0.015 ms
+ Execution Time: 24.206 ms
+(10 rows)
+
+ROLLBACK
+--- D. 복합 인덱스만 ---
+BEGIN
+ drop_secondary 
+----------------
+ 
+(1 row)
+
+CREATE INDEX
+ condition | runs | avg_ms | median_ms | p95_ms | min_ms | max_ms |             plan_nodes              |    indexes_used    
+-----------+------+--------+-----------+--------+--------+--------+-------------------------------------+--------------------
+ D 복합만  |  255 |  0.083 |     0.093 |  0.116 |  0.025 |  0.127 | Bitmap Heap Scan, Bitmap Index Scan | cd_cat_quarter_idx
+(1 row)
+
+[D 실행계획 예시: 카페]
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on analysis_commercialdata  (cost=8.23..1374.41 rows=371 width=20) (actual time=0.037..0.107 rows=421 loops=1)
+   Recheck Cond: ((("통합카테고리")::text = '카페'::text) AND ("기준_년분기_코드" = 20253))
+   Heap Blocks: exact=421
+   Buffers: shared hit=424
+   ->  Bitmap Index Scan on cd_cat_quarter_idx  (cost=0.00..8.13 rows=371 width=0) (actual time=0.020..0.020 rows=421 loops=1)
+         Index Cond: ((("통합카테고리")::text = '카페'::text) AND ("기준_년분기_코드" = 20253))
+         Buffers: shared hit=3
+ Planning Time: 0.008 ms
+ Execution Time: 0.117 ms
+(9 rows)
+
+ROLLBACK
+===== 4. 실행 후 인덱스 목록 (2번과 같아야 한다) =====
+              indexname              |                                                           indexdef                                                            
+-------------------------------------+-------------------------------------------------------------------------------------------------------------------------------
+ analysis_co_기준_년분기__ca7168_idx | CREATE INDEX "analysis_co_기준_년분기__ca7168_idx" ON public.analysis_commercialdata USING btree ("기준_년분기_코드")
+ analysis_co_행정동명_b26457_idx     | CREATE INDEX "analysis_co_행정동명_b26457_idx" ON public.analysis_commercialdata USING btree ("행정동명")
+ analysis_co_행정동명_d32cd6_idx     | CREATE INDEX "analysis_co_행정동명_d32cd6_idx" ON public.analysis_commercialdata USING btree ("행정동명", "통합카테고리")
+ analysis_co_행정동명_d97fed_idx     | CREATE INDEX "analysis_co_행정동명_d97fed_idx" ON public.analysis_commercialdata USING btree ("행정동명", "기준_년분기_코드")
+ analysis_commercialdata_pkey        | CREATE UNIQUE INDEX analysis_commercialdata_pkey ON public.analysis_commercialdata USING btree (id)
+(5 rows)
+
+===== 끝 =====
