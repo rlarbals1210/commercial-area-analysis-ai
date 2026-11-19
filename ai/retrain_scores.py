@@ -1,7 +1,7 @@
 """
 모델 재학습 + scores.csv 재생성 스크립트
 - 직장인구 5개 피처 제거
-- 저중요도 피처 제거 (41개 피처 유지)
+- 저중요도 피처 제거 (47개 피처 유지, feature_cols 기준)
 - LightGBM 재학습 → scores.csv 저장
 """
 import numpy as np
