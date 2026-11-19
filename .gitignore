@@ -33,3 +33,5 @@ data/**
 WORK_LOG.md
 EDU.md
 STUDY.md
+.claude/CLAUDE.local.md
+.claude/settings.local.json
